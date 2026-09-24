@@ -272,6 +272,23 @@ struct ColorSettings {
     GrGLenum pixFormat;
 };
 
+// The GrContextOptions fields CanvasKit exposes; interface defaults live in webgl.js.
+struct SimpleGrContextOptions {
+    int internalMultisampleCount;
+    bool allowPathMaskCaching;
+    bool allowDynamicMSAA;
+    bool allowFloatMSAA;
+};
+
+sk_sp<GrDirectContext> MakeGrContextWithOptions(SimpleGrContextOptions simple) {
+    GrContextOptions options;
+    options.fInternalMultisampleCount = simple.internalMultisampleCount;
+    options.fAllowPathMaskCaching = simple.allowPathMaskCaching;
+    options.fAllowDynamicMSAAOnWebGL = simple.allowDynamicMSAA;
+    options.fAllowFloatMSAAOnWebGL2 = simple.allowFloatMSAA;
+    return GrDirectContexts::MakeGL(GrGLInterfaces::MakeWebGL(), options);
+}
+
 sk_sp<GrDirectContext> MakeGrContext() {
     // We assume that any calls we make to GL for the remainder of this function will go to the
     // desired WebGL Context.
@@ -1055,6 +1072,12 @@ EMSCRIPTEN_BINDINGS(Skia) {
 
 #ifdef CK_ENABLE_WEBGL
     constant("webgl", true);
+    function("_MakeGrContextWithOptions", &MakeGrContextWithOptions);
+    value_object<SimpleGrContextOptions>("GrContextOptions")
+        .field("internalMultisampleCount", &SimpleGrContextOptions::internalMultisampleCount)
+        .field("allowPathMaskCaching",     &SimpleGrContextOptions::allowPathMaskCaching)
+        .field("allowDynamicMSAA",         &SimpleGrContextOptions::allowDynamicMSAA)
+        .field("allowFloatMSAA",           &SimpleGrContextOptions::allowFloatMSAA);
     function("_MakeOnScreenGLSurface", select_overload<sk_sp<SkSurface>(sk_sp<GrDirectContext>, int, int, sk_sp<SkColorSpace>)>(&MakeOnScreenGLSurface));
     function("_MakeOnScreenGLSurface", select_overload<sk_sp<SkSurface>(sk_sp<GrDirectContext>, int, int, sk_sp<SkColorSpace>, int, int)>(&MakeOnScreenGLSurface));
     function("_MakeRenderTargetWH", select_overload<sk_sp<SkSurface>(sk_sp<GrDirectContext>, int, int)>(&MakeRenderTarget));

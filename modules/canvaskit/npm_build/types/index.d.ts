@@ -244,13 +244,13 @@ export interface CanvasKit {
      * @param ctx
      * @deprecated Use MakeWebGLContext instead.
      */
-    MakeGrContext(ctx: WebGLContextHandle): GrDirectContext | null;
+    MakeGrContext(ctx: WebGLContextHandle, options?: GrContextOptions): GrDirectContext | null;
 
     /**
      * Creates a GrDirectContext from the given WebGL Context.
      * @param ctx
      */
-    MakeWebGLContext(ctx: WebGLContextHandle): GrDirectContext | null;
+    MakeWebGLContext(ctx: WebGLContextHandle, options?: GrContextOptions): GrDirectContext | null;
 
     /**
      * Creates a Surface that will be drawn to the given GrDirectContext (and show up on screen).
@@ -676,6 +676,18 @@ export interface FontStyle {
 /**
  * See GrDirectContext.h for more on this class.
  */
+/** The GrContextOptions a WebGL context can be created with; omitted fields keep Skia's defaults. */
+export interface GrContextOptions {
+    /** Samples for Ganesh's internal MSAA (atlas, dynamic MSAA); 0 disables it. Default 4. */
+    internalMultisampleCount?: number;
+    /** Cache software path masks between draws. Default true. */
+    allowPathMaskCaching?: boolean;
+    /** Honour SurfaceOptions.dynamicMSAA on WebGL 2. Default false. */
+    allowDynamicMSAA?: boolean;
+    /** Multisampled half/float targets on WebGL 2 with EXT_color_buffer_float. Default false. */
+    allowFloatMSAA?: boolean;
+}
+
 export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     getResourceCacheLimitBytes(): number;
     getResourceCacheUsageBytes(): number;

@@ -83,6 +83,7 @@ var CanvasKit = {
   // private API (i.e. things declared in the bindings that we use
   // in the pre-js file)
   _MakeGrContext: function() {},
+  _MakeGrContextWithOptions: function() {},
   _MakeImage: function() {},
   _MakeManagedAnimation: function() {},
   _MakeOnScreenGLSurface: function() {},
