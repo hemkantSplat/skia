@@ -900,7 +900,7 @@ void GrGLCaps::init(const GrContextOptions& contextOptions,
     }
 
     // Requires msaa support, ES compatibility have already been detected.
-    this->initFormatTable(ctxInfo, gli, formatWorkarounds);
+    this->initFormatTable(contextOptions, ctxInfo, gli, formatWorkarounds);
 
     this->finishInitialization(contextOptions);
 
@@ -1467,7 +1467,8 @@ void GrGLCaps::setColorTypeFormat(GrColorType colorType, GrGLFormat format) {
     fColorTypeToFormatTable[idx] = format;
 }
 
-void GrGLCaps::initFormatTable(const GrGLContextInfo& ctxInfo, const GrGLInterface* gli,
+void GrGLCaps::initFormatTable(const GrContextOptions& contextOptions,
+                               const GrGLContextInfo& ctxInfo, const GrGLInterface* gli,
                                const FormatWorkarounds& formatWorkarounds) {
     GrGLStandard standard = ctxInfo.standard();
     // standard can be unused (optimized away) if SK_ASSUME_GL_ES is set
@@ -1505,8 +1506,13 @@ void GrGLCaps::initFormatTable(const GrGLContextInfo& ctxInfo, const GrGLInterfa
     bool texImageSupportsSizedInternalFormat =
             (GR_IS_GR_GL(standard) || (GR_IS_GR_GL_ES(standard) && version >= GR_GL_VER(3,0)));
 
-    // for now we don't support floating point MSAA on ES
-    uint32_t fpRenderFlags = (GR_IS_GR_GL(standard)) ? msaaRenderFlags : nonMSAARenderFlags;
+    // for now we don't support floating point MSAA on ES; WebGL 2 may opt in (GrContextOptions).
+    const bool webglFloatMSAA = GR_IS_GR_WEBGL(standard) && version >= GR_GL_VER(2, 0) &&
+                                contextOptions.fAllowFloatMSAAOnWebGL2 &&
+                                (ctxInfo.hasExtension("GL_EXT_color_buffer_float") ||
+                                 ctxInfo.hasExtension("EXT_color_buffer_float"));
+    uint32_t fpRenderFlags =
+            (GR_IS_GR_GL(standard) || webglFloatMSAA) ? msaaRenderFlags : nonMSAARenderFlags;
 
     for (int i = 0; i < kGrColorTypeCnt; ++i) {
         fColorTypeToFormatTable[i] = GrGLFormat::kUnknown;

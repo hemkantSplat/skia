@@ -313,6 +313,12 @@ struct SK_API GrContextOptions {
     bool fAllowDynamicMSAAOnWebGL = false;
 
     /**
+     * If true, half/float formats are multisample-renderable on WebGL 2 when EXT_color_buffer_float
+     * is present (GL ES keeps float MSAA off).
+     */
+    bool fAllowFloatMSAAOnWebGL2 = false;
+
+    /**
      * Currently on ARM Android we disable the use of GL TexStorage because of memory regressions.
      * However, some clients may still want to use TexStorage. For example, TexStorage support is
      * required for creating protected textures.

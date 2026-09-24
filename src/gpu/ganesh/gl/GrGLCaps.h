@@ -582,7 +582,8 @@ private:
     void initBlendEqationSupport(const GrGLContextInfo&);
     void initStencilSupport(const GrGLContextInfo&);
     // This must be called after initFSAASupport().
-    void initFormatTable(const GrGLContextInfo&, const GrGLInterface*, const FormatWorkarounds&);
+    void initFormatTable(const GrContextOptions&, const GrGLContextInfo&, const GrGLInterface*,
+                         const FormatWorkarounds&);
     void setupSampleCounts(const GrGLContextInfo&, const GrGLInterface*);
     bool onSurfaceSupportsWritePixels(const GrSurface*) const override;
     bool onCanCopySurface(const GrSurfaceProxy* dst, const SkIRect& dstRect,
