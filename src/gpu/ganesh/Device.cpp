@@ -832,8 +832,13 @@ void Device::drawPath(const SkPath& origSrcPath, const SkPaint& paint, bool path
 
 sk_sp<skif::Backend> Device::createImageFilteringBackend(const SkSurfaceProps& surfaceProps,
                                                          SkColorType colorType) const {
+    // Filter passes are image blends (often kSrc); dynamic MSAA would make their rect fills
+    // coverage-AA, and coverage with kSrc reads the destination through a copy per pass.
+    const SkSurfaceProps filterProps(surfaceProps.flags() & ~SkSurfaceProps::kDynamicMSAA_Flag,
+                                     surfaceProps.pixelGeometry(), surfaceProps.textContrast(),
+                                     surfaceProps.textGamma());
     return skif::MakeGaneshBackend(
-            fContext, fSurfaceDrawContext->origin(), surfaceProps, colorType);
+            fContext, fSurfaceDrawContext->origin(), filterProps, colorType);
 }
 
 sk_sp<SkSpecialImage> Device::snapSpecial(const SkIRect& subset, bool forceCopy) {
