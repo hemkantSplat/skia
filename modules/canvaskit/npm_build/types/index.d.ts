@@ -554,6 +554,8 @@ export interface CanvasKit {
     readonly ShadowDirectionalLight: number;
 
     readonly gpu?: boolean; // true if GPU code was compiled in
+    /** API level of the GPU options patches (GrContextOptions, SurfaceOptions); absent in stock. */
+    readonly gpuOptionsApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
     readonly rt_effect?: boolean; // true if RuntimeEffect was compiled in
     readonly skottie?: boolean; // true if base Skottie code was compiled in
