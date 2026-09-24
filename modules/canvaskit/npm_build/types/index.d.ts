@@ -688,6 +688,11 @@ export interface FontStyle {
 export interface SurfaceOptions {
     /** MSAA samples; omitted or 0 keeps the parent's count (1 for MakeRenderTarget). */
     sampleCount?: number;
+    /**
+     * Single-sample surface that renders passes with MSAA-only ops (paths) into a shared MSAA
+     * attachment, as Chrome does. Layers inherit it. Needs GrContextOptions.allowDynamicMSAA.
+     */
+    dynamicMSAA?: boolean;
 }
 
 /** The GrContextOptions a WebGL context can be created with; omitted fields keep Skia's defaults. */

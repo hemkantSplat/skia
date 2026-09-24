@@ -1014,9 +1014,10 @@ CanvasKit.onRuntimeInitialized = function() {
 
   // Every SurfaceOptions field, with the value that keeps makeSurface's inherited behaviour.
   CanvasKit._surfaceOptions = function(options) {
-    var samples = options['sampleCount'];
+    var samples = options['sampleCount'], dynamic = options['dynamicMSAA'];
     return {
       'sampleCount': samples === undefined ? 0 : samples,
+      'dynamicMSAA': dynamic === undefined ? -1 : dynamic ? 1 : 0,
     };
   };
 
