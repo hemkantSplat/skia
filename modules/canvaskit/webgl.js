@@ -148,7 +148,13 @@
           return null;
         }
         var surface;
-        if (arguments.length === 3) {
+        if (arguments.length === 3 && typeof arguments[2] === 'object') {
+          surface = this._MakeRenderTargetWithOptions(grCtx, arguments[1],
+                                                      CanvasKit._surfaceOptions(arguments[2]));
+          if (!surface) {
+            return null;
+          }
+        } else if (arguments.length === 3) {
           surface = this._MakeRenderTargetWH(grCtx, arguments[1], arguments[2]);
           if (!surface) {
             return null;

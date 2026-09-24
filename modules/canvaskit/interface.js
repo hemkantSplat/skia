@@ -1012,8 +1012,24 @@ CanvasKit.onRuntimeInitialized = function() {
     return this._makeImageSnapshot(bPtr);
   };
 
-  CanvasKit.Surface.prototype.makeSurface = function(imageInfo) {
+  // Every SurfaceOptions field, with the value that keeps makeSurface's inherited behaviour.
+  CanvasKit._surfaceOptions = function(options) {
+    var samples = options['sampleCount'];
+    return {
+      'sampleCount': samples === undefined ? 0 : samples,
+    };
+  };
+
+  CanvasKit.Surface.prototype.makeSurface = function(imageInfo, options) {
     CanvasKit.setCurrentContext(this._context);
+    if (options) {
+      // Unlike the plain form, a refused surface returns null.
+      var o = this._makeSurfaceWithOptions(imageInfo, CanvasKit._surfaceOptions(options));
+      if (o) {
+        o._context = this._context;
+      }
+      return o;
+    }
     var s = this._makeSurface(imageInfo);
     s._context = this._context;
     return s;

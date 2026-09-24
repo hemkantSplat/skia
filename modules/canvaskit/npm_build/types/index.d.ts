@@ -325,6 +325,14 @@ export interface CanvasKit {
     MakeRenderTarget(ctx: GrDirectContext, info: ImageInfo): Surface | null;
 
     /**
+     * A GPU-backed render target with explicit settings (e.g. MSAA sample count).
+     * @param ctx
+     * @param info
+     * @param options
+     */
+    MakeRenderTarget(ctx: GrDirectContext, info: ImageInfo, options: SurfaceOptions): Surface | null;
+
+    /**
      * Returns a texture-backed image based on the content in src. It assumes the image is
      * RGBA_8888, unpremul and SRGB. This image can be re-used across multiple surfaces.
      *
@@ -676,6 +684,12 @@ export interface FontStyle {
 /**
  * See GrDirectContext.h for more on this class.
  */
+/** Explicit GPU surface settings; omitted fields keep what makeSurface would inherit. */
+export interface SurfaceOptions {
+    /** MSAA samples; omitted or 0 keeps the parent's count (1 for MakeRenderTarget). */
+    sampleCount?: number;
+}
+
 /** The GrContextOptions a WebGL context can be created with; omitted fields keep Skia's defaults. */
 export interface GrContextOptions {
     /** Samples for Ganesh's internal MSAA (atlas, dynamic MSAA); 0 disables it. Default 4. */
@@ -3066,6 +3080,13 @@ export interface Surface extends EmbindObject<"Surface"> {
      * @param info - width, height, etc of the Surface.
      */
     makeSurface(info: ImageInfo): Surface;
+
+    /**
+     * Like makeSurface(info), with explicit settings; returns null when the GPU refuses them.
+     * @param info
+     * @param options
+     */
+    makeSurface(info: ImageInfo, options: SurfaceOptions): Surface | null;
 
     /**
      * Returns if this Surface is a GPU-backed surface or not.
