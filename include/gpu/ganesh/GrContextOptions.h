@@ -307,6 +307,12 @@ struct SK_API GrContextOptions {
     bool fAllowMSAAOnNewIntel = false;
 
     /**
+     * If true, SkSurfaceProps::kDynamicMSAA_Flag is honoured on WebGL 2 (skbug.com/12081 turned it
+     * off there). Loads into the MSAA attachment draw, since WebGL cannot blit into MSAA.
+     */
+    bool fAllowDynamicMSAAOnWebGL = false;
+
+    /**
      * Currently on ARM Android we disable the use of GL TexStorage because of memory regressions.
      * However, some clients may still want to use TexStorage. For example, TexStorage support is
      * required for creating protected textures.

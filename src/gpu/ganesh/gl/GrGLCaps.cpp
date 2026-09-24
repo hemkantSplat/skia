@@ -546,6 +546,10 @@ void GrGLCaps::init(const GrContextOptions& contextOptions,
                                     kNoFormatConversion_BlitFramebufferFlag |
                                     kRectsMustMatchForMSAASrc_BlitFramebufferFlag;
         }
+    } else if (GR_IS_GR_WEBGL(standard) && version >= GR_GL_VER(2, 0)) {
+        // Copies keep avoiding blits; the flag records that ES 3.0 cannot blit into MSAA, which
+        // routes dynamic MSAA loads through a draw.
+        fBlitFramebufferFlags = kNoSupport_BlitFramebufferFlag | kNoMSAADst_BlitFramebufferFlag;
     } // No WebGL 1.0 support for BlitFramebuffer
 
     this->initBlendEqationSupport(ctxInfo);
@@ -3993,7 +3997,7 @@ void GrGLCaps::applyDriverCorrectnessWorkarounds(const GrGLContextInfo& ctxInfo,
     }
 
     // http://skbug.com/12081
-    if (GR_IS_GR_WEBGL(ctxInfo.standard())) {
+    if (GR_IS_GR_WEBGL(ctxInfo.standard()) && !contextOptions.fAllowDynamicMSAAOnWebGL) {
         fDisallowDynamicMSAA = true;
     }
 
