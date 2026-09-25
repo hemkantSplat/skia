@@ -138,6 +138,16 @@
           this._performDeferredCleanup(msNotUsed);
       };
 
+      CanvasKit.GrDirectContext.prototype.gpuStats = function() {
+          CanvasKit.setCurrentContext(this._context);
+          return this._gpuStats();
+      };
+
+      CanvasKit.GrDirectContext.prototype.resetGpuStats = function() {
+          CanvasKit.setCurrentContext(this._context);
+          this._resetGpuStats();
+      };
+
       CanvasKit.GrDirectContext.prototype.releaseResourcesAndAbandonContext = function() {
           CanvasKit.setCurrentContext(this._context);
           this._releaseResourcesAndAbandonContext();

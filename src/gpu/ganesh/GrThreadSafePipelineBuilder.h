@@ -34,6 +34,19 @@ public:
 
         Stats() = default;
 
+        void reset() {
+            fShaderCompilations = 0;
+            fNumInlineCompilationFailures = 0;
+            fNumPreCompilationFailures = 0;
+            fNumCompilationFailures = 0;
+            fNumPartialCompilationSuccesses = 0;
+            fNumCompilationSuccesses = 0;
+            for (int i = 0; i < kNumProgramCacheResults; ++i) {
+                fInlineProgramCacheStats[i] = 0;
+                fPreProgramCacheStats[i] = 0;
+            }
+        }
+
         int shaderCompilations() const { return fShaderCompilations; }
         void incShaderCompilations() { fShaderCompilations++; }
 

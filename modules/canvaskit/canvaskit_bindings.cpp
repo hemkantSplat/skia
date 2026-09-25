@@ -83,6 +83,9 @@
 #include "include/gpu/ganesh/SkImageGanesh.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 #include "src/gpu/ganesh/GrCaps.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrGpu.h"
+#include "src/gpu/ganesh/GrThreadSafePipelineBuilder.h"
 #endif // ENABLE_GPU
 
 #ifdef CK_ENABLE_WEBGL
@@ -263,6 +266,76 @@ struct SimpleResourceCacheUsage {
     int count = 0;
     size_t bytes = 0;
 };
+
+// Ganesh's GPU counters (GrGpu, program cache, recording context) since the last reset.
+struct SimpleGpuStats {
+    int textureCreates = 0;
+    int textureUploads = 0;
+    int transfersToTexture = 0;
+    int transfersFromSurface = 0;
+    int bufferTransfers = 0;
+    int stencilAttachmentCreates = 0;
+    int msaaAttachmentCreates = 0;
+    int draws = 0;
+    int failedDraws = 0;
+    int submits = 0;
+    int scratchTexturesReused = 0;
+    int scratchMSAAAttachmentsReused = 0;
+    int renderPasses = 0;
+    int reorderedDAGsOverBudget = 0;
+    int shaderCompilations = 0;
+    int programCacheHits = 0;
+    int programCacheMisses = 0;
+    int softwarePathMasks = 0;
+    int softwarePathMaskCacheHits = 0;
+};
+
+SimpleGpuStats ReadGpuStats(GrDirectContext& dContext) {
+    SimpleGpuStats out;
+    GrGpu* gpu = dContext.priv().getGpu();
+    if (dContext.abandoned() || !gpu) {
+        return out;
+    }
+    const GrGpu::Stats& g = *gpu->stats();
+    out.textureCreates = g.textureCreates();
+    out.textureUploads = g.textureUploads();
+    out.transfersToTexture = g.transfersToTexture();
+    out.transfersFromSurface = g.transfersFromSurface();
+    out.bufferTransfers = g.bufferTransfers();
+    out.stencilAttachmentCreates = g.stencilAttachmentCreates();
+    out.msaaAttachmentCreates = g.msaaAttachmentCreates();
+    out.draws = g.numDraws();
+    out.failedDraws = g.numFailedDraws();
+    out.submits = g.numSubmitToGpus();
+    out.scratchTexturesReused = g.numScratchTexturesReused();
+    out.scratchMSAAAttachmentsReused = g.numScratchMSAAAttachmentsReused();
+    out.renderPasses = g.renderPasses();
+    out.reorderedDAGsOverBudget = g.numReorderedDAGsOverBudget();
+    if (GrThreadSafePipelineBuilder* builder = gpu->pipelineBuilder()) {
+        using Result = GrThreadSafePipelineBuilder::Stats::ProgramCacheResult;
+        const GrThreadSafePipelineBuilder::Stats& p = *builder->stats();
+        out.shaderCompilations = p.shaderCompilations();
+        out.programCacheHits = p.numInlineProgramCacheResult(Result::kHit);
+        out.programCacheMisses = p.numInlineProgramCacheResult(Result::kMiss);
+    }
+    const auto& r = *dContext.priv().stats();
+    out.softwarePathMasks = r.numPathMasksGenerated();
+    out.softwarePathMaskCacheHits = r.numPathMaskCacheHits();
+    return out;
+}
+
+// Clears every counter ReadGpuStats reports.
+void ResetGpuStats(GrDirectContext& dContext) {
+    GrGpu* gpu = dContext.priv().getGpu();
+    if (dContext.abandoned() || !gpu) {
+        return;
+    }
+    gpu->stats()->reset();
+    if (GrThreadSafePipelineBuilder* builder = gpu->pipelineBuilder()) {
+        builder->stats()->reset();
+    }
+    dContext.priv().stats()->reset();
+}
 #endif // ENABLE_GPU
 
 #ifdef CK_ENABLE_WEBGL
@@ -1237,6 +1310,26 @@ EMSCRIPTEN_BINDINGS(Skia) {
     value_object<SimpleResourceCacheUsage>("ResourceCacheUsage")
         .field("count", &SimpleResourceCacheUsage::count)
         .field("bytes", &SimpleResourceCacheUsage::bytes);
+    value_object<SimpleGpuStats>("GpuStats")
+        .field("textureCreates", &SimpleGpuStats::textureCreates)
+        .field("textureUploads", &SimpleGpuStats::textureUploads)
+        .field("transfersToTexture", &SimpleGpuStats::transfersToTexture)
+        .field("transfersFromSurface", &SimpleGpuStats::transfersFromSurface)
+        .field("bufferTransfers", &SimpleGpuStats::bufferTransfers)
+        .field("stencilAttachmentCreates", &SimpleGpuStats::stencilAttachmentCreates)
+        .field("msaaAttachmentCreates", &SimpleGpuStats::msaaAttachmentCreates)
+        .field("draws", &SimpleGpuStats::draws)
+        .field("failedDraws", &SimpleGpuStats::failedDraws)
+        .field("submits", &SimpleGpuStats::submits)
+        .field("scratchTexturesReused", &SimpleGpuStats::scratchTexturesReused)
+        .field("scratchMSAAAttachmentsReused", &SimpleGpuStats::scratchMSAAAttachmentsReused)
+        .field("renderPasses", &SimpleGpuStats::renderPasses)
+        .field("reorderedDAGsOverBudget", &SimpleGpuStats::reorderedDAGsOverBudget)
+        .field("shaderCompilations", &SimpleGpuStats::shaderCompilations)
+        .field("programCacheHits", &SimpleGpuStats::programCacheHits)
+        .field("programCacheMisses", &SimpleGpuStats::programCacheMisses)
+        .field("softwarePathMasks", &SimpleGpuStats::softwarePathMasks)
+        .field("softwarePathMaskCacheHits", &SimpleGpuStats::softwarePathMaskCacheHits);
     class_<GrDirectContext>("GrDirectContext")
         .smart_ptr<sk_sp<GrDirectContext>>("sk_sp<GrDirectContext>")
         .function("_getResourceCacheLimitBytes",
@@ -1270,6 +1363,8 @@ EMSCRIPTEN_BINDINGS(Skia) {
                 optional_override([](GrDirectContext& self, double msNotUsed)->void {
             self.performDeferredCleanup(std::chrono::milliseconds(static_cast<int64_t>(msNotUsed)));
         }))
+        .function("_gpuStats", &ReadGpuStats)
+        .function("_resetGpuStats", &ResetGpuStats)
         .function("_releaseResourcesAndAbandonContext",
                 &GrDirectContext::releaseResourcesAndAbandonContext)
         .function("_setResourceCacheLimitBytes",

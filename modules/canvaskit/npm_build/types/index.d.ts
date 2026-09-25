@@ -715,6 +715,29 @@ export interface ResourceCacheUsage {
     bytes: number;
 }
 
+/** Ganesh's GPU counters since the last resetGpuStats(); names follow GrGpu::Stats. */
+export interface GpuStats {
+    textureCreates: number;
+    textureUploads: number;
+    transfersToTexture: number;
+    transfersFromSurface: number;
+    bufferTransfers: number;
+    stencilAttachmentCreates: number;
+    msaaAttachmentCreates: number;
+    draws: number;
+    failedDraws: number;
+    submits: number;
+    scratchTexturesReused: number;
+    scratchMSAAAttachmentsReused: number;
+    renderPasses: number;
+    reorderedDAGsOverBudget: number;
+    shaderCompilations: number;
+    programCacheHits: number;
+    programCacheMisses: number;
+    softwarePathMasks: number;
+    softwarePathMaskCacheHits: number;
+}
+
 export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     getResourceCacheLimitBytes(): number;
     getResourceCacheUsageBytes(): number;
@@ -725,6 +748,9 @@ export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     purgeUnlockedResources(scratchOnly?: boolean): void;
     /** Purges resources unused for at least `msNotUsed` milliseconds. */
     performDeferredCleanup(msNotUsed: number): void;
+    /** GPU counters since the last resetGpuStats(). */
+    gpuStats(): GpuStats;
+    resetGpuStats(): void;
     releaseResourcesAndAbandonContext(): void;
     setResourceCacheLimitBytes(bytes: number): void;
 }

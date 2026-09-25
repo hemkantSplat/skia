@@ -121,4 +121,10 @@
  */
 //#define SK_API __declspec(dllexport)
 
+/*
+ * CanvasKit custom build (tools/canvaskit-build): keep Ganesh's GPU counters in release so
+ * GrDirectContext.gpuStats() can read them.
+ */
+#define GR_GPU_STATS 1
+
 #endif
