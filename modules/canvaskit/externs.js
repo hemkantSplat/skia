@@ -433,10 +433,12 @@ var CanvasKit = {
   ColorSpace: {
     Equals: function() {},
     SRGB: {},
+    SRGB_LINEAR: {},
     DISPLAY_P3: {},
     ADOBE_RGB: {},
     // private API (from C++ bindings)
     _MakeSRGB: function() {},
+    _MakeSRGBLinear: function() {},
     _MakeDisplayP3: function() {},
     _MakeAdobeRGB: function() {},
   },

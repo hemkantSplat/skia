@@ -41,6 +41,7 @@ CanvasKit.onRuntimeInitialized = function() {
   // Create single copies of all three supported color spaces
   // These are sk_sp<ColorSpace>
   CanvasKit.ColorSpace.SRGB = CanvasKit.ColorSpace._MakeSRGB();
+  CanvasKit.ColorSpace.SRGB_LINEAR = CanvasKit.ColorSpace._MakeSRGBLinear();
   CanvasKit.ColorSpace.DISPLAY_P3 = CanvasKit.ColorSpace._MakeDisplayP3();
   CanvasKit.ColorSpace.ADOBE_RGB = CanvasKit.ColorSpace._MakeAdobeRGB();
 
@@ -816,11 +817,13 @@ CanvasKit.onRuntimeInitialized = function() {
     return readPixels(this, srcX, srcY, imageInfo, destMallocObj, bytesPerRow);
   };
 
-  CanvasKit.Canvas.prototype.saveLayer = function (paint, boundsRect, backdrop, flags, backdropTileMode) {
+  CanvasKit.Canvas.prototype.saveLayer = function (paint, boundsRect, backdrop, flags, backdropTileMode,
+                                                   colorSpace) {
     // bPtr will be 0 (nullptr) if boundsRect is undefined/null.
     var bPtr = copyRectToWasm(boundsRect);
     // These or clauses help emscripten, which does not deal with undefined well.
-    return this._saveLayer(paint || null, bPtr, backdrop || null, flags || 0, backdropTileMode || CanvasKit.TileMode.Clamp);
+    return this._saveLayer(paint || null, bPtr, backdrop || null, flags || 0,
+                           backdropTileMode || CanvasKit.TileMode.Clamp, colorSpace || null);
   };
 
   // pixels should be a Uint8Array or a plain JS array.

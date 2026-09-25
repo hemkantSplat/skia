@@ -1681,9 +1681,12 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .function("save", &SkCanvas::save)
         .function("_saveLayer", optional_override([](SkCanvas& self, const SkPaint* p, WASMPointerF32 fPtr,
                                                      const SkImageFilter* backdrop, SkCanvas::SaveLayerFlags flags,
-                                                     SkTileMode backdropFilterTileMode)->int {
+                                                     SkTileMode backdropFilterTileMode,
+                                                     sk_sp<SkColorSpace> colorSpace)->int {
             SkRect* bounds = reinterpret_cast<SkRect*>(fPtr);
-            return self.saveLayer(SkCanvas::SaveLayerRec(bounds, p, backdrop, backdropFilterTileMode, nullptr, flags));
+            // A null colorSpace inherits the parent's; otherwise draws and restore convert.
+            return self.saveLayer(SkCanvas::SaveLayerRec(bounds, p, backdrop, backdropFilterTileMode,
+                                                         colorSpace.get(), flags));
         }), allow_raw_pointers())
         .function("saveLayerPaint", optional_override([](SkCanvas& self, const SkPaint p)->int {
             return self.saveLayer(SkCanvas::SaveLayerRec(nullptr, &p, 0));
@@ -2088,6 +2091,7 @@ EMSCRIPTEN_BINDINGS(Skia) {
         // These are private because they are to be called once in interface.js to
         // avoid clients having to delete the returned objects.
         .class_function("_MakeSRGB", &SkColorSpace::MakeSRGB)
+        .class_function("_MakeSRGBLinear", &SkColorSpace::MakeSRGBLinear)
         .class_function("_MakeDisplayP3", optional_override([]()->sk_sp<SkColorSpace> {
             return SkColorSpace::MakeRGB(SkNamedTransferFn::kSRGB, SkNamedGamut::kDisplayP3);
         }))

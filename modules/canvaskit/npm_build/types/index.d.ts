@@ -1904,9 +1904,12 @@ export interface Canvas extends EmbindObject<"Canvas"> {
      * @param backdrop
      * @param flags
      * @param backdropFilterTileMode
+     * @param colorSpace - the layer's working space: draws convert into it and restore converts
+     *                     back to the parent's. Omitted, the layer inherits the parent's.
      */
     saveLayer(paint?: Paint, bounds?: InputRect | null, backdrop?: ImageFilter | null,
-              flags?: SaveLayerFlag, backdropFilterTileMode?: TileMode): number;
+              flags?: SaveLayerFlag, backdropFilterTileMode?: TileMode,
+              colorSpace?: ColorSpace | null): number;
 
     /**
      * Scales the current matrix by sx on the x-axis and sy on the y-axis.
@@ -4724,6 +4727,8 @@ export interface ClipOpEnumValues extends EmbindEnum {
 export interface ColorSpaceEnumValues { // not a typical enum, but effectively like one.
     // These are all singleton values - don't call delete on them.
     readonly SRGB: ColorSpace;
+    /** sRGB primaries with a linear transfer function: a linear-light working space. */
+    readonly SRGB_LINEAR: ColorSpace;
     readonly DISPLAY_P3: ColorSpace;
     readonly ADOBE_RGB: ColorSpace;
 
