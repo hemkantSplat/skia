@@ -3640,6 +3640,12 @@ export interface BlenderFactory {
      * @param mode
      */
     Mode(mode: BlendMode): Blender;
+
+    /**
+     * Create a blender returning src + dst, saturating only where the destination cannot hold
+     * values above 1 (BlendMode.Plus always saturates). Needs no destination read on the GPU.
+     */
+    MakeAdd(): Blender;
 }
 
 export interface ParagraphBuilderFactory {

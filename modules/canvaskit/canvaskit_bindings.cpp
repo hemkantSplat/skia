@@ -47,6 +47,7 @@
 #include "include/core/SkVertices.h"
 #include "include/effects/Sk1DPathEffect.h"
 #include "include/effects/Sk2DPathEffect.h"
+#include "include/effects/SkBlenders.h"
 #include "include/effects/SkCornerPathEffect.h"
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkDiscretePathEffect.h"
@@ -1413,7 +1414,8 @@ EMSCRIPTEN_BINDINGS(Skia) {
 
     class_<SkBlender>("Blender")
         .smart_ptr<sk_sp<SkBlender>>("sk_sp<Blender>")
-        .class_function("Mode", &SkBlender::Mode);
+        .class_function("Mode", &SkBlender::Mode)
+        .class_function("MakeAdd", &SkBlenders::Add);
 
     class_<SkCanvas>("Canvas")
         .constructor<>()

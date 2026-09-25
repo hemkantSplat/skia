@@ -30,6 +30,9 @@ class GrPorterDuffXPFactory : public GrXPFactory {
 public:
     static const GrXPFactory* Get(SkBlendMode blendMode);
 
+    /** src + dst on fixed-function (ONE, ONE); saturates only on clamped float targets. */
+    static const GrXPFactory* UnclampedPlus();
+
     /** Because src-over is so common we special case it for performance reasons. If this returns
         null then the SimpleSrcOverXP() below should be used. */
     static sk_sp<const GrXferProcessor> MakeSrcOverXferProcessor(const GrProcessorAnalysisColor&,
@@ -49,7 +52,7 @@ public:
                                                         GrClampType);
 
 private:
-    constexpr GrPorterDuffXPFactory(SkBlendMode);
+    constexpr GrPorterDuffXPFactory(SkBlendMode, bool unclampedPlus = false);
 
     sk_sp<const GrXferProcessor> makeXferProcessor(const GrProcessorAnalysisColor&,
                                                    GrProcessorAnalysisCoverage,
@@ -65,6 +68,7 @@ private:
     static void TestGetXPOutputTypes(const GrXferProcessor*, int* outPrimary, int* outSecondary);
 
     SkBlendMode fBlendMode;
+    bool fUnclampedPlus;
 
     friend class GrPorterDuffTest; // for TestGetXPOutputTypes()
     using INHERITED = GrXPFactory;

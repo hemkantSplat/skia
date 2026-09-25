@@ -52,3 +52,8 @@ sk_sp<SkBlender> SkBlenders::Arithmetic(float k1, float k2, float k3, float k4,
     };
     return arithmeticEffect->makeBlender(SkData::MakeWithCopy(array, sizeof(array)));
 }
+
+sk_sp<SkBlender> SkBlenders::Add() {
+    using namespace SkKnownRuntimeEffects;
+    return GetKnownRuntimeEffect(StableKey::kAdd)->makeBlender(/*uniforms=*/nullptr);
+}

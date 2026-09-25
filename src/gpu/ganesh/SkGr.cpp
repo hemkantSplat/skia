@@ -27,6 +27,7 @@
 #include "include/private/base/SkTPin.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "src/core/SkBlenderBase.h"
+#include "src/core/SkKnownRuntimeEffects.h"
 #include "src/core/SkMessageBus.h"
 #include "src/core/SkPaintPriv.h"
 #include "src/core/SkRuntimeEffectPriv.h"
@@ -46,6 +47,7 @@
 #include "src/gpu/ganesh/GrSurfaceProxyView.h"
 #include "src/gpu/ganesh/GrTextureProxy.h"
 #include "src/gpu/ganesh/GrXferProcessor.h"
+#include "src/gpu/ganesh/effects/GrPorterDuffXferProcessor.h"
 #include "src/gpu/ganesh/effects/GrSkSLFP.h"
 #include "src/gpu/ganesh/effects/GrTextureEffect.h"
 #include "src/shaders/SkShaderBase.h"
@@ -295,6 +297,13 @@ static inline bool blender_requires_shader(const SkBlender* blender) {
     return !mode.has_value() || *mode != SkBlendMode::kDst;
 }
 
+// SkBlenders::Add() is a known runtime blender that fixed-function (ONE, ONE) implements exactly.
+static bool is_add_blender(const SkBlender* blender) {
+    const SkRuntimeEffect* effect = as_BB(blender)->asRuntimeEffect();
+    return effect && SkRuntimeEffectPriv::StableKey(*effect) ==
+                     static_cast<uint32_t>(SkKnownRuntimeEffects::StableKey::kAdd);
+}
+
 
 #ifndef SK_IGNORE_GPU_DITHER
 static std::unique_ptr<GrFragmentProcessor> make_dither_effect(
@@ -518,6 +527,8 @@ static inline bool skpaint_to_grpaint_impl(
         if (bm.value() != SkBlendMode::kSrcOver) {
             grPaint->setXPFactory(GrXPFactory::FromBlendMode(bm.value()));
         }
+    } else if (is_add_blender(skPaint.getBlender())) {
+        grPaint->setXPFactory(GrPorterDuffXPFactory::UnclampedPlus());
     } else {
         // Apply a custom blend against the surface color, and force the XP to kSrc so that the
         // computed result is applied directly to the canvas while still honoring the alpha.
