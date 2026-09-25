@@ -1202,6 +1202,11 @@ void GrGLCaps::initBlendEqationSupport(const GrGLContextInfo& ctxInfo) {
         (GR_IS_GR_GL_ES(fStandard) && shaderCaps->fGLSLGeneration >= SkSL::GLSLGeneration::k300es)){
         layoutQualifierSupport = true;
     } else if (GR_IS_GR_WEBGL(fStandard)) {
+        // WebGL exposes only the coherent variant, and it needs no shader layout qualifiers.
+        if (ctxInfo.hasExtension("GL_WEBGL_blend_equation_advanced_coherent")) {
+            fBlendEquationSupport = kAdvancedCoherent_BlendEquationSupport;
+            shaderCaps->fAdvBlendEqInteraction = GrShaderCaps::kAutomatic_AdvBlendEqInteraction;
+        }
         return;
     }
 
