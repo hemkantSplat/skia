@@ -257,6 +257,14 @@ SkImageInfo toSkImageInfo(const SimpleImageInfo& sii) {
                              sii.colorSpace ? sii.colorSpace : SkColorSpace::MakeSRGB());
 }
 
+#ifdef ENABLE_GPU
+// GrDirectContext::getResourceCacheUsage's two outputs, returned as one JS object.
+struct SimpleResourceCacheUsage {
+    int count = 0;
+    size_t bytes = 0;
+};
+#endif // ENABLE_GPU
+
 #ifdef CK_ENABLE_WEBGL
 
 // Set the pixel format based on the colortype.
@@ -1226,6 +1234,9 @@ EMSCRIPTEN_BINDINGS(Skia) {
 #endif
 
 #ifdef ENABLE_GPU
+    value_object<SimpleResourceCacheUsage>("ResourceCacheUsage")
+        .field("count", &SimpleResourceCacheUsage::count)
+        .field("bytes", &SimpleResourceCacheUsage::bytes);
     class_<GrDirectContext>("GrDirectContext")
         .smart_ptr<sk_sp<GrDirectContext>>("sk_sp<GrDirectContext>")
         .function("_getResourceCacheLimitBytes",
@@ -1241,6 +1252,23 @@ EMSCRIPTEN_BINDINGS(Skia) {
             size_t currUsage = 0;
             self.getResourceCacheUsage(&usedResources, &currUsage);
             return currUsage;
+        }))
+        .function("_getResourceCacheUsage",
+                optional_override([](GrDirectContext& self)->SimpleResourceCacheUsage {
+            SimpleResourceCacheUsage usage;
+            self.getResourceCacheUsage(&usage.count, &usage.bytes);
+            return usage;
+        }))
+        .function("_getResourceCachePurgeableBytes",
+                &GrDirectContext::getResourceCachePurgeableBytes)
+        .function("_purgeUnlockedResources",
+                optional_override([](GrDirectContext& self, bool scratchOnly)->void {
+            self.purgeUnlockedResources(scratchOnly ? GrPurgeResourceOptions::kScratchResourcesOnly
+                                                    : GrPurgeResourceOptions::kAllResources);
+        }))
+        .function("_performDeferredCleanup",
+                optional_override([](GrDirectContext& self, double msNotUsed)->void {
+            self.performDeferredCleanup(std::chrono::milliseconds(static_cast<int64_t>(msNotUsed)));
         }))
         .function("_releaseResourcesAndAbandonContext",
                 &GrDirectContext::releaseResourcesAndAbandonContext)

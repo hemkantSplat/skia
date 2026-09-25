@@ -709,9 +709,22 @@ export interface GrContextOptions {
     allowFloatMSAA?: boolean;
 }
 
+/** Resources held by the GPU resource cache and their total size. */
+export interface ResourceCacheUsage {
+    count: number;
+    bytes: number;
+}
+
 export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     getResourceCacheLimitBytes(): number;
     getResourceCacheUsageBytes(): number;
+    getResourceCacheUsage(): ResourceCacheUsage;
+    /** Bytes held by unlocked (purgeable) resources. */
+    getResourceCachePurgeableBytes(): number;
+    /** Purges every unlocked resource, or only unlocked scratch resources. */
+    purgeUnlockedResources(scratchOnly?: boolean): void;
+    /** Purges resources unused for at least `msNotUsed` milliseconds. */
+    performDeferredCleanup(msNotUsed: number): void;
     releaseResourcesAndAbandonContext(): void;
     setResourceCacheLimitBytes(bytes: number): void;
 }
