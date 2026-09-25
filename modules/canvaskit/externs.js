@@ -40,6 +40,7 @@ var CanvasKit = {
   MakeCanvasSurface: function() {},
   MakeGrContext: function() {}, // deprecated
   gpuOptionsApi: 0,
+  diagnosticsApi: 0,
   MakeWebGLContext: function() {},
   /** @return {CanvasKit.AnimatedImage} */
   MakeAnimatedImageFromEncoded: function() {},
