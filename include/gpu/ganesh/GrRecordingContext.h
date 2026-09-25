@@ -220,6 +220,10 @@ protected:
         int numPathMaskCacheHits() const { return fNumPathMaskCacheHits; }
         void incNumPathMasksCacheHits() { fNumPathMaskCacheHits++; }
 
+        int numDstCopies() const { return fNumDstCopies; }
+        int64_t dstCopyPixels() const { return fDstCopyPixels; }
+        void incNumDstCopies(int64_t pixels) { fNumDstCopies++; fDstCopyPixels += pixels; }
+
 #if defined(GPU_TEST_UTILS)
         void dump(SkString* out) const;
         void dumpKeyValuePairs(skia_private::TArray<SkString>* keys,
@@ -229,10 +233,13 @@ protected:
     private:
         int fNumPathMasksGenerated{0};
         int fNumPathMaskCacheHits{0};
+        int fNumDstCopies{0};
+        int64_t fDstCopyPixels{0};
 
 #else // GR_GPU_STATS
         void incNumPathMasksGenerated() {}
         void incNumPathMasksCacheHits() {}
+        void incNumDstCopies(int64_t) {}
 
 #if defined(GPU_TEST_UTILS)
         void dump(SkString*) const {}

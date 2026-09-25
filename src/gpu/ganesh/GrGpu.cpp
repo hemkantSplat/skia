@@ -660,6 +660,7 @@ void GrGpu::resetTextureBindings() {
 void GrGpu::resolveRenderTarget(GrRenderTarget* target, const SkIRect& resolveRect) {
     SkASSERT(target);
     this->handleDirtyContext();
+    fStats.incMSAAResolves();
     this->onResolveRenderTarget(target, resolveRect);
 }
 

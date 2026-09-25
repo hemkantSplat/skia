@@ -2118,6 +2118,7 @@ bool SurfaceDrawContext::setupDstProxyView(const SkRect& opBounds,
                                      /*label=*/{},
                                      restrictions.fRectsMustMatch);
     SkASSERT(copy);
+    fContext->priv().stats()->incNumDstCopies(int64_t(copyRect.width()) * copyRect.height());
 
     dstProxyView->setProxyView({std::move(copy), this->origin(), this->readSwizzle()});
     dstProxyView->setOffset(dstOffset);

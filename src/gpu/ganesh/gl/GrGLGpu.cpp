@@ -2001,6 +2001,7 @@ sk_sp<GrAttachment> GrGLGpu::makeMSAAAttachment(SkISize dimensions, const GrBack
                                                 int numSamples, GrProtected isProtected,
                                                 GrMemoryless isMemoryless) {
     SkASSERT(isMemoryless == GrMemoryless::kNo);
+    fStats.incMSAAAttachmentCreates();
     return GrGLAttachment::MakeMSAA(
             this, dimensions, numSamples, GrBackendFormats::AsGLFormat(format));
 }

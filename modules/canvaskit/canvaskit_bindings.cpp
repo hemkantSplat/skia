@@ -288,6 +288,10 @@ struct SimpleGpuStats {
     int programCacheMisses = 0;
     int softwarePathMasks = 0;
     int softwarePathMaskCacheHits = 0;
+    int dstCopies = 0;
+    double dstCopyPixels = 0;
+    int msaaResolves = 0;
+    int dynamicMSAALoads = 0;
 };
 
 SimpleGpuStats ReadGpuStats(GrDirectContext& dContext) {
@@ -310,6 +314,8 @@ SimpleGpuStats ReadGpuStats(GrDirectContext& dContext) {
     out.scratchTexturesReused = g.numScratchTexturesReused();
     out.scratchMSAAAttachmentsReused = g.numScratchMSAAAttachmentsReused();
     out.renderPasses = g.renderPasses();
+    out.msaaResolves = g.msaaResolves();
+    out.dynamicMSAALoads = g.dynamicMSAALoads();
     out.reorderedDAGsOverBudget = g.numReorderedDAGsOverBudget();
     if (GrThreadSafePipelineBuilder* builder = gpu->pipelineBuilder()) {
         using Result = GrThreadSafePipelineBuilder::Stats::ProgramCacheResult;
@@ -321,6 +327,8 @@ SimpleGpuStats ReadGpuStats(GrDirectContext& dContext) {
     const auto& r = *dContext.priv().stats();
     out.softwarePathMasks = r.numPathMasksGenerated();
     out.softwarePathMaskCacheHits = r.numPathMaskCacheHits();
+    out.dstCopies = r.numDstCopies();
+    out.dstCopyPixels = double(r.dstCopyPixels());
     return out;
 }
 
@@ -1329,7 +1337,11 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .field("programCacheHits", &SimpleGpuStats::programCacheHits)
         .field("programCacheMisses", &SimpleGpuStats::programCacheMisses)
         .field("softwarePathMasks", &SimpleGpuStats::softwarePathMasks)
-        .field("softwarePathMaskCacheHits", &SimpleGpuStats::softwarePathMaskCacheHits);
+        .field("softwarePathMaskCacheHits", &SimpleGpuStats::softwarePathMaskCacheHits)
+        .field("dstCopies", &SimpleGpuStats::dstCopies)
+        .field("dstCopyPixels", &SimpleGpuStats::dstCopyPixels)
+        .field("msaaResolves", &SimpleGpuStats::msaaResolves)
+        .field("dynamicMSAALoads", &SimpleGpuStats::dynamicMSAALoads);
     class_<GrDirectContext>("GrDirectContext")
         .smart_ptr<sk_sp<GrDirectContext>>("sk_sp<GrDirectContext>")
         .function("_getResourceCacheLimitBytes",

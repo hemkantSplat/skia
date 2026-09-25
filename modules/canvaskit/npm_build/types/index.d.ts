@@ -736,6 +736,13 @@ export interface GpuStats {
     programCacheMisses: number;
     softwarePathMasks: number;
     softwarePathMaskCacheHits: number;
+    /** Destination copies made because a draw's blend reads the destination. */
+    dstCopies: number;
+    dstCopyPixels: number;
+    /** MSAA resolves into single-sample targets, dynamic MSAA pass ends included. */
+    msaaResolves: number;
+    /** Dynamic MSAA passes that load the single-sample target into the MSAA attachment. */
+    dynamicMSAALoads: number;
 }
 
 export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
