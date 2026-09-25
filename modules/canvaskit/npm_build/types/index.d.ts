@@ -558,6 +558,8 @@ export interface CanvasKit {
     readonly gpuOptionsApi?: number;
     /** API level of the GPU diagnostics patches (cache usage and purges, gpuStats); absent in stock. */
     readonly diagnosticsApi?: number;
+    /** API level of the compositing patches (Blender.MakeAdd, saveLayer colorSpace, SRGB_LINEAR); absent in stock. */
+    readonly compositingApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
     readonly rt_effect?: boolean; // true if RuntimeEffect was compiled in
     readonly skottie?: boolean; // true if base Skottie code was compiled in
