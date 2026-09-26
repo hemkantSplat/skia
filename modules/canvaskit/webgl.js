@@ -83,7 +83,8 @@
         if (!this.setCurrentContext(ctx)) {
           return null;
         }
-        var grCtx = options ? this._MakeGrContextWithOptions(grContextOptions(options))
+        var grCtx = options ? this._MakeGrContextWithOptions(grContextOptions(options),
+                                                             options['programCache'] || null)
                             : this._MakeGrContext();
         if (!grCtx) {
           return null;
@@ -149,6 +150,16 @@
       CanvasKit.GrDirectContext.prototype.gpuStats = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._gpuStats();
+      };
+
+      CanvasKit.GrDirectContext.prototype.precompileShader = function(key, data) {
+          CanvasKit.setCurrentContext(this._context);
+          return this._precompileShader(key, data);
+      };
+
+      CanvasKit.GrDirectContext.prototype.pendingProgramLinks = function() {
+          CanvasKit.setCurrentContext(this._context);
+          return this._pendingProgramLinks();
       };
 
       CanvasKit.GrDirectContext.prototype.resetGpuStats = function() {

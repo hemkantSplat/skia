@@ -104,6 +104,7 @@
 #include "src/gpu/ganesh/GrRenderTargetProxy.h"
 #include "src/gpu/ganesh/surface/SkSurface_Ganesh.h"
 #include "src/gpu/ganesh/gl/GrGLDefines.h"
+#include "src/gpu/ganesh/gl/GrGLGpu.h"
 
 #include <GLES2/gl2.h>
 #endif // CK_ENABLE_WEBGL
@@ -373,12 +374,52 @@ struct SimpleGrContextOptions {
     bool allowFloatMSAA;
 };
 
-sk_sp<GrDirectContext> MakeGrContextWithOptions(SimpleGrContextOptions simple) {
+// Ganesh's persistent program cache, answered by a JS object {load(key), store(key, data, description)}.
+// Keys and blobs cross as copied Uint8Arrays; the callbacks must not throw.
+class JSProgramCache final : public GrContextOptions::PersistentCache {
+public:
+    explicit JSProgramCache(JSObject callbacks) : fCallbacks(std::move(callbacks)) {}
+
+    sk_sp<SkData> load(const SkData& key) override {
+        JSObject data = fCallbacks.call<JSObject>("load", Bytes(key));
+        if (data.isNull() || data.isUndefined()) {
+            return nullptr;
+        }
+        std::string bytes = data.as<std::string>();
+        return SkData::MakeWithCopy(bytes.data(), bytes.size());
+    }
+
+    void store(const SkData& key, const SkData& data, const SkString& description) override {
+        fCallbacks.call<void>("store", Bytes(key), Bytes(data), std::string(description.c_str()));
+    }
+
+private:
+    static JSObject Bytes(const SkData& data) {
+        return JSObject::global("Uint8Array").new_(
+                emscripten::typed_memory_view(data.size(), data.bytes()));
+    }
+
+    JSObject fCallbacks;
+};
+
+sk_sp<GrDirectContext> MakeGrContextWithOptions(SimpleGrContextOptions simple,
+                                                JSObject programCache) {
     GrContextOptions options;
     options.fInternalMultisampleCount = simple.internalMultisampleCount;
     options.fAllowPathMaskCaching = simple.allowPathMaskCaching;
     options.fAllowDynamicMSAAOnWebGL = simple.allowDynamicMSAA;
     options.fAllowFloatMSAAOnWebGL2 = simple.allowFloatMSAA;
+    if (!programCache.isNull() && !programCache.isUndefined()) {
+        // WebGL has no program binaries: SkSL blobs are what precompileShader accepts. The context
+        // owns the cache and frees it from its delete callback.
+        auto cache = new JSProgramCache(std::move(programCache));
+        options.fPersistentCache = cache;
+        options.fShaderCacheStrategy = GrContextOptions::ShaderCacheStrategy::kSkSL;
+        options.fContextDeleteContext = cache;
+        options.fContextDeleteProc = [](GrDirectContextDestroyedContext cache) {
+            delete static_cast<JSProgramCache*>(cache);
+        };
+    }
     return GrDirectContexts::MakeGL(GrGLInterfaces::MakeWebGL(), options);
 }
 
@@ -1378,6 +1419,20 @@ EMSCRIPTEN_BINDINGS(Skia) {
         }))
         .function("_gpuStats", &ReadGpuStats)
         .function("_resetGpuStats", &ResetGpuStats)
+        .function("_precompileShader",
+                optional_override([](GrDirectContext& self, std::string key, std::string data)->bool {
+            return self.precompileShader(*SkData::MakeWithCopy(key.data(), key.size()),
+                                         *SkData::MakeWithCopy(data.data(), data.size()));
+        }))
+#ifdef CK_ENABLE_WEBGL
+        .function("_pendingProgramLinks",
+                optional_override([](GrDirectContext& self)->int {
+            if (self.abandoned()) {
+                return 0;
+            }
+            return static_cast<GrGLGpu*>(self.priv().getGpu())->pendingProgramLinks();
+        }))
+#endif
         .function("_releaseResourcesAndAbandonContext",
                 &GrDirectContext::releaseResourcesAndAbandonContext)
         .function("_setResourceCacheLimitBytes",

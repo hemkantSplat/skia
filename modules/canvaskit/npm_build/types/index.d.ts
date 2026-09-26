@@ -711,6 +711,16 @@ export interface GrContextOptions {
     allowDynamicMSAA?: boolean;
     /** Multisampled half/float targets on WebGL 2 with EXT_color_buffer_float. Default false. */
     allowFloatMSAA?: boolean;
+    /** Ganesh's persistent program cache (SkSL blobs); precompileShader() takes what store() receives. */
+    programCache?: ProgramCache;
+}
+
+/** Answers Ganesh's persistent program cache. Called synchronously from GPU work; must not throw. */
+export interface ProgramCache {
+    /** The blob stored under `key`, or null. */
+    load(key: Uint8Array): Uint8Array | null;
+    /** A program Ganesh compiled: its key, SkSL blob and a readable description. */
+    store(key: Uint8Array, data: Uint8Array, description: string): void;
 }
 
 /** Resources held by the GPU resource cache and their total size. */
@@ -761,6 +771,10 @@ export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     performDeferredCleanup(msNotUsed: number): void;
     /** GPU counters since the last resetGpuStats(). */
     gpuStats(): GpuStats;
+    /** Compiles a stored (key, SkSL blob) pair ahead of use; false when the blob is refused. */
+    precompileShader(key: Uint8Array, data: Uint8Array): boolean;
+    /** Precompiled programs whose parallel link has not completed (KHR_parallel_shader_compile). */
+    pendingProgramLinks(): number;
     resetGpuStats(): void;
     releaseResourcesAndAbandonContext(): void;
     setResourceCacheLimitBytes(bytes: number): void;
