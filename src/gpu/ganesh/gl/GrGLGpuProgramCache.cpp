@@ -13,8 +13,10 @@
 #include "src/gpu/ganesh/GrCaps.h"
 #include "src/gpu/ganesh/GrDirectContextPriv.h"
 #include "src/gpu/ganesh/GrProgramDesc.h"
+#include "src/gpu/ganesh/gl/GrGLDefines.h"
 #include "src/gpu/ganesh/gl/GrGLGpu.h"
 #include "src/gpu/ganesh/gl/GrGLProgram.h"
+#include "src/gpu/ganesh/gl/GrGLUtil.h"
 #include "src/gpu/ganesh/gl/builders/GrGLProgramBuilder.h"
 
 #include <memory>
@@ -100,15 +102,16 @@ sk_sp<GrGLProgram> GrGLGpu::ProgramCache::findOrCreateProgramImpl(GrDirectContex
         SkASSERT(precompiledProgram->fProgramID != 0);
         (*entry)->fProgram = GrGLProgramBuilder::CreateProgram(dContext, desc, programInfo,
                                                                precompiledProgram);
-        if (!(*entry)->fProgram) {
-            // Should we purge the program ID from the cache at this point?
-            SkDEBUGFAIL("Couldn't create program from precompiled program");
-            fStats.incNumCompilationFailures();
-            return nullptr;
+        if ((*entry)->fProgram) {
+            fStats.incNumPartialCompilationSuccesses();
+            *stat = Stats::ProgramCacheResult::kPartial;
+        } else {
+            // The precompile's deferred link failed: drop it and compile from scratch.
+            fMap.remove(desc);
+            entry = nullptr;
         }
-        fStats.incNumPartialCompilationSuccesses();
-        *stat = Stats::ProgramCacheResult::kPartial;
-    } else if (!entry) {
+    }
+    if (!entry) {
         // We have a cache miss
         sk_sp<GrGLProgram> program = GrGLProgramBuilder::CreateProgram(dContext, desc, programInfo);
         if (!program) {
@@ -144,4 +147,18 @@ bool GrGLGpu::ProgramCache::precompileShader(GrDirectContext* dContext,
 
     fMap.insert(desc, std::make_unique<Entry>(precompiledProgram));
     return true;
+}
+
+int GrGLGpu::ProgramCache::pendingLinks(const GrGLInterface* gl) {
+    int pending = 0;
+    fMap.foreach([&](GrProgramDesc*, std::unique_ptr<Entry>* e) {
+        const GrGLPrecompiledProgram& precompiled = (*e)->fPrecompiledProgram;
+        if ((*e)->fProgram || !precompiled.fLinkPending) {
+            return;
+        }
+        GrGLint complete = GR_GL_INIT_ZERO;
+        GR_GL_CALL(gl, GetProgramiv(precompiled.fProgramID, GR_GL_COMPLETION_STATUS, &complete));
+        pending += complete ? 0 : 1;
+    });
+    return pending;
 }

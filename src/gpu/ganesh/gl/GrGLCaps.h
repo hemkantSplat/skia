@@ -500,6 +500,8 @@ public:
     bool programBinarySupport() const { return fProgramBinarySupport; }
     bool programParameterSupport() const { return fProgramParameterSupport; }
     bool programBinaryFormatIsValid(GrGLenum binaryFormat) const;
+    /** KHR_parallel_shader_compile: GL_COMPLETION_STATUS_KHR polls a link without blocking. */
+    bool parallelShaderCompileSupport() const { return fParallelShaderCompileSupport; }
 
     /** Are sampler objects available in this GL? */
     bool samplerObjectSupport() const { return fSamplerObjectSupport; }
@@ -636,6 +638,7 @@ private:
     bool fClearTextureSupport : 1;
     bool fProgramBinarySupport : 1;
     bool fProgramParameterSupport : 1;
+    bool fParallelShaderCompileSupport : 1;
     bool fSamplerObjectSupport : 1;
     bool fUseSamplerObjects : 1;
     bool fTextureSwizzleSupport : 1;

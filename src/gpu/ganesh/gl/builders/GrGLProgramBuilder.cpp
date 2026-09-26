@@ -261,6 +261,13 @@ sk_sp<GrGLProgram> GrGLProgramBuilder::finalize(const GrGLPrecompiledProgram* pr
     };
     std::string cached_sksl[kGrShaderTypeCount];
     if (precompiledProgram) {
+        // A deferred precompile reports its link here; the cache recompiles a failed one.
+        if (precompiledProgram->fLinkPending &&
+            !GrGLCheckLinkStatus(fGpu, programID, /*shaderWasCached=*/false,
+                                 /*errorHandler=*/nullptr, nullptr, nullptr)) {
+            GL_CALL(DeleteProgram(programID));
+            return nullptr;
+        }
         // This is very similar to when we get program binaries. We even set that flag, as it's
         // used to prevent other compile work later, and to force re-querying uniform locations.
         this->addInputVars(precompiledProgram->fInterface);
@@ -474,6 +481,9 @@ bool GrGLProgramBuilder::PrecompileProgram(GrDirectContext* dContext,
 
     const GrGLInterface* gl = glGpu->glInterface();
     auto errorHandler = dContext->priv().getShaderErrorHandler();
+    // With parallel compile the driver compiles and links off the main thread; no status query
+    // blocks here, and finalize() reads the link status when the program is first used.
+    const bool deferStatus = glGpu->glCaps().parallelShaderCompileSupport();
 
     SkSL::ProgramSettings settings;
     settings.fSharpenTextures = dContext->priv().options().fSharpenMipmappedTextures;
@@ -513,7 +523,8 @@ bool GrGLProgramBuilder::PrecompileProgram(GrDirectContext* dContext,
                                                            glsl,
                                                            /*shaderWasCached=*/false,
                                                            glGpu->pipelineBuilder()->stats(),
-                                                           errorHandler)) {
+                                                           errorHandler,
+                                                           deferStatus)) {
             shadersToDelete.push_back(shaderID);
             return true;
         } else {
@@ -551,16 +562,19 @@ bool GrGLProgramBuilder::PrecompileProgram(GrDirectContext* dContext,
     }
 
     GR_GL_CALL(glGpu->glInterface(), LinkProgram(programID));
-    GrGLint linked = GR_GL_INIT_ZERO;
-    GR_GL_CALL(glGpu->glInterface(), GetProgramiv(programID, GR_GL_LINK_STATUS, &linked));
-    if (!linked) {
-        cleanup_program(glGpu, programID, shadersToDelete);
-        return false;
+    if (!deferStatus) {
+        GrGLint linked = GR_GL_INIT_ZERO;
+        GR_GL_CALL(glGpu->glInterface(), GetProgramiv(programID, GR_GL_LINK_STATUS, &linked));
+        if (!linked) {
+            cleanup_program(glGpu, programID, shadersToDelete);
+            return false;
+        }
     }
 
     cleanup_shaders(glGpu, shadersToDelete);
 
     precompiledProgram->fProgramID = programID;
     precompiledProgram->fInterface = interface;
+    precompiledProgram->fLinkPending = deferStatus;
     return true;
 }

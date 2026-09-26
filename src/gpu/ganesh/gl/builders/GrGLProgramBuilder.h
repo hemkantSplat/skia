@@ -44,6 +44,8 @@ struct GrGLPrecompiledProgram {
 
     GrGLuint fProgramID;
     SkSL::Program::Interface fInterface;
+    // Linked in parallel (KHR_parallel_shader_compile); the link status is read at first use.
+    bool fLinkPending = false;
 };
 
 class GrGLProgramBuilder : public GrGLSLProgramBuilder {

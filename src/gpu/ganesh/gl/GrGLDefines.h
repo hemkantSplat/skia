@@ -563,6 +563,7 @@
 #define GR_GL_SHADER_TYPE                              0x8B4F
 #define GR_GL_DELETE_STATUS                            0x8B80
 #define GR_GL_LINK_STATUS                              0x8B82
+#define GR_GL_COMPLETION_STATUS                        0x91B1
 #define GR_GL_VALIDATE_STATUS                          0x8B83
 #define GR_GL_ATTACHED_SHADERS                         0x8B85
 #define GR_GL_ACTIVE_UNIFORMS                          0x8B86

@@ -48,13 +48,15 @@ inline bool SkSLToGLSL(const SkSL::ShaderCaps* caps,
 
 }  // namespace skgpu
 
+// deferStatus leaves compile errors to the program's link status (KHR_parallel_shader_compile).
 GrGLuint GrGLCompileAndAttachShader(const GrGLContext& glCtx,
                                     GrGLuint programId,
                                     GrGLenum type,
                                     const std::string& glsl,
                                     bool shaderWasCached,
                                     GrThreadSafePipelineBuilder::Stats*,
-                                    GrContextOptions::ShaderErrorHandler* errorHandler);
+                                    GrContextOptions::ShaderErrorHandler* errorHandler,
+                                    bool deferStatus = false);
 
 bool GrGLCheckLinkStatus(const GrGLGpu* gpu,
                          GrGLuint programID,

@@ -24,7 +24,8 @@ GrGLuint GrGLCompileAndAttachShader(const GrGLContext& glCtx,
                                     const std::string& glsl,
                                     bool shaderWasCached,
                                     GrThreadSafePipelineBuilder::Stats* stats,
-                                    GrContextOptions::ShaderErrorHandler* errorHandler) {
+                                    GrContextOptions::ShaderErrorHandler* errorHandler,
+                                    bool deferStatus) {
     TRACE_EVENT0_ALWAYS("skia.shaders", "driver_compile_shader");
     const GrGLInterface* gli = glCtx.glInterface();
 
@@ -41,7 +42,7 @@ GrGLuint GrGLCompileAndAttachShader(const GrGLContext& glCtx,
     stats->incShaderCompilations();
     GR_GL_CALL(gli, CompileShader(shaderId));
 
-    {
+    if (!deferStatus) {
         ATRACE_ANDROID_FRAMEWORK("checkCompiled");
         GrGLint compiled = GR_GL_INIT_ZERO;
         GR_GL_CALL(gli, GetShaderiv(shaderId, GR_GL_COMPILE_STATUS, &compiled));
