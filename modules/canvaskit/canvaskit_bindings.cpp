@@ -228,6 +228,14 @@ struct OptionalMatrix : SkMatrix {
     }
 };
 
+// An image filter's optional crop rect: a null pointer means no crop.
+SkImageFilters::CropRect ptrToCropRect(WASMPointerF32 rPtr) {
+    if (!rPtr) {
+        return {};
+    }
+    return *reinterpret_cast<const SkRect*>(rPtr);
+}
+
 SkColor4f ptrToSkColor4f(WASMPointerF32 cPtr) {
     float* fourFloats = reinterpret_cast<float*>(cPtr);
     SkColor4f color;
@@ -1799,6 +1807,10 @@ EMSCRIPTEN_BINDINGS(Skia) {
             float* twentyFloats = reinterpret_cast<float*>(fPtr);
             return SkColorFilters::Matrix(twentyFloats);
         }))
+        .class_function("_makeHSLAMatrix", optional_override([](WASMPointerF32 fPtr) {
+            float* twentyFloats = reinterpret_cast<float*>(fPtr);
+            return SkColorFilters::HSLAMatrix(twentyFloats);
+        }))
         .class_function("MakeSRGBToLinearGamma", &SkColorFilters::SRGBToLinearGamma)
         .class_function("MakeLuma", &SkLumaColorFilter::Make);
 
@@ -2031,6 +2043,15 @@ EMSCRIPTEN_BINDINGS(Skia) {
           SkIRect* output = reinterpret_cast<SkIRect*>(oPtr);
           output[0] = self.filterBounds(ctm.mapRect(*rect).roundOut(), ctm, SkImageFilter::kForward_MapDirection);
         }))
+        .class_function("_MakeArithmetic", optional_override([](SkScalar k1, SkScalar k2,
+                                                                SkScalar k3, SkScalar k4,
+                                                                bool enforcePMColor,
+                                                                sk_sp<SkImageFilter> background,
+                                                                sk_sp<SkImageFilter> foreground,
+                                                                WASMPointerF32 cropPtr)->sk_sp<SkImageFilter> {
+            return SkImageFilters::Arithmetic(k1, k2, k3, k4, enforcePMColor, background, foreground,
+                                              ptrToCropRect(cropPtr));
+        }))
         .class_function("MakeBlend", optional_override([](SkBlendMode mode, sk_sp<SkImageFilter> background,
                                                           sk_sp<SkImageFilter> foreground)->sk_sp<SkImageFilter> {
             return SkImageFilters::Blend(mode, background, foreground);
@@ -2044,9 +2065,10 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return SkImageFilters::ColorFilter(cf, input);
         }))
         .class_function("MakeCompose", &SkImageFilters::Compose)
-        .class_function("MakeDilate", optional_override([](SkScalar radiusX, SkScalar radiusY,
-                                                           sk_sp<SkImageFilter> input)->sk_sp<SkImageFilter> {
-            return SkImageFilters::Dilate(radiusX, radiusY, input);
+        .class_function("_MakeDilate", optional_override([](SkScalar radiusX, SkScalar radiusY,
+                                                            sk_sp<SkImageFilter> input,
+                                                            WASMPointerF32 cropPtr)->sk_sp<SkImageFilter> {
+            return SkImageFilters::Dilate(radiusX, radiusY, input, ptrToCropRect(cropPtr));
         }))
         .class_function("MakeDisplacementMap", optional_override([](SkColorChannel xChannelSelector,
                                                                     SkColorChannel yChannelSelector,
@@ -2055,8 +2077,10 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return SkImageFilters::DisplacementMap(xChannelSelector, yChannelSelector,
                                                    scale, displacement, color);
         }))
-        .class_function("MakeShader", optional_override([](sk_sp<SkShader> shader)->sk_sp<SkImageFilter> {
-            return SkImageFilters::Shader(shader);
+        .class_function("_MakeShader", optional_override([](sk_sp<SkShader> shader, bool dither,
+                                                            WASMPointerF32 cropPtr)->sk_sp<SkImageFilter> {
+            return SkImageFilters::Shader(shader, SkImageFilters::Dither(dither),
+                                          ptrToCropRect(cropPtr));
         }))
         .class_function("_MakeDropShadow", optional_override([](SkScalar dx, SkScalar dy,
                                                                SkScalar sigmaX, SkScalar sigmaY,
@@ -2070,9 +2094,10 @@ EMSCRIPTEN_BINDINGS(Skia) {
             SkColor4f c = ptrToSkColor4f(cPtr);
             return SkImageFilters::DropShadowOnly(dx, dy, sigmaX, sigmaY, c.toSkColor(), input);
         }))
-        .class_function("MakeErode", optional_override([](SkScalar radiusX, SkScalar radiusY,
-                                                           sk_sp<SkImageFilter> input)->sk_sp<SkImageFilter> {
-            return SkImageFilters::Erode(radiusX, radiusY, input);
+        .class_function("_MakeErode", optional_override([](SkScalar radiusX, SkScalar radiusY,
+                                                           sk_sp<SkImageFilter> input,
+                                                           WASMPointerF32 cropPtr)->sk_sp<SkImageFilter> {
+            return SkImageFilters::Erode(radiusX, radiusY, input, ptrToCropRect(cropPtr));
         }))
         .class_function("_MakeImageCubic", optional_override([](sk_sp<SkImage> image,
                                                                      float B, float C,

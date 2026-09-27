@@ -3760,6 +3760,13 @@ export interface ColorFilterFactory {
     MakeMatrix(cMatrix: InputColorMatrix): ColorFilter;
 
     /**
+     * Creates a color filter that applies the color matrix to HSLA values: RGB is converted to
+     * HSL, the matrix is applied, and the result is converted back.
+     * @param cMatrix
+     */
+    MakeHSLAMatrix(cMatrix: InputColorMatrix): ColorFilter;
+
+    /**
      * Makes a color filter that converts between sRGB colors and linear colors.
      */
     MakeSRGBToLinearGamma(): ColorFilter;
@@ -3818,6 +3825,19 @@ export interface FontMgrFactory {
  */
 export interface ImageFilterFactory {
     /**
+     * Create a filter that computes k1*fg*bg + k2*fg + k3*bg + k4 per channel (SVG feComposite
+     * arithmetic), on premultiplied colors.
+     * @param k1, k2, k3, k4 - the coefficients.
+     * @param enforcePMColor - clamp color channels to alpha, so the output stays premultiplied.
+     * @param background - the bg pixels; if null, use the dynamic source image.
+     * @param foreground - the fg pixels; if null, use the dynamic source image.
+     * @param cropRect - optional output crop, in local space.
+     */
+    MakeArithmetic(k1: number, k2: number, k3: number, k4: number, enforcePMColor: boolean,
+                   background: ImageFilter | null, foreground: ImageFilter | null,
+                   cropRect?: InputRect): ImageFilter;
+
+    /**
      * Create a filter that takes a BlendMode and uses it to composite the two filters together.
      *
      *  At least one of background and foreground should be non-null in nearly all circumstances.
@@ -3864,8 +3884,10 @@ export interface ImageFilterFactory {
      *  @param radiusX  The distance to dilate along the x axis to either side of each pixel.
      *  @param radiusY  The distance to dilate along the y axis to either side of each pixel.
      *  @param input     if null, it will use the dynamic source image (e.g. a saved layer).
+     *  @param cropRect  optional output crop, in local space.
      */
-    MakeDilate(radiusX: number, radiusY: number, input: ImageFilter | null): ImageFilter;
+    MakeDilate(radiusX: number, radiusY: number, input: ImageFilter | null,
+               cropRect?: InputRect): ImageFilter;
 
     /**
      *  Create a filter that moves each pixel in its color input based on an (x,y) vector encoded
@@ -3916,8 +3938,10 @@ export interface ImageFilterFactory {
      *  @param radiusX  The distance to erode along the x axis to either side of each pixel.
      *  @param radiusY  The distance to erode along the y axis to either side of each pixel.
      *  @param input     if null, it will use the dynamic source image (e.g. a saved layer).
+     *  @param cropRect  optional output crop, in local space.
      */
-    MakeErode(radiusX: number, radiusY: number, input: ImageFilter | null): ImageFilter;
+    MakeErode(radiusX: number, radiusY: number, input: ImageFilter | null,
+              cropRect?: InputRect): ImageFilter;
 
     /**
      *  Create a filter using the given image as a source. Returns null if 'image' is null.
@@ -3962,8 +3986,10 @@ export interface ImageFilterFactory {
      * Transforms a shader into an image filter
      *
      * @param shader - The Shader to be transformed
+     * @param dither - dither the shader's output (default false).
+     * @param cropRect - optional output crop, in local space; without one the output is unbounded.
      */
-   MakeShader(shader: Shader): ImageFilter;
+   MakeShader(shader: Shader, dither?: boolean, cropRect?: InputRect): ImageFilter;
 }
 
 /**

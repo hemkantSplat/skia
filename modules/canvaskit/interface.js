@@ -859,16 +859,26 @@ CanvasKit.onRuntimeInitialized = function() {
     return CanvasKit.ColorFilter._MakeBlend(cPtr, mode, colorSpace);
   };
 
-  // colorMatrix is an ColorMatrix (e.g. Float32Array of length 20)
-  CanvasKit.ColorFilter.MakeMatrix = function(colorMatrix) {
+  // Makes a filter from a ColorMatrix (e.g. Float32Array of length 20) with one of the matrix bindings.
+  function makeMatrixColorFilter(make, colorMatrix) {
     if (!colorMatrix || colorMatrix.length !== 20) {
       throw 'invalid color matrix';
     }
     var fptr = copy1dArray(colorMatrix, 'HEAPF32');
     // We know skia memcopies the floats, so we can free our memory after the call returns.
-    var m = CanvasKit.ColorFilter._makeMatrix(fptr);
+    var m = make(fptr);
     freeArraysThatAreNotMallocedByUsers(fptr, colorMatrix);
     return m;
+  }
+
+  // colorMatrix is an ColorMatrix (e.g. Float32Array of length 20)
+  CanvasKit.ColorFilter.MakeMatrix = function(colorMatrix) {
+    return makeMatrixColorFilter(CanvasKit.ColorFilter._makeMatrix, colorMatrix);
+  };
+
+  // The same matrix applied to HSLA values, with RGB converted to HSL and back around it.
+  CanvasKit.ColorFilter.MakeHSLAMatrix = function(colorMatrix) {
+    return makeMatrixColorFilter(CanvasKit.ColorFilter._makeHSLAMatrix, colorMatrix);
   };
 
   CanvasKit.ContourMeasure.prototype.getPosTan = function(distance, optionalOutput) {
@@ -891,6 +901,32 @@ CanvasKit.onRuntimeInitialized = function() {
       return optionalOutputArray;
     }
     return ta.slice();
+  };
+
+  // An image filter's optional crop rect, in a scratch slot no other filter argument uses.
+  function copyCropRectToWasm(cropRect) {
+    return cropRect ? copyRectToWasm(cropRect, _scratchFourFloatsBPtr) : nullptr;
+  }
+
+  CanvasKit.ImageFilter.MakeArithmetic = function(k1, k2, k3, k4, enforcePMColor,
+                                                   background, foreground, cropRect) {
+    return CanvasKit.ImageFilter._MakeArithmetic(k1, k2, k3, k4, !!enforcePMColor,
+                                                 background || null, foreground || null,
+                                                 copyCropRectToWasm(cropRect));
+  };
+
+  CanvasKit.ImageFilter.MakeDilate = function(radiusX, radiusY, input, cropRect) {
+    return CanvasKit.ImageFilter._MakeDilate(radiusX, radiusY, input || null,
+                                             copyCropRectToWasm(cropRect));
+  };
+
+  CanvasKit.ImageFilter.MakeErode = function(radiusX, radiusY, input, cropRect) {
+    return CanvasKit.ImageFilter._MakeErode(radiusX, radiusY, input || null,
+                                            copyCropRectToWasm(cropRect));
+  };
+
+  CanvasKit.ImageFilter.MakeShader = function(shader, dither, cropRect) {
+    return CanvasKit.ImageFilter._MakeShader(shader, !!dither, copyCropRectToWasm(cropRect));
   };
 
   CanvasKit.ImageFilter.MakeDropShadow = function(dx, dy, sx, sy, color, input) {
