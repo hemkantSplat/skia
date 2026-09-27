@@ -282,6 +282,7 @@ var CanvasKit = {
     // public API (from JS bindings)
     Make: function() {},
     MakeForBlender: function() {},
+    MakeForColorFilter: function() {},
     getUniform: function() {},
     getUniformCount: function() {},
     getUniformFloatCount: function() {},
@@ -289,13 +290,16 @@ var CanvasKit = {
     prototype: {
       makeShader: function() {},
       makeShaderWithChildren: function() {},
+      makeColorFilter: function() {},
       makeBlender: function() {},
     },
     // private API (from C++ bindings)
     _Make: function() {},
     _MakeForBlender: function() {},
+    _MakeForColorFilter: function() {},
     _makeShader: function() {},
     _makeShaderWithChildren: function() {},
+    _makeColorFilter: function() {},
     _makeBlender: function() {},
   },
 
@@ -1237,6 +1241,7 @@ CanvasKit.Surface.prototype.drawOnce = function() {};
 
 CanvasKit.RuntimeEffect.prototype.makeShader = function() {};
 CanvasKit.RuntimeEffect.prototype.makeShaderWithChildren = function() {};
+CanvasKit.RuntimeEffect.prototype.makeColorFilter = function() {};
 
 // Define StrokeOpts object
 var StrokeOpts = {};

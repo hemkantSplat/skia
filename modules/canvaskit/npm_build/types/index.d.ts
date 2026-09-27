@@ -3046,6 +3046,15 @@ export interface RuntimeEffect extends EmbindObject<"RuntimeEffect"> {
                            children?: Shader[], localMatrix?: InputMatrix): Shader;
 
     /**
+     * Returns a color filter executed using the given uniform data. Only for effects made with
+     * RuntimeEffect.MakeForColorFilter.
+     * @param uniforms
+     * @param children - the effect's `uniform shader` children, in declaration order.
+     */
+    makeColorFilter(uniforms: Float32Array | number[] | MallocObj,
+                    children?: Shader[]): ColorFilter;
+
+    /**
      * Returns the nth uniform from the effect.
      * @param index
      */
@@ -4130,6 +4139,14 @@ export interface RuntimeEffectFactory {
      *                   be printed to console.log().
      */
     MakeForBlender(sksl: string, callback?: (err: string) => void): RuntimeEffect | null;
+
+    /**
+     * Compiles a RuntimeEffect from the given color filter code, `half4 main(half4 color)`.
+     * @param sksl - Source code for a color filter written in SkSL
+     * @param callback - will be called with any compilation error. If not provided, errors will
+     *                   be printed to console.log().
+     */
+    MakeForColorFilter(sksl: string, callback?: (err: string) => void): RuntimeEffect | null;
 
     /**
      * Adds debug tracing to an existing RuntimeEffect.
