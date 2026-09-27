@@ -349,6 +349,7 @@ var CanvasKit = {
       drawColorComponents: function() {},
       drawColorInt: function() {},
       drawDRRect: function() {},
+      drawEdgeAAQuad: function() {},
       drawGlyphs: function() {},
       drawImage: function() {},
       drawImageCubic: function() {},
@@ -393,6 +394,7 @@ var CanvasKit = {
     _drawColor: function() {},
     _drawColorInt: function() {},
     _drawDRRect:  function() {},
+    _drawEdgeAAQuad: function() {},
     _drawGlyphs: function() {},
     _drawImage: function() {},
     _drawImageCubic: function() {},
@@ -943,6 +945,13 @@ var CanvasKit = {
 
   SaveLayerInitWithPrevious: {},
   SaveLayerF16ColorType: {},
+
+  QuadAALeft: {},
+  QuadAATop: {},
+  QuadAARight: {},
+  QuadAABottom: {},
+  QuadAANone: {},
+  QuadAAAll: {},
 
   Affinity: {
     Upstream: {},

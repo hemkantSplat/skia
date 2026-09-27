@@ -538,6 +538,14 @@ export interface CanvasKit {
     readonly SaveLayerInitWithPrevious: SaveLayerFlag;
     readonly SaveLayerF16ColorType: SaveLayerFlag;
 
+    /** Edge anti-aliasing flags for Canvas.drawEdgeAAQuad (SkCanvas::QuadAAFlags); OR them. */
+    readonly QuadAALeft: QuadAAFlags;
+    readonly QuadAATop: QuadAAFlags;
+    readonly QuadAARight: QuadAAFlags;
+    readonly QuadAABottom: QuadAAFlags;
+    readonly QuadAANone: QuadAAFlags;
+    readonly QuadAAAll: QuadAAFlags;
+
     /**
      * Use this shadow flag to indicate the occluding object is not opaque. Knowing that the
      * occluder is opaque allows us to cull shadow geometry behind it and improve performance.
@@ -1600,6 +1608,21 @@ export interface Canvas extends EmbindObject<"Canvas"> {
      * @param paint
      */
     drawDRRect(outer: InputRRect, inner: InputRRect, paint: Paint): void;
+
+    /**
+     * Fills a quad with a solid color, anti-aliasing only the edges named in aaFlags, so abutting
+     * quads (tiles, 3D faces) meet without seams. The quad is rect, or clip when given: 4 points
+     * (8 floats) inside rect, ordered top-left, top-right, bottom-right, bottom-left (the edges
+     * top, right, bottom, left). Draws under the current matrix, 4x4 included; takes no Paint.
+     * See SkCanvas::experimental_DrawEdgeAAQuad.
+     * @param rect
+     * @param clip - null, or 4 points inside rect (TL, TR, BR, BL).
+     * @param aaFlags - CanvasKit.QuadAA* flags ORed together.
+     * @param color
+     * @param mode - defaults to SrcOver.
+     */
+    drawEdgeAAQuad(rect: InputRect, clip: InputFlattenedPointArray | null, aaFlags: QuadAAFlags,
+                   color: InputColor, mode?: BlendMode): void;
 
     /**
      * Draws a run of glyphs, at corresponding positions, in a given font.
@@ -4571,6 +4594,7 @@ export type WebGLContextHandle = number;
 export type AngleInDegrees = number;
 export type AngleInRadians = number;
 export type SaveLayerFlag = number;
+export type QuadAAFlags = number;
 
 export type TypedArrayConstructor = Float32ArrayConstructor | Int32ArrayConstructor |
     Int16ArrayConstructor | Int8ArrayConstructor | Uint32ArrayConstructor |

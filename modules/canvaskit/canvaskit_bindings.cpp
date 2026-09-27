@@ -1628,6 +1628,15 @@ EMSCRIPTEN_BINDINGS(Skia) {
                                                      WASMPointerF32 innerPtr, const SkPaint& paint) {
             self.drawDRRect(ptrToSkRRect(outerPtr), ptrToSkRRect(innerPtr), paint);
         }))
+        .function("_drawEdgeAAQuad", optional_override([](SkCanvas& self, WASMPointerF32 rPtr,
+                                                          WASMPointerF32 clipPtr, int aaFlags,
+                                                          WASMPointerF32 cPtr, SkBlendMode mode) {
+            // A null clip draws the rect itself; else 4 points inside it: TL, TR, BR, BL.
+            self.experimental_DrawEdgeAAQuad(*reinterpret_cast<const SkRect*>(rPtr),
+                                             reinterpret_cast<const SkPoint*>(clipPtr),
+                                             static_cast<SkCanvas::QuadAAFlags>(aaFlags),
+                                             ptrToSkColor4f(cPtr), mode);
+        }))
         .function("_drawGlyphs", optional_override([](SkCanvas& self,
                                                       int count,
                                                       WASMPointerU16 glyphs,
@@ -3065,6 +3074,13 @@ EMSCRIPTEN_BINDINGS(Skia) {
 
     constant("SaveLayerInitWithPrevious", (int)SkCanvas::SaveLayerFlagsSet::kInitWithPrevious_SaveLayerFlag);
     constant("SaveLayerF16ColorType",     (int)SkCanvas::SaveLayerFlagsSet::kF16ColorType);
+
+    constant("QuadAALeft",   (int)SkCanvas::kLeft_QuadAAFlag);
+    constant("QuadAATop",    (int)SkCanvas::kTop_QuadAAFlag);
+    constant("QuadAARight",  (int)SkCanvas::kRight_QuadAAFlag);
+    constant("QuadAABottom", (int)SkCanvas::kBottom_QuadAAFlag);
+    constant("QuadAANone",   (int)SkCanvas::kNone_QuadAAFlags);
+    constant("QuadAAAll",    (int)SkCanvas::kAll_QuadAAFlags);
 
     constant("ShadowTransparentOccluder", (int)SkShadowFlags::kTransparentOccluder_ShadowFlag);
     constant("ShadowGeometricOnly", (int)SkShadowFlags::kGeometricOnly_ShadowFlag);

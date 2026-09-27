@@ -602,6 +602,22 @@ CanvasKit.onRuntimeInitialized = function() {
     this._drawDRRect(oPtr, iPtr, paint);
   };
 
+  // clip is null (the rect itself) or 4 points (8 floats) inside rect; mode defaults to SrcOver.
+  CanvasKit.Canvas.prototype.drawEdgeAAQuad = function(rect, clip, aaFlags, color, mode) {
+    CanvasKit.setCurrentContext(this._context);
+    if (clip && clip.length !== 8) {
+      throw 'drawEdgeAAQuad clip must be 4 points (8 floats), got ' + clip.length;
+    }
+    var rPtr = copyRectToWasm(rect);
+    var cPtr = copyColorToWasm(color);
+    var clipPtr = copy1dArray(clip, 'HEAPF32');
+    this._drawEdgeAAQuad(rPtr, clipPtr, aaFlags, cPtr,
+                         mode === undefined ? CanvasKit.BlendMode.SrcOver : mode);
+    if (clipPtr) {
+      freeArraysThatAreNotMallocedByUsers(clipPtr, clip);
+    }
+  };
+
   CanvasKit.Canvas.prototype.drawImage = function(img, x, y, paint) {
     CanvasKit.setCurrentContext(this._context);
     this._drawImage(img, x, y, paint || null);
