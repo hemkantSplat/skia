@@ -121,6 +121,10 @@
       // precompileShader, pendingProgramLinks); stock builds leave it undefined.
       CanvasKit.programCacheApi = 1;
 
+      // API level of tools/canvaskit-build's bindings (runtime color filters, arithmetic/cropped
+      // image filters, HSLA matrix, flushAndSubmit onFinished, drawEdgeAAQuad); stock leaves it undefined.
+      CanvasKit.bindingsApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();

@@ -570,6 +570,8 @@ export interface CanvasKit {
     readonly compositingApi?: number;
     /** API level of the program cache patches (programCache option, precompileShader); absent in stock. */
     readonly programCacheApi?: number;
+    /** API level of the bindings patches (color filter effects, filters, flushAndSubmit, drawEdgeAAQuad); absent in stock. */
+    readonly bindingsApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
     readonly rt_effect?: boolean; // true if RuntimeEffect was compiled in
     readonly skottie?: boolean; // true if base Skottie code was compiled in
