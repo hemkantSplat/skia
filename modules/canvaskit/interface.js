@@ -1075,6 +1075,26 @@ CanvasKit.onRuntimeInitialized = function() {
     return s;
   };
 
+  // FlushOptions.onFinished as the C++ side calls it, or null. The result is delivered in a
+  // microtask, so it never runs inside a CanvasKit call.
+  CanvasKit._flushFinished = function(options) {
+    var onFinished = options && options['onFinished'];
+    if (!onFinished) {
+      return null;
+    }
+    return function(gpuTimeNs) {
+      queueMicrotask(function() {
+        onFinished({'gpuTimeNs': gpuTimeNs});
+      });
+    };
+  };
+
+  // Flushes and submits this surface's work; options.onFinished runs once the GPU has done it.
+  CanvasKit.Surface.prototype.flushAndSubmit = function(options) {
+    CanvasKit.setCurrentContext(this._context);
+    this._flushAndSubmit(CanvasKit._flushFinished(options), !!(options && options['gpuTime']));
+  };
+
   CanvasKit.Surface.prototype._requestAnimationFrameInternal = function(callback, dirtyRect) {
     if (!this._cached_canvas) {
       this._cached_canvas = this.getCanvas();

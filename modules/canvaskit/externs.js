@@ -96,6 +96,7 @@ var CanvasKit = {
   _MakeRenderTargetWH: function() {},
   _MakeRenderTargetWithOptions: function() {},
   _surfaceOptions: function() {},
+  _flushFinished: function() {},
   _computeTonalColors: function() {},
   _decodeAnimatedImage: function() {},
   _decodeImage: function() {},
@@ -135,6 +136,9 @@ var CanvasKit = {
       precompileShader: function () {},
       pendingProgramLinks: function () {},
       resetGpuStats: function () {},
+      flushAndSubmit: function () {},
+      submit: function () {},
+      checkAsyncWorkCompletion: function () {},
       releaseResourcesAndAbandonContext: function () {},
       setResourceCacheLimitBytes: function () {},
     },
@@ -150,6 +154,9 @@ var CanvasKit = {
     _precompileShader: function() {},
     _pendingProgramLinks: function() {},
     _resetGpuStats: function() {},
+    _flushAndSubmit: function() {},
+    _submit: function() {},
+    _checkAsyncWorkCompletion: function() {},
     _releaseResourcesAndAbandonContext: function() {},
     _setResourceCacheLimitBytes: function() {},
   },
@@ -832,6 +839,7 @@ var CanvasKit = {
 
     // private API
     _flush: function() {},
+    _flushAndSubmit: function() {},
     _getCanvas: function() {},
     _makeImageFromTexture: function() {},
     _makeImageSnapshot: function() {},
@@ -1244,6 +1252,7 @@ CanvasKit.Paragraph.prototype.getGlyphInfoAt = function() {};
 
 CanvasKit.Surface.prototype.dispose = function() {};
 CanvasKit.Surface.prototype.flush = function() {};
+CanvasKit.Surface.prototype.flushAndSubmit = function() {};
 CanvasKit.Surface.prototype.requestAnimationFrame = function() {};
 CanvasKit.Surface.prototype.drawOnce = function() {};
 

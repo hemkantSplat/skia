@@ -354,6 +354,48 @@ void ResetGpuStats(GrDirectContext& dContext) {
     }
     dContext.priv().stats()->reset();
 }
+
+// One flush's JS onFinished(gpuTimeNs | null). Skia runs exactly one of the two procs (its early
+// exits only know fFinishedProc), and that proc frees the callback.
+class FlushFinishedCallback {
+public:
+    static GrFlushInfo FlushInfo(GrDirectContext& dContext, JSObject onFinished, bool gpuTime) {
+        GrFlushInfo info;
+        if (onFinished.isNull()) {
+            return info;
+        }
+        bool timed = gpuTime && static_cast<bool>(dContext.supportedGpuStats() &
+                                                  skgpu::GpuStatsFlags::kElapsedTime);
+        info.fFinishedContext = new FlushFinishedCallback(std::move(onFinished), timed);
+        info.fFinishedProc = &Finished;
+        info.fFinishedWithStatsProc = &FinishedWithStats;
+        if (timed) {
+            info.fGpuStatsFlags = skgpu::GpuStatsFlags::kElapsedTime;
+        }
+        return info;
+    }
+
+private:
+    FlushFinishedCallback(JSObject onFinished, bool timed)
+            : fOnFinished(std::move(onFinished)), fTimed(timed) {}
+
+    static void Finished(GrGpuFinishedContext context) {
+        Deliver(context, JSObject::null());
+    }
+
+    static void FinishedWithStats(GrGpuFinishedContext context, const skgpu::GpuStats& stats) {
+        bool timed = static_cast<FlushFinishedCallback*>(context)->fTimed;
+        Deliver(context, timed ? JSObject(double(stats.elapsedTime)) : JSObject::null());
+    }
+
+    static void Deliver(GrGpuFinishedContext context, JSObject gpuTimeNs) {
+        std::unique_ptr<FlushFinishedCallback> self(static_cast<FlushFinishedCallback*>(context));
+        self->fOnFinished(gpuTimeNs);
+    }
+
+    JSObject fOnFinished;
+    bool fTimed;
+};
 #endif // ENABLE_GPU
 
 #ifdef CK_ENABLE_WEBGL
@@ -1455,6 +1497,15 @@ EMSCRIPTEN_BINDINGS(Skia) {
         }))
         .function("_gpuStats", &ReadGpuStats)
         .function("_resetGpuStats", &ResetGpuStats)
+        .function("_flushAndSubmit",
+                optional_override([](GrDirectContext& self, JSObject onFinished, bool gpuTime)->void {
+            self.flush(FlushFinishedCallback::FlushInfo(self, std::move(onFinished), gpuTime));
+            self.submit(GrSyncCpu::kNo);
+        }))
+        .function("_submit", optional_override([](GrDirectContext& self, bool syncCpu)->bool {
+            return self.submit(syncCpu ? GrSyncCpu::kYes : GrSyncCpu::kNo);
+        }))
+        .function("_checkAsyncWorkCompletion", &GrDirectContext::checkAsyncWorkCompletion)
         .function("_precompileShader",
                 optional_override([](GrDirectContext& self, std::string key, std::string data)->bool {
             return self.precompileShader(*SkData::MakeWithCopy(key.data(), key.size()),
@@ -2657,6 +2708,22 @@ EMSCRIPTEN_BINDINGS(Skia) {
 #ifdef CK_ENABLE_WEBGL
             skgpu::ganesh::FlushAndSubmit(&self);
 #endif
+        }))
+        .function("_flushAndSubmit", optional_override([](SkSurface& self, JSObject onFinished,
+                                                          bool gpuTime) {
+#ifdef ENABLE_GPU
+            if (auto dContext = GrAsDirectContext(self.recordingContext())) {
+                dContext->flush(&self, SkSurfaces::BackendSurfaceAccess::kNoAccess,
+                                FlushFinishedCallback::FlushInfo(*dContext, std::move(onFinished),
+                                                                 gpuTime));
+                dContext->submit(GrSyncCpu::kNo);
+                return;
+            }
+#endif
+            // A raster surface has no deferred work: it is finished when the call returns.
+            if (!onFinished.isNull()) {
+                onFinished(JSObject::null());
+            }
         }))
         .function("_getCanvas", &SkSurface::getCanvas, allow_raw_pointers())
         .function("imageInfo", optional_override([](SkSurface& self)->SimpleImageInfo {

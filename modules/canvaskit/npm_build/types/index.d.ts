@@ -778,8 +778,37 @@ export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     /** Precompiled programs whose parallel link has not completed (KHR_parallel_shader_compile). */
     pendingProgramLinks(): number;
     resetGpuStats(): void;
+    /**
+     * Flushes and submits all pending work without waiting for it. options.onFinished runs once
+     * the GPU has finished it (see FlushOptions).
+     */
+    flushAndSubmit(options?: FlushOptions): void;
+    /** Submits flushed work; syncCpu waits for the GPU (glFinish). False when nothing could submit. */
+    submit(syncCpu?: boolean): boolean;
+    /** Runs the finished callbacks whose GPU work has completed. Never blocks. */
+    checkAsyncWorkCompletion(): void;
     releaseResourcesAndAbandonContext(): void;
     setResourceCacheLimitBytes(bytes: number): void;
+}
+
+/**
+ * Options for flushAndSubmit. onFinished is always delivered in a microtask. On WebGL 2 it is due
+ * at a later completion check (the next flush or submit, checkAsyncWorkCompletion,
+ * performDeferredCleanup, or context deletion), never in the task that flushed. A raster surface,
+ * an abandoned context, or WebGL 1 (no fences: submit waits with glFinish) makes it due at once.
+ */
+export interface FlushOptions {
+    onFinished?: (result: FlushFinished) => void;
+    /** Ask for the GPU time of this flush (a timer query), where the context supports it. */
+    gpuTime?: boolean;
+}
+
+export interface FlushFinished {
+    /**
+     * GPU nanoseconds of this flush's commands; null when not asked for or unsupported (no
+     * EXT_disjoint_timer_query_webgl2), 0 when the query was disjoint or unavailable.
+     */
+    gpuTimeNs: number | null;
 }
 
 /**
@@ -3105,6 +3134,12 @@ export interface Surface extends EmbindObject<"Surface"> {
      * Make sure any queued draws are sent to the screen or the GPU.
      */
     flush(): void;
+
+    /**
+     * Like flush(), and options.onFinished runs once the GPU has finished this surface's work
+     * (see FlushOptions). It does not present a software canvas; use flush() for that.
+     */
+    flushAndSubmit(options?: FlushOptions): void;
 
     /**
      * Return a canvas that is backed by this surface. Any draws to the canvas will (eventually)
