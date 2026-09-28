@@ -1562,7 +1562,16 @@ EMSCRIPTEN_BINDINGS(Skia) {
     class_<SkBlender>("Blender")
         .smart_ptr<sk_sp<SkBlender>>("sk_sp<Blender>")
         .class_function("Mode", &SkBlender::Mode)
-        .class_function("MakeAdd", &SkBlenders::Add);
+        .class_function("MakeAdd", &SkBlenders::Add)
+        // JS passes SkBlenders::LightSpace by value: 0 encoded, 1 linear.
+        .class_function("_MakeLightResolve", optional_override([](int into, int light,
+                                                                 bool emissive)->sk_sp<SkBlender> {
+            return SkBlenders::LightResolve(static_cast<SkBlenders::LightSpace>(into),
+                                            static_cast<SkBlenders::LightSpace>(light), emissive);
+        }))
+        .class_function("_MakeLayerResolve", optional_override([](int into)->sk_sp<SkBlender> {
+            return SkBlenders::LayerResolve(static_cast<SkBlenders::LightSpace>(into));
+        }));
 
     class_<SkCanvas>("Canvas")
         .constructor<>()

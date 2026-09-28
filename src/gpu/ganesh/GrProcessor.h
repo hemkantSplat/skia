@@ -73,6 +73,7 @@ public:
         kGrYUVtoRGBEffect_ClassID,
         kHighPrecisionFragmentProcessor_ClassID,
         kLatticeGP_ClassID,
+        kLightAddXP_ClassID,
         kPDLCDXferProcessor_ClassID,
         kPorterDuffXferProcessor_ClassID,
         kPremulFragmentProcessor_ClassID,

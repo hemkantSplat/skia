@@ -1208,6 +1208,26 @@ CanvasKit.onRuntimeInitialized = function() {
     return shader;
   };
 
+  // SkBlenders::LightSpace by name.
+  function lightSpace(name) {
+    if (name === 'encoded') return 0;
+    if (name === 'linear') return 1;
+    throw 'Blender.MakeLightResolve: unknown space ' + name;
+  }
+
+  // A light scope or isolated layer resolve, from the painter's ScopeComposite (quoted keys survive Closure).
+  CanvasKit.Blender.MakeLightResolve = function(composite) {
+    if (composite['kind'] === 'layer') {
+      return CanvasKit.Blender._MakeLayerResolve(lightSpace(composite['into']));
+    }
+    if (composite['kind'] === 'light') {
+      return CanvasKit.Blender._MakeLightResolve(lightSpace(composite['into']),
+                                                 lightSpace(composite['light']),
+                                                 !!composite['emissive']);
+    }
+    throw 'Blender.MakeLightResolve: unknown kind ' + composite['kind'];
+  };
+
   // TODO(kjlubick) remove deprecated names.
   CanvasKit.Shader.Blend = CanvasKit.Shader.MakeBlend;
   CanvasKit.Shader.Color = CanvasKit.Shader.MakeColor;

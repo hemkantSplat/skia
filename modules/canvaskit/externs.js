@@ -122,6 +122,11 @@ var CanvasKit = {
   Blender: {
     Mode: function() {},
     MakeAdd: function() {},
+    MakeLightResolve: function() {},
+
+    // private API (from C++ bindings)
+    _MakeLightResolve: function() {},
+    _MakeLayerResolve: function() {},
   },
 
   GrDirectContext: {

@@ -3736,7 +3736,22 @@ export interface BlenderFactory {
      * values above 1 (BlendMode.Plus always saturates). Needs no destination read on the GPU.
      */
     MakeAdd(): Blender;
+
+    /**
+     * Resolve summed light, or an isolated layer, into its destination. Spaces are 'encoded' (sRGB
+     * surface colour, light above coverage kept linear) or 'linear'. Emissive light keeps the
+     * destination's alpha; other light adds coverage, clamped. A layer composites covered pixels
+     * source-over and adds uncovered light as linear light. The emissive same-space form needs no
+     * destination read on the GPU.
+     */
+    MakeLightResolve(composite: LightResolveComposite): Blender;
 }
+
+export type LightSpace = 'encoded' | 'linear';
+
+export type LightResolveComposite =
+    | { kind: 'light'; into: LightSpace; light: LightSpace; emissive: boolean }
+    | { kind: 'layer'; into: LightSpace };
 
 export interface ParagraphBuilderFactory {
     /**

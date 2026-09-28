@@ -27,6 +27,26 @@ public:
      */
     static sk_sp<SkBlender> Add();
 
+    /**
+     *  Where light-resolve colour lives: sRGB-encoded surface colour (light above coverage kept
+     *  linear), or linear light.
+     */
+    enum class LightSpace { kEncoded, kLinear };
+
+    /**
+     *  Summed light stored in `light` space added to a destination in `into` space. Emissive light
+     *  adds no coverage: the destination's alpha survives. Otherwise the sum adds coverage like
+     *  kPlus, with alpha clamped to 1 and colour to alpha. Ganesh draws the emissive same-space
+     *  form with fixed-function blending, without a destination read.
+     */
+    static sk_sp<SkBlender> LightResolve(LightSpace into, LightSpace light, bool emissive);
+
+    /**
+     *  An isolated layer resolved into `into`: covered pixels composite source-over, uncovered
+     *  light adds as linear light. Into a linear destination this is exactly kSrcOver.
+     */
+    static sk_sp<SkBlender> LayerResolve(LightSpace into);
+
 private:
     SkBlenders() = delete;
 };

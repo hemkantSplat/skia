@@ -12,6 +12,7 @@
 #include "include/private/base/SkAssert.h"
 #include "src/core/SkRuntimeEffectPriv.h"
 #include "src/effects/SkGlowShaderPriv.h"
+#include "src/effects/SkLightResolvePriv.h"
 #include "src/effects/imagefilters/SkMatrixConvolutionImageFilter.h"
 
 namespace SkKnownRuntimeEffects {
@@ -622,6 +623,16 @@ const SkRuntimeEffect* GetKnownRuntimeEffect(StableKey stableKey) {
         case StableKey::kAdd: {
             static const SkRuntimeEffect* sAddEffect = make_add_blender();
             return sAddEffect;
+        }
+        case StableKey::kLightResolve: {
+            static const SkRuntimeEffect* sLightResolveEffect =
+                    SkLightResolvePriv::MakeResolveEffect(get_options(stableKey));
+            return sLightResolveEffect;
+        }
+        case StableKey::kLightAdd: {
+            static const SkRuntimeEffect* sLightAddEffect =
+                    SkLightResolvePriv::MakeAddEffect(get_options(stableKey));
+            return sLightAddEffect;
         }
 
         // Color Filters
