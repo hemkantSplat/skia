@@ -125,6 +125,10 @@
       // image filters, HSLA matrix, flushAndSubmit onFinished, drawEdgeAAQuad); stock leaves it undefined.
       CanvasKit.bindingsApi = 1;
 
+      // API level of tools/canvaskit-build's native effects (Shader.MakeGlow/MakeRadialGlow,
+      // Blender.MakeLightResolve, output-transform color filters); stock leaves it undefined.
+      CanvasKit.nativeEffectsApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
