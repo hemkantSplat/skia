@@ -11,6 +11,7 @@
 #include "include/effects/SkRuntimeEffect.h"
 #include "include/private/base/SkAssert.h"
 #include "src/core/SkRuntimeEffectPriv.h"
+#include "src/effects/SkGlowShaderPriv.h"
 #include "src/effects/imagefilters/SkMatrixConvolutionImageFilter.h"
 
 namespace SkKnownRuntimeEffects {
@@ -586,6 +587,31 @@ const SkRuntimeEffect* GetKnownRuntimeEffect(StableKey stableKey) {
         case StableKey::kSparseMorphology: {
             static const SkRuntimeEffect* sSparseMorphologyEffect = make_sparse_morphology_shader();
             return sSparseMorphologyEffect;
+        }
+        case StableKey::kGlowErf4: {
+            static const SkRuntimeEffect* sGlowErfEffect =
+                    SkGlowShaderPriv::MakeErfEffect(4, get_options(stableKey));
+            return sGlowErfEffect;
+        }
+        case StableKey::kGlowErf8: {
+            static const SkRuntimeEffect* sGlowErfEffect =
+                    SkGlowShaderPriv::MakeErfEffect(8, get_options(stableKey));
+            return sGlowErfEffect;
+        }
+        case StableKey::kGlowErf16: {
+            static const SkRuntimeEffect* sGlowErfEffect =
+                    SkGlowShaderPriv::MakeErfEffect(16, get_options(stableKey));
+            return sGlowErfEffect;
+        }
+        case StableKey::kGlowErf32: {
+            static const SkRuntimeEffect* sGlowErfEffect =
+                    SkGlowShaderPriv::MakeErfEffect(32, get_options(stableKey));
+            return sGlowErfEffect;
+        }
+        case StableKey::kGlowRadial: {
+            static const SkRuntimeEffect* sGlowRadialEffect =
+                    SkGlowShaderPriv::MakeRadialEffect(get_options(stableKey));
+            return sGlowRadialEffect;
         }
 
         // Blenders

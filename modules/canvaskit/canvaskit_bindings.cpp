@@ -51,6 +51,7 @@
 #include "include/effects/SkCornerPathEffect.h"
 #include "include/effects/SkDashPathEffect.h"
 #include "include/effects/SkDiscretePathEffect.h"
+#include "include/effects/SkGlowShader.h"
 #include "include/effects/SkGradientShader.h"
 #include "include/effects/SkImageFilters.h"
 #include "include/effects/SkLumaColorFilter.h"
@@ -235,6 +236,10 @@ SkImageFilters::CropRect ptrToCropRect(WASMPointerF32 rPtr) {
     }
     return *reinterpret_cast<const SkRect*>(rPtr);
 }
+
+// JS passes glow lobes and cores as flat floats in the structs' field order.
+static_assert(sizeof(SkGlowShader::Lobe) == 10 * sizeof(float));
+static_assert(sizeof(SkGlowShader::Core) == 13 * sizeof(float));
 
 SkColor4f ptrToSkColor4f(WASMPointerF32 cPtr) {
     float* fourFloats = reinterpret_cast<float*>(cPtr);
@@ -2563,6 +2568,23 @@ EMSCRIPTEN_BINDINGS(Skia) {
             // if tileSize is empty (e.g. tileW <= 0 or tileH <= 0, it will be ignored.
             SkISize tileSize = SkISize::Make(tileW, tileH);
             return SkShaders::MakeTurbulence(baseFreqX, baseFreqY, numOctaves, seed, &tileSize);
+        }))
+        .class_function("_MakeGlow", optional_override([](WASMPointerF32 lPtr, int count,
+                                                          WASMPointerF32 cPtr)->sk_sp<SkShader> {
+            if (count < 0) {
+                return nullptr;
+            }
+            return SkGlowShader::Make({reinterpret_cast<const SkGlowShader::Lobe*>(lPtr),
+                                       static_cast<size_t>(count)},
+                                      reinterpret_cast<const SkGlowShader::Core*>(cPtr));
+        }))
+        .class_function("_MakeRadialGlow", optional_override([](sk_sp<SkImage> profile, int length,
+                                                                SkScalar step, WASMPointerF32 tPtr,
+                                                                WASMPointerF32 cPtr) {
+            const SkColor4f tint = ptrToSkColor4f(tPtr);
+            return SkGlowShader::MakeRadial(std::move(profile), length, step,
+                                            {tint.fR, tint.fG, tint.fB, tint.fA},
+                                            reinterpret_cast<const SkGlowShader::Core*>(cPtr));
         }))
         .class_function("_MakeTwoPointConicalGradient", optional_override([](
                                          WASMPointerF32 fourFloatsPtr,

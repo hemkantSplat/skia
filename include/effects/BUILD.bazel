@@ -27,6 +27,7 @@ skia_filegroup(
         "SkCornerPathEffect.h",
         "SkDashPathEffect.h",
         "SkDiscretePathEffect.h",
+        "SkGlowShader.h",
         "SkGradientShader.h",
         "SkHighContrastFilter.h",
         "SkImageFilters.h",

@@ -1178,6 +1178,36 @@ CanvasKit.onRuntimeInitialized = function() {
     return CanvasKit.Shader._MakeColor(cPtr, colorSpace);
   };
 
+  // A glow core is 13 floats: premul RGBA, box LTRB, corner radii TL TR BR BL, pxScale.
+  function copyGlowCoreToWasm(core) {
+    if (core && core.length !== 13) {
+      throw 'a glow core is 13 floats';
+    }
+    return copy1dArray(core, 'HEAPF32');
+  }
+
+  // Each lobe is 10 floats: box LTRB, premul RGBA, sigma, weight.
+  CanvasKit.Shader.MakeGlow = function(lobes, core) {
+    lobes = lobes || [];
+    if (lobes.length % 10) {
+      throw 'glow lobes are 10 floats each';
+    }
+    var lPtr = copy1dArray(lobes, 'HEAPF32');
+    var cPtr = copyGlowCoreToWasm(core);
+    var shader = CanvasKit.Shader._MakeGlow(lPtr, lobes.length / 10, cPtr);
+    lPtr && freeArraysThatAreNotMallocedByUsers(lPtr, lobes);
+    cPtr && freeArraysThatAreNotMallocedByUsers(cPtr, core);
+    return shader;
+  };
+
+  CanvasKit.Shader.MakeRadialGlow = function(profile, length, step, tint, core) {
+    var tPtr = copyColorToWasm(tint);
+    var cPtr = copyGlowCoreToWasm(core);
+    var shader = CanvasKit.Shader._MakeRadialGlow(profile, length, step, tPtr, cPtr);
+    cPtr && freeArraysThatAreNotMallocedByUsers(cPtr, core);
+    return shader;
+  };
+
   // TODO(kjlubick) remove deprecated names.
   CanvasKit.Shader.Blend = CanvasKit.Shader.MakeBlend;
   CanvasKit.Shader.Color = CanvasKit.Shader.MakeColor;
