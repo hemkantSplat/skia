@@ -13,6 +13,7 @@
 #include "src/core/SkRuntimeEffectPriv.h"
 #include "src/effects/SkGlowShaderPriv.h"
 #include "src/effects/SkLightResolvePriv.h"
+#include "src/effects/SkOutputTransformPriv.h"
 #include "src/effects/imagefilters/SkMatrixConvolutionImageFilter.h"
 
 namespace SkKnownRuntimeEffects {
@@ -636,6 +637,62 @@ const SkRuntimeEffect* GetKnownRuntimeEffect(StableKey stableKey) {
         }
 
         // Color Filters
+        case StableKey::kOutputDecode: {
+            static const SkRuntimeEffect* sOutputDecodeEffect =
+                    SkOutputTransformPriv::MakeDecodeEffect(get_options(stableKey));
+            return sOutputDecodeEffect;
+        }
+        case StableKey::kOutputEncode: {
+            static const SkRuntimeEffect* sOutputEncodeEffect =
+                    SkOutputTransformPriv::MakeEncodeEffect(get_options(stableKey));
+            return sOutputEncodeEffect;
+        }
+        case StableKey::kToneLinear: {
+            static const SkRuntimeEffect* sToneLinearEffect =
+                    SkOutputTransformPriv::MakeToneEffect(SkOutputTransform::ToneCurve::kLinear,
+                                                          get_options(stableKey));
+            return sToneLinearEffect;
+        }
+        case StableKey::kToneReinhard: {
+            static const SkRuntimeEffect* sToneReinhardEffect =
+                    SkOutputTransformPriv::MakeToneEffect(SkOutputTransform::ToneCurve::kReinhard,
+                                                          get_options(stableKey));
+            return sToneReinhardEffect;
+        }
+        case StableKey::kToneCineon: {
+            static const SkRuntimeEffect* sToneCineonEffect =
+                    SkOutputTransformPriv::MakeToneEffect(SkOutputTransform::ToneCurve::kCineon,
+                                                          get_options(stableKey));
+            return sToneCineonEffect;
+        }
+        case StableKey::kToneAces: {
+            static const SkRuntimeEffect* sToneAcesEffect =
+                    SkOutputTransformPriv::MakeToneEffect(SkOutputTransform::ToneCurve::kACES,
+                                                          get_options(stableKey));
+            return sToneAcesEffect;
+        }
+        case StableKey::kToneAgx: {
+            static const SkRuntimeEffect* sToneAgxEffect =
+                    SkOutputTransformPriv::MakeToneEffect(SkOutputTransform::ToneCurve::kAgX,
+                                                          get_options(stableKey));
+            return sToneAgxEffect;
+        }
+        case StableKey::kToneNeutral: {
+            static const SkRuntimeEffect* sToneNeutralEffect =
+                    SkOutputTransformPriv::MakeToneEffect(SkOutputTransform::ToneCurve::kNeutral,
+                                                          get_options(stableKey));
+            return sToneNeutralEffect;
+        }
+        case StableKey::kOutputGrade: {
+            static const SkRuntimeEffect* sOutputGradeEffect =
+                    SkOutputTransformPriv::MakeGradeEffect(get_options(stableKey));
+            return sOutputGradeEffect;
+        }
+        case StableKey::kOutputLut: {
+            static const SkRuntimeEffect* sOutputLutEffect =
+                    SkOutputTransformPriv::MakeLutEffect(get_options(stableKey));
+            return sOutputLutEffect;
+        }
         case StableKey::kHighContrast: {
             static const SkRuntimeEffect* sHighContrastEffect = make_high_contrast_color_filter();
             return sHighContrastEffect;

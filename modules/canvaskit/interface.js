@@ -1228,6 +1228,40 @@ CanvasKit.onRuntimeInitialized = function() {
     throw 'Blender.MakeLightResolve: unknown kind ' + composite['kind'];
   };
 
+  // SkOutputTransform::ToneCurve by the painter's tone-mapping id.
+  var toneCurves = ['linear', 'reinhard', 'cineon', 'aces', 'agx', 'neutral'];
+
+  // Null for 'none': that stage draws nothing.
+  CanvasKit.ColorFilter.MakeToneMap = function(curve, exposure) {
+    if (curve === 'none') {
+      return null;
+    }
+    var index = toneCurves.indexOf(curve);
+    if (index < 0) {
+      throw 'ColorFilter.MakeToneMap: unknown curve ' + curve;
+    }
+    return CanvasKit.ColorFilter._MakeToneMap(index, exposure);
+  };
+
+  CanvasKit.ColorFilter.MakeGrade = function(uniforms, curves) {
+    var uPtr = copy1dArray(uniforms, 'HEAPF32');
+    var filter = CanvasKit.ColorFilter._MakeGrade(uPtr, uniforms.length, curves);
+    freeArraysThatAreNotMallocedByUsers(uPtr, uniforms);
+    return filter;
+  };
+
+  CanvasKit.ColorFilter.MakeLutStrip = function(strip, size, intensity, domainMin, domainMax) {
+    var domain = Array.prototype.slice.call(domainMin || [0, 0, 0])
+                      .concat(Array.prototype.slice.call(domainMax || [1, 1, 1]));
+    if (domain.length !== 6) {
+      throw 'ColorFilter.MakeLutStrip: a domain bound is 3 floats';
+    }
+    var dPtr = copy1dArray(domain, 'HEAPF32');
+    var filter = CanvasKit.ColorFilter._MakeLutStrip(strip, size, intensity, dPtr);
+    freeArraysThatAreNotMallocedByUsers(dPtr, domain);
+    return filter;
+  };
+
   // TODO(kjlubick) remove deprecated names.
   CanvasKit.Shader.Blend = CanvasKit.Shader.MakeBlend;
   CanvasKit.Shader.Color = CanvasKit.Shader.MakeColor;

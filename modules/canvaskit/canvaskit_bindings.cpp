@@ -55,6 +55,7 @@
 #include "include/effects/SkGradientShader.h"
 #include "include/effects/SkImageFilters.h"
 #include "include/effects/SkLumaColorFilter.h"
+#include "include/effects/SkOutputTransform.h"
 #include "include/effects/SkPerlinNoiseShader.h"
 #include "include/effects/SkRuntimeEffect.h"
 #include "include/effects/SkTrimPathEffect.h"
@@ -1886,7 +1887,30 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return SkColorFilters::HSLAMatrix(twentyFloats);
         }))
         .class_function("MakeSRGBToLinearGamma", &SkColorFilters::SRGBToLinearGamma)
-        .class_function("MakeLuma", &SkLumaColorFilter::Make);
+        .class_function("MakeLuma", &SkLumaColorFilter::Make)
+        .class_function("MakeOutputDecode", &SkOutputTransform::Decode)
+        .class_function("MakeOutputEncode", &SkOutputTransform::Encode)
+        // JS passes SkOutputTransform::ToneCurve by value.
+        .class_function("_MakeToneMap", optional_override([](int curve, float exposure) {
+            return SkOutputTransform::ToneMap(static_cast<SkOutputTransform::ToneCurve>(curve),
+                                              exposure);
+        }))
+        .class_function("_MakeGrade", optional_override([](WASMPointerF32 uPtr, int count,
+                                                           sk_sp<SkImage> curves) {
+            if (count < 0) {
+                return sk_sp<SkColorFilter>();
+            }
+            return SkOutputTransform::Grade({reinterpret_cast<const float*>(uPtr),
+                                             static_cast<size_t>(count)}, std::move(curves));
+        }))
+        // The domain is six floats: min RGB, then max RGB.
+        .class_function("_MakeLutStrip", optional_override([](sk_sp<SkImage> strip, int size,
+                                                              float intensity,
+                                                              WASMPointerF32 dPtr) {
+            const float* d = reinterpret_cast<const float*>(dPtr);
+            return SkOutputTransform::LutStrip(std::move(strip), size, intensity,
+                                               {d[0], d[1], d[2]}, {d[3], d[4], d[5]});
+        }));
 
     class_<SkContourMeasureIter>("ContourMeasureIter")
         .constructor<const SkPath&, bool, SkScalar>()

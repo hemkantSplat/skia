@@ -32,6 +32,7 @@ skia_filegroup(
         "SkHighContrastFilter.h",
         "SkImageFilters.h",
         "SkLumaColorFilter.h",
+        "SkOutputTransform.h",
         "SkOverdrawColorFilter.h",
         "SkPerlinNoiseShader.h",
         "SkRuntimeEffect.h",

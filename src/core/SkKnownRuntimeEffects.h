@@ -43,6 +43,7 @@ static constexpr int kUnknownRuntimeEffectIDStart = kUserDefinedKnownRuntimeEffe
 // Similarly, all six 2DBlur* stable keys must be consecutive after 2DBlurBase and
 // there is no 2DBlur24 bc for large kernels we bin by a multiple of eight.
 // The GlowErf* keys are consecutive after GlowErfBase, one per SkGlowShaderPriv::kErfBins entry.
+// The Tone* keys are consecutive after ToneBase, in SkOutputTransform::ToneCurve order.
 // As for the macros:
 //   M(X) is for standard entries
 //   M1(X) is for helper values that should be skipped in a switch statement
@@ -87,7 +88,18 @@ static constexpr int kUnknownRuntimeEffectIDStart = kUserDefinedKnownRuntimeEffe
     M(GlowErf32)            \
     M(GlowRadial)           \
     M(LightResolve)         \
-    M(LightAdd)
+    M(LightAdd)             \
+    M(OutputDecode)         \
+    M(OutputEncode)         \
+    M1(ToneBase)            \
+    M2(ToneLinear, ToneBase) \
+    M(ToneReinhard)         \
+    M(ToneCineon)           \
+    M(ToneAces)             \
+    M(ToneAgx)              \
+    M(ToneNeutral)          \
+    M(OutputGrade)          \
+    M(OutputLut)
 
 // WARNING: If any of the existing values are changed, UniqueKeys that have stably-keyed effects
 // will need to be invalidated. (Adding new values to the end of the enum should be fine though.)
@@ -103,7 +115,7 @@ enum class StableKey : uint32_t {
 #undef M1
 #undef M
 
-    kLast =    kLightAdd,
+    kLast =    kOutputLut,
 };
 
 static const int kStableKeyCnt = static_cast<int>(StableKey::kLast) -

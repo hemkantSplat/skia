@@ -3851,7 +3851,39 @@ export interface ColorFilterFactory {
      * and sets the red, green, and blue channels to zero.
      */
     MakeLuma(): ColorFilter;
+
+    /*
+     * Output-transform stages. Each unpremultiplies (zero alpha carries no colour), applies its
+     * stage and premultiplies; compose them in order decode, grade, tone map, encode, LUT.
+     */
+
+    /** sRGB-encoded surface colour to linear light; values above 1 are light and stay linear. */
+    MakeOutputDecode(): ColorFilter;
+
+    /** Linear light to sRGB-encoded colour: the sRGB curve on max(c, 0), unclamped above 1. */
+    MakeOutputEncode(): ColorFilter;
+
+    /**
+     * three.js's tone-mapping curves on scene-linear colour, after a linear `exposure` gain.
+     * Returns null for 'none'.
+     */
+    MakeToneMap(curve: ToneCurve, exposure: number): ColorFilter | null;
+
+    /**
+     * The parametric grade on scene-linear Rec.709: `uniforms` is its packed 30-float block and
+     * `curves` the 256x2 RGBA table strip (row 0 red/green/blue, row 1 master).
+     */
+    MakeGrade(uniforms: Float32Array | number[], curves: Image): ColorFilter | null;
+
+    /**
+     * A 3D LUT of edge `size` packed as a size*size x size strip of blue slices, trilinear over
+     * [domainMin, domainMax] (default 0..1) and mixed with the input by `intensity` (0..1).
+     */
+    MakeLutStrip(strip: Image, size: number, intensity: number,
+                 domainMin?: Float32Array | number[], domainMax?: Float32Array | number[]): ColorFilter | null;
 }
+
+export type ToneCurve = 'none' | 'linear' | 'reinhard' | 'cineon' | 'aces' | 'agx' | 'neutral';
 
 export interface ContourMeasureIterConstructor {
     /**
