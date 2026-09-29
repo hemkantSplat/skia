@@ -123,6 +123,7 @@
         SkRegisterPictureImageFilterFlattenable();
         SkRegisterRuntimeImageFilterFlattenable();
         SkRegisterShaderImageFilterFlattenable();
+        SkRegisterTransformBlurImageFilterFlattenable();
         SK_REGISTER_FLATTENABLE(SkLocalMatrixImageFilter);
 
         SkRegisterLegacyDropShadowImageFilterFlattenable();

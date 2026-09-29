@@ -17,6 +17,7 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkScalar.h"
 #include "include/core/SkShader.h"
+#include "include/core/SkSpan.h"
 #include "include/core/SkTileMode.h"
 #include "include/core/SkTypes.h"
 
@@ -27,6 +28,7 @@
 
 class SkBlender;
 class SkColorFilter;
+class SkM44;
 class SkMatrix;
 class SkRuntimeEffectBuilder;
 enum class SkBlendMode;
@@ -493,6 +495,26 @@ public:
      */
     static sk_sp<SkImageFilter> Tile(const SkRect& src, const SkRect& dst,
                                      sk_sp<SkImageFilter> input);
+
+    /**
+     *  Create a motion blur: the input, content drawn at the path's last entry, averaged over the
+     *  shutter. Entry i is the content transform at shutter time i / (N - 1); between entries each
+     *  output pixel's sample position moves in a straight line at constant speed. Every pixel
+     *  cuts its path into K = clamp(ceil(path length / 1 layer pixel), minSamples, maxSamples)
+     *  stretches equal in half arc length, half shutter time, and taps each once, at its
+     *  time-weighted centroid, weighted by the shutter time it spans.
+     *  @param path       2 to 16 content-to-parameter-space transforms (as Canvas::concat) at
+     *                    uniform shutter times, from shutter open to the input's own transform.
+     *  @param minSamples Fewest taps per pixel, at least 1.
+     *  @param maxSamples Most taps per pixel, at least minSamples; clamped to 64.
+     *  @param input      The input to blur, or null to use the source bitmap.
+     *  @param cropRect   Optional rectangle that crops the output.
+     *  @return 'input' (with the crop) when every entry is equal or an entry is singular; null
+     *          for a non-finite entry, a path length outside [2, 16], or bad sample counts.
+     */
+    static sk_sp<SkImageFilter> TransformBlur(SkSpan<const SkM44> path, int minSamples,
+                                              int maxSamples, sk_sp<SkImageFilter> input,
+                                              const CropRect& cropRect = {});
 
     // Morphology filter effects
 

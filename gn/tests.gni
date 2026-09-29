@@ -311,6 +311,7 @@ tests_sources = [
   "$_tests/TopoSortTest.cpp",
   "$_tests/TraceMemoryDumpTest.cpp",
   "$_tests/TracingTest.cpp",
+  "$_tests/TransformBlurImageFilterTest.cpp",
   "$_tests/TransferPixelsTest.cpp",
   "$_tests/TriangulatingPathRendererTests.cpp",
   "$_tests/TypefaceTest.cpp",

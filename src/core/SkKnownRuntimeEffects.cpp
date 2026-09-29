@@ -15,6 +15,7 @@
 #include "src/effects/SkLightResolvePriv.h"
 #include "src/effects/SkOutputTransformPriv.h"
 #include "src/effects/imagefilters/SkMatrixConvolutionImageFilter.h"
+#include "src/effects/imagefilters/SkTransformBlurImageFilter.h"
 
 namespace SkKnownRuntimeEffects {
 
@@ -614,6 +615,11 @@ const SkRuntimeEffect* GetKnownRuntimeEffect(StableKey stableKey) {
             static const SkRuntimeEffect* sGlowRadialEffect =
                     SkGlowShaderPriv::MakeRadialEffect(get_options(stableKey));
             return sGlowRadialEffect;
+        }
+        case StableKey::kTransformBlur: {
+            static const SkRuntimeEffect* sTransformBlurEffect =
+                    SkTransformBlurPriv::MakeEffect(get_options(stableKey));
+            return sTransformBlurEffect;
         }
 
         // Blenders
