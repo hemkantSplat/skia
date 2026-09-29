@@ -574,6 +574,8 @@ export interface CanvasKit {
     readonly bindingsApi?: number;
     /** API level of the native effects patches (glow shaders, light resolve, output-transform filters); absent in stock. */
     readonly nativeEffectsApi?: number;
+    /** API level of the F16 MSAA patches (queried float sample counts, maxSurfaceSampleCount); absent in stock. */
+    readonly f16MsaaApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
     readonly rt_effect?: boolean; // true if RuntimeEffect was compiled in
     readonly skottie?: boolean; // true if base Skottie code was compiled in
