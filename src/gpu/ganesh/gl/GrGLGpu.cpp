@@ -634,6 +634,11 @@ void GrGLGpu::onResetContext(uint32_t resetBits) {
         // we only ever use lines in hairline mode
         GL_CALL(LineWidth(1));
         GL_CALL(Disable(GR_GL_DITHER));
+        // Ganesh never discards rasterization; transform-feedback users may leave it on.
+        if (GR_IS_GR_WEBGL(this->glStandard()) ? this->glVersion() >= GR_GL_VER(2, 0)
+                                                : this->glVersion() >= GR_GL_VER(3, 0)) {
+            GL_CALL(Disable(GR_GL_RASTERIZER_DISCARD));
+        }
 
         fHWClearColor[0] = fHWClearColor[1] = fHWClearColor[2] = fHWClearColor[3] = SK_FloatNaN;
     }
@@ -644,6 +649,9 @@ void GrGLGpu::onResetContext(uint32_t resetBits) {
             // to non-MSAA targets.
             GL_CALL(Enable(GR_GL_MULTISAMPLE));
         }
+        // Ganesh never masks samples; alpha-to-coverage or a coverage mask would drop MSAA samples.
+        GL_CALL(Disable(GR_GL_SAMPLE_ALPHA_TO_COVERAGE));
+        GL_CALL(Disable(GR_GL_SAMPLE_COVERAGE));
         fHWConservativeRasterEnabled = kUnknown_TriState;
     }
 
@@ -690,12 +698,22 @@ void GrGLGpu::onResetContext(uint32_t resetBits) {
 
     // we assume these values
     if (resetBits & kPixelStore_GrGLBackendState) {
+        // The skips arrive with the row lengths (ES 3, WebGL 2, EXT_unpack/NV_pack_subimage).
         if (this->caps()->writePixelsRowBytesSupport() ||
             this->caps()->transferPixelsToRowBytesSupport()) {
             GL_CALL(PixelStorei(GR_GL_UNPACK_ROW_LENGTH, 0));
+            GL_CALL(PixelStorei(GR_GL_UNPACK_SKIP_ROWS, 0));
+            GL_CALL(PixelStorei(GR_GL_UNPACK_SKIP_PIXELS, 0));
         }
         if (this->glCaps().readPixelsRowBytesSupport()) {
             GL_CALL(PixelStorei(GR_GL_PACK_ROW_LENGTH, 0));
+            GL_CALL(PixelStorei(GR_GL_PACK_SKIP_ROWS, 0));
+            GL_CALL(PixelStorei(GR_GL_PACK_SKIP_PIXELS, 0));
+        }
+        // WebGL applies these to ArrayBufferView uploads too, which is how Ganesh uploads.
+        if (GR_IS_GR_WEBGL(this->glStandard())) {
+            GL_CALL(PixelStorei(GR_GL_UNPACK_FLIP_Y_WEBGL, GR_GL_FALSE));
+            GL_CALL(PixelStorei(GR_GL_UNPACK_PREMULTIPLY_ALPHA_WEBGL, GR_GL_FALSE));
         }
         if (this->glCaps().packFlipYSupport()) {
             GL_CALL(PixelStorei(GR_GL_PACK_REVERSE_ROW_ORDER, GR_GL_FALSE));
@@ -1107,8 +1125,8 @@ bool GrGLGpu::onTransferPixelsFrom(GrSurface* surface,
 }
 
 void GrGLGpu::unbindXferBuffer(GrGpuBufferType type) {
-    if (this->glCaps().transferBufferType() != GrGLCaps::TransferBufferType::kARB_PBO &&
-        this->glCaps().transferBufferType() != GrGLCaps::TransferBufferType::kNV_PBO) {
+    // A CPU-pointer transfer needs no pixel buffer bound, including one another library bound.
+    if (!this->glCaps().pixelBufferBindingSupport()) {
         return;
     }
     SkASSERT(type == GrGpuBufferType::kXferCpuToGpu || type == GrGpuBufferType::kXferGpuToCpu);

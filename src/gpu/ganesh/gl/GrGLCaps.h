@@ -334,6 +334,9 @@ public:
     /// What type of transfer buffer is supported?
     TransferBufferType transferBufferType() const { return fTransferBufferType; }
 
+    /// The context has PIXEL_PACK/UNPACK_BUFFER binding points, whether or not Ganesh uses them.
+    bool pixelBufferBindingSupport() const { return fPixelBufferBindingSupport; }
+
     /** Supports using GrGLsync. */
     bool fenceSyncSupport() const { return fFenceSyncSupport; }
 
@@ -622,6 +625,7 @@ private:
     RegenerateMipmapType fRegenerateMipmapType = RegenerateMipmapType::kBaseLevel;
 
     bool fPackFlipYSupport : 1;
+    bool fPixelBufferBindingSupport : 1;
     bool fTextureUsageSupport : 1;
     bool fImagingSupport  : 1;
     bool fVertexArrayObjectSupport : 1;

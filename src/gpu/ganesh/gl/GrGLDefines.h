@@ -159,6 +159,7 @@
 #define GR_GL_POLYGON_OFFSET_FILL            0x8037
 #define GR_GL_SAMPLE_ALPHA_TO_COVERAGE       0x809E
 #define GR_GL_SAMPLE_COVERAGE                0x80A0
+#define GR_GL_RASTERIZER_DISCARD             0x8C89
 #define GR_GL_POLYGON_OFFSET_FILL            0x8037
 #define GR_GL_POLYGON_SMOOTH                 0x0B41
 #define GR_GL_POLYGON_STIPPLE                0x0B42
@@ -608,7 +609,11 @@
 
 /* Pixel Mode / Transfer */
 #define GR_GL_UNPACK_ROW_LENGTH              0x0CF2
+#define GR_GL_UNPACK_SKIP_ROWS               0x0CF3
+#define GR_GL_UNPACK_SKIP_PIXELS             0x0CF4
 #define GR_GL_PACK_ROW_LENGTH                0x0D02
+#define GR_GL_PACK_SKIP_ROWS                 0x0D03
+#define GR_GL_PACK_SKIP_PIXELS               0x0D04
 
 
 /* TextureMagFilter */
@@ -1152,6 +1157,10 @@
 
 /* Tessellation */
 #define GR_GL_MAX_TESS_GEN_LEVEL_OES                        0x8E7E
+
+/** WebGL pixel storage */
+#define GR_GL_UNPACK_FLIP_Y_WEBGL                           0x9240
+#define GR_GL_UNPACK_PREMULTIPLY_ALPHA_WEBGL                0x9241
 
 /** WEBGL_debug_renderer_info */
 #define GR_UNMASKED_VENDOR_WEBGL                            0x9245
