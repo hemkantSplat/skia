@@ -447,6 +447,7 @@ var CanvasKit = {
     MakeMatrix: function() {},
     MakeHSLAMatrix: function() {},
     MakeSRGBToLinearGamma: function() {},
+    MakeColorSpaceXform: function() {},
     MakeOutputDecode: function() {},
     MakeOutputEncode: function() {},
     MakeToneMap: function() {},

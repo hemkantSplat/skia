@@ -66,6 +66,7 @@
 #include "include/utils/SkParsePath.h"
 #include "include/utils/SkShadowUtils.h"
 #include "src/base/SkFloatBits.h"
+#include "src/core/SkColorFilterPriv.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkResourceCache.h"
 #include "src/image/SkImage_Base.h"
@@ -1913,6 +1914,14 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return SkColorFilters::HSLAMatrix(twentyFloats);
         }))
         .class_function("MakeSRGBToLinearGamma", &SkColorFilters::SRGBToLinearGamma)
+        // Unpremul, src transfer and gamut to dst's, premul; unclamped. Null if either is null.
+        .class_function("MakeColorSpaceXform", optional_override([](sk_sp<SkColorSpace> src,
+                                                                    sk_sp<SkColorSpace> dst) {
+            if (!src || !dst) {
+                return sk_sp<SkColorFilter>();
+            }
+            return SkColorFilterPriv::MakeColorSpaceXform(std::move(src), std::move(dst));
+        }))
         .class_function("MakeLuma", &SkLumaColorFilter::Make)
         .class_function("MakeOutputDecode", &SkOutputTransform::Decode)
         .class_function("MakeOutputEncode", &SkOutputTransform::Encode)

@@ -3858,6 +3858,12 @@ export interface ColorFilterFactory {
     MakeSRGBToLinearGamma(): ColorFilter;
 
     /**
+     * Converts colour from src to dst (transfer function and gamut, as SkColorSpaceXformSteps),
+     * unpremultiplied around the conversion and unclamped. Null if either space is null.
+     */
+    MakeColorSpaceXform(src: ColorSpace, dst: ColorSpace): ColorFilter | null;
+
+    /**
      * Makes a color filter that multiplies the luma of its input into the alpha channel,
      * and sets the red, green, and blue channels to zero.
      */
