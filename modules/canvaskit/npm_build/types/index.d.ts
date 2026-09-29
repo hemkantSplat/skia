@@ -578,6 +578,8 @@ export interface CanvasKit {
     readonly nativeEffectsApi?: number;
     /** API level of the F16 MSAA patches (queried float sample counts, maxSurfaceSampleCount); absent in stock. */
     readonly f16MsaaApi?: number;
+    /** API level of the HDR colour patches (ColorSpace.MakeRGB, named transfer functions and gamuts, MakeColorSpaceXform); absent in stock. */
+    readonly hdrColorApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
     readonly rt_effect?: boolean; // true if RuntimeEffect was compiled in
     readonly skottie?: boolean; // true if base Skottie code was compiled in
