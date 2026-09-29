@@ -4141,6 +4141,24 @@ export interface ImageFilterFactory {
      * @param cropRect - optional output crop, in local space; without one the output is unbounded.
      */
    MakeShader(shader: Shader, dither?: boolean, cropRect?: InputRect): ImageFilter;
+
+    /**
+     * Returns a motion blur (SkImageFilters::TransformBlur): the input, content drawn at the
+     * path's last matrix, averaged over the shutter. Between entries each output pixel's sample
+     * position moves in a straight line at constant speed; every pixel cuts its path into
+     * clamp(ceil(path length in layer pixels), minSamples, maxSamples) stretches equal in half arc
+     * length, half shutter time, and taps each once at its time-weighted centroid, weighted by the
+     * shutter time it spans.
+     * @param path - 2 to 16 row-major 4x4 matrices (16 floats each), the content's transform at
+     *               uniform shutter times from shutter open to the input's own; throws otherwise.
+     * @param minSamples - fewest taps per pixel (default 2).
+     * @param maxSamples - most taps per pixel (default 64, clamped to 64).
+     * @param input - if null, the dynamic source image.
+     * @returns the input itself when every matrix is equal or one is singular (null for a null
+     *          input); null for non-finite matrices or minSamples < 1 or maxSamples < minSamples.
+     */
+    MakeTransformBlur(path: Float32Array | number[], minSamples?: number, maxSamples?: number,
+                      input?: ImageFilter | null): ImageFilter | null;
 }
 
 /**

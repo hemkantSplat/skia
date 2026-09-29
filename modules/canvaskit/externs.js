@@ -631,6 +631,7 @@ var CanvasKit = {
     MakeMatrixTransform: function() {},
     MakeOffset: function() {},
     MakeShader: function() {},
+    MakeTransformBlur: function() {},
 
     prototype: {
       getOutputBounds: function() {},
@@ -648,6 +649,7 @@ var CanvasKit = {
     _MakeImageOptions: function() {},
     _MakeMatrixTransformCubic: function() {},
     _MakeMatrixTransformOptions: function() {},
+    _MakeTransformBlur: function() {},
   },
 
   // These are defined in interface.js

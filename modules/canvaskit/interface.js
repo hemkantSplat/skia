@@ -1047,6 +1047,20 @@ CanvasKit.onRuntimeInitialized = function() {
     }
   };
 
+  // The path is 2 to 16 row-major 4x4s at uniform shutter times, the input's own transform last.
+  CanvasKit.ImageFilter.MakeTransformBlur = function(path, minSamples, maxSamples, input) {
+    var count = path.length / 16;
+    if (count !== Math.floor(count) || count < 2 || count > 16) {
+      throw 'a transform blur path is 2 to 16 4x4 matrices';
+    }
+    var pPtr = copy1dArray(path, 'HEAPF32');
+    var filter = CanvasKit.ImageFilter._MakeTransformBlur(
+        pPtr, count, minSamples === undefined ? 2 : minSamples,
+        maxSamples === undefined ? 64 : maxSamples, input || null);
+    freeArraysThatAreNotMallocedByUsers(pPtr, path);
+    return filter;
+  };
+
   CanvasKit.Paint.prototype.getColor = function() {
     this._getColor(_scratchColorPtr);
     return copyColorFromWasm(_scratchColorPtr);
