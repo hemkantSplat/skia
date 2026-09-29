@@ -141,6 +141,10 @@
       // GLBackendState, an honest kAll reset); stock leaves it undefined.
       CanvasKit.sharedGlApi = 1;
 
+      // API level of tools/canvaskit-build's motion blur (ImageFilter.MakeTransformBlur);
+      // stock leaves it undefined.
+      CanvasKit.motionBlurApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
