@@ -510,6 +510,8 @@ export interface CanvasKit {
     readonly PathOp: PathOpEnumValues;
     readonly PointMode: PointModeEnumValues;
     readonly ColorSpace: ColorSpaceEnumValues;
+    readonly NamedTransferFn: NamedTransferFnValues;
+    readonly NamedGamut: NamedGamutValues;
     readonly StrokeCap: StrokeCapEnumValues;
     readonly StrokeJoin: StrokeJoinEnumValues;
     readonly TileMode: TileModeEnumValues;
@@ -4830,7 +4832,17 @@ export type BlendMode = EmbindEnumEntity;
 export type BlurStyle = EmbindEnumEntity;
 export type ClipOp = EmbindEnumEntity;
 export type ColorChannel = EmbindEnumEntity;
-export type ColorSpace = EmbindObject<"ColorSpace">;
+export interface ColorSpace extends EmbindObject<"ColorSpace"> {
+    /** The same gamut with a linear transfer function; the caller deletes it. */
+    makeLinearGamma(): ColorSpace;
+    /** The same gamut with the sRGB transfer function; the caller deletes it. */
+    makeSRGBGamma(): ColorSpace;
+    isSRGB(): boolean;
+    /** The 7 floats g, a..f; PQ and HLG use skcms's marker forms (g = -2 PQish, -3 HLGish). */
+    transferFn(): Float32Array;
+    /** Row-major 3x3 taking linear RGB in this gamut to linear RGB in dst's; null for a null dst. */
+    gamutTransformTo(dst: ColorSpace): Float32Array | null;
+}
 export type ColorType = EmbindEnumEntity;
 export type EncodedImageFormat = EmbindEnumEntity;
 export type FillType = EmbindEnumEntity;
@@ -4929,6 +4941,18 @@ export interface ColorSpaceEnumValues { // not a typical enum, but effectively l
     readonly SRGB_LINEAR: ColorSpace;
     readonly DISPLAY_P3: ColorSpace;
     readonly ADOBE_RGB: ColorSpace;
+    /** Display P3 primaries, linear transfer. */
+    readonly DISPLAY_P3_LINEAR: ColorSpace;
+    /** BT.2100 PQ on Rec.2020 primaries; linear 1.0 is 10000 cd/m2. */
+    readonly REC2020_PQ: ColorSpace;
+    /** BT.2100 HLG on Rec.2020 primaries; linear range [0, 12]. */
+    readonly REC2020_HLG: ColorSpace;
+
+    /**
+     * A color space from a transfer function (7 floats, see NamedTransferFn) and a gamut (row-major
+     * 3x3 to XYZ D50, see NamedGamut). The caller deletes it; null when Skia refuses the pair.
+     */
+    MakeRGB(transferFn: Float32Array | number[], gamut: Float32Array | number[]): ColorSpace | null;
 
     /**
      * Returns true if the two color spaces are equal.
@@ -4936,6 +4960,29 @@ export interface ColorSpaceEnumValues { // not a typical enum, but effectively l
      * @param b
      */
     Equals(a: ColorSpace, b: ColorSpace): boolean;
+}
+
+/** Copies of SkNamedTransferFn: 7 floats each (g, a..f). */
+export interface NamedTransferFnValues {
+    readonly SRGB: Float32Array;
+    readonly TwoDotTwo: Float32Array;
+    readonly Linear: Float32Array;
+    readonly Rec2020: Float32Array;
+    /** BT.2100 PQ: encoded [0, 1] to linear [0, 1], 1.0 being 10000 cd/m2. */
+    readonly PQ: Float32Array;
+    /** BT.2100 HLG: encoded [0, 1] to linear [0, 12]. */
+    readonly HLG: Float32Array;
+    /** HLG with its linear range scaled by k (1/12 gives [0, 1]). */
+    ScaledHLG(k: number): Float32Array;
+}
+
+/** Copies of SkNamedGamut: row-major 3x3 matrices to XYZ D50. */
+export interface NamedGamutValues {
+    readonly SRGB: Float32Array;
+    readonly DisplayP3: Float32Array;
+    readonly Rec2020: Float32Array;
+    readonly AdobeRGB: Float32Array;
+    readonly XYZ: Float32Array;
 }
 
 export interface ColorChannelEnumValues extends EmbindEnum {

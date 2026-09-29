@@ -475,11 +475,46 @@ var CanvasKit = {
     SRGB_LINEAR: {},
     DISPLAY_P3: {},
     ADOBE_RGB: {},
+    DISPLAY_P3_LINEAR: {},
+    REC2020_PQ: {},
+    REC2020_HLG: {},
+    MakeRGB: function() {},
     // private API (from C++ bindings)
     _MakeSRGB: function() {},
     _MakeSRGBLinear: function() {},
     _MakeDisplayP3: function() {},
     _MakeAdobeRGB: function() {},
+    _MakeRGB: function() {},
+    _NamedTransferFn: function() {},
+    _NamedGamut: function() {},
+    _ScaledHLG: function() {},
+    prototype: {
+      makeLinearGamma: function() {},
+      makeSRGBGamma: function() {},
+      isSRGB: function() {},
+      transferFn: function() {},
+      gamutTransformTo: function() {},
+      _transferFn: function() {},
+      _gamutTransformTo: function() {},
+    },
+  },
+
+  NamedTransferFn: {
+    SRGB: {},
+    TwoDotTwo: {},
+    Linear: {},
+    Rec2020: {},
+    PQ: {},
+    HLG: {},
+    ScaledHLG: function() {},
+  },
+
+  NamedGamut: {
+    SRGB: {},
+    DisplayP3: {},
+    Rec2020: {},
+    AdobeRGB: {},
+    XYZ: {},
   },
 
   ContourMeasureIter: {
