@@ -723,7 +723,7 @@ export interface GrContextOptions {
     allowPathMaskCaching?: boolean;
     /** Honour SurfaceOptions.dynamicMSAA on WebGL 2. Default false. */
     allowDynamicMSAA?: boolean;
-    /** Multisampled half/float targets on WebGL 2 with EXT_color_buffer_float. Default false. */
+    /** Multisampled half/float targets on WebGL 2, at the counts the browser reports. Default false. */
     allowFloatMSAA?: boolean;
     /** Ganesh's persistent program cache (SkSL blobs); precompileShader() takes what store() receives. */
     programCache?: ProgramCache;
@@ -789,6 +789,11 @@ export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     precompileShader(key: Uint8Array, data: Uint8Array): boolean;
     /** Precompiled programs whose parallel link has not completed (KHR_parallel_shader_compile). */
     pendingProgramLinks(): number;
+    /**
+     * The largest MSAA sample count a render target of this color type can have; 1 means
+     * single-sample only, 0 not renderable. A requested count rounds up to a supported one.
+     */
+    maxSurfaceSampleCount(colorType: ColorType): number;
     resetGpuStats(): void;
     /**
      * Flushes and submits all pending work without waiting for it. options.onFinished runs once

@@ -174,6 +174,11 @@
           return this._pendingProgramLinks();
       };
 
+      CanvasKit.GrDirectContext.prototype.maxSurfaceSampleCount = function(colorType) {
+          CanvasKit.setCurrentContext(this._context);
+          return this._maxSurfaceSampleCount(colorType);
+      };
+
       CanvasKit.GrDirectContext.prototype.resetGpuStats = function() {
           CanvasKit.setCurrentContext(this._context);
           this._resetGpuStats();

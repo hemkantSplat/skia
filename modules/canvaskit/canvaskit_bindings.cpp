@@ -1526,6 +1526,10 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return static_cast<GrGLGpu*>(self.priv().getGpu())->pendingProgramLinks();
         }))
 #endif
+        .function("_maxSurfaceSampleCount",
+                optional_override([](GrDirectContext& self, SkColorType colorType)->int {
+            return self.maxSurfaceSampleCountForColorType(colorType);
+        }))
         .function("_releaseResourcesAndAbandonContext",
                 &GrDirectContext::releaseResourcesAndAbandonContext)
         .function("_setResourceCacheLimitBytes",
