@@ -566,12 +566,12 @@
     ],
   },
 
-  {  // getInternalformativ was added in GL 4.2, ES 3.0, and with
+  {  // getInternalformativ was added in GL 4.2, ES 3.0, WebGL 2.0, and with
      // extension ARB_internalformat_query
     "GL":    [{"min_version": [4, 2], "ext": "<core>"},
               {/*    else if      */  "ext": "GL_ARB_internalformat_query"}],
     "GLES":  [{"min_version": [3, 0], "ext": "<core>"}],
-    "WebGL": null,
+    "WebGL": [{"min_version": [2, 0], "ext": "<core>"}],
 
     "functions": [
       "GetInternalformativ"

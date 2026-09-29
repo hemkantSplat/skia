@@ -1514,10 +1514,9 @@ void GrGLCaps::initFormatTable(const GrContextOptions& contextOptions,
             (GR_IS_GR_GL(standard) || (GR_IS_GR_GL_ES(standard) && version >= GR_GL_VER(3,0)));
 
     // for now we don't support floating point MSAA on ES; WebGL 2 may opt in (GrContextOptions).
+    // Renderable float formats qualify; setupSampleCounts asks WebGL for their real sample counts.
     const bool webglFloatMSAA = GR_IS_GR_WEBGL(standard) && version >= GR_GL_VER(2, 0) &&
-                                contextOptions.fAllowFloatMSAAOnWebGL2 &&
-                                (ctxInfo.hasExtension("GL_EXT_color_buffer_float") ||
-                                 ctxInfo.hasExtension("EXT_color_buffer_float"));
+                                contextOptions.fAllowFloatMSAAOnWebGL2;
     uint32_t fpRenderFlags =
             (GR_IS_GR_GL(standard) || webglFloatMSAA) ? msaaRenderFlags : nonMSAARenderFlags;
 
@@ -3643,6 +3642,10 @@ void GrGLCaps::setupSampleCounts(const GrGLContextInfo& ctxInfo, const GrGLInter
                         fFormatTable[i].fColorSampleCounts.push_back(sampleCnt);
                     }
                 }
+            } else if (GR_IS_GR_WEBGL(standard) && version >= GR_GL_VER(2, 0) &&
+                       fFormatTable[i].fFormatType == FormatType::kFloat) {
+                // Float counts may sit below MAX_SAMPLES; 8-bit formats keep the table below.
+                this->setupWebGL2SampleCounts(gli, static_cast<GrGLFormat>(i), maxSampleCnt);
             } else {
                 // Fake out the table using some semi-standard counts up to the max allowed sample
                 // count.
@@ -3660,6 +3663,21 @@ void GrGLCaps::setupSampleCounts(const GrGLContextInfo& ctxInfo, const GrGLInter
         } else if (FormatInfo::kFBOColorAttachment_Flag & fFormatTable[i].fFlags) {
             fFormatTable[i].fColorSampleCounts.resize(1);
             fFormatTable[i].fColorSampleCounts[0] = 1;
+        }
+    }
+}
+
+void GrGLCaps::setupWebGL2SampleCounts(const GrGLInterface* gli, GrGLFormat format,
+                                       int maxSampleCnt) {
+    // WebGL has no NUM_SAMPLE_COUNTS: SAMPLES fills at most MAX_SAMPLES counts, descending.
+    std::unique_ptr<int[]> samples(new int[maxSampleCnt]());
+    GR_GL_GetInternalformativ(gli, GR_GL_RENDERBUFFER, this->getRenderbufferInternalFormat(format),
+                              GR_GL_SAMPLES, maxSampleCnt, samples.get());
+    SkTDArray<int>& counts = this->getFormatInfo(format).fColorSampleCounts;
+    counts.push_back(1);
+    for (int j = maxSampleCnt - 1; j >= 0; --j) {
+        if (samples[j] > 1) {
+            counts.push_back(samples[j]);
         }
     }
 }

@@ -587,6 +587,7 @@ private:
     void initFormatTable(const GrContextOptions&, const GrGLContextInfo&, const GrGLInterface*,
                          const FormatWorkarounds&);
     void setupSampleCounts(const GrGLContextInfo&, const GrGLInterface*);
+    void setupWebGL2SampleCounts(const GrGLInterface*, GrGLFormat, int maxSampleCnt);
     bool onSurfaceSupportsWritePixels(const GrSurface*) const override;
     bool onCanCopySurface(const GrSurfaceProxy* dst, const SkIRect& dstRect,
                           const GrSurfaceProxy* src, const SkIRect& srcRect) const override;

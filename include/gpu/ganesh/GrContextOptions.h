@@ -313,8 +313,8 @@ struct SK_API GrContextOptions {
     bool fAllowDynamicMSAAOnWebGL = false;
 
     /**
-     * If true, half/float formats are multisample-renderable on WebGL 2 when EXT_color_buffer_float
-     * is present (GL ES keeps float MSAA off).
+     * If true, renderable half/float formats are multisample-renderable on WebGL 2, at the sample
+     * counts getInternalformatParameter(SAMPLES) reports (GL ES keeps float MSAA off).
      */
     bool fAllowFloatMSAAOnWebGL2 = false;
 

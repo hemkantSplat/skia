@@ -228,6 +228,10 @@ sk_sp<const GrGLInterface> GrGLMakeAssembledWebGLInterface(void *ctx, GrGLGetPro
     }
 
     if (glVer >= GR_GL_VER(2,0)) {
+        GET_PROC(GetInternalformativ);
+    }
+
+    if (glVer >= GR_GL_VER(2,0)) {
         GET_PROC(BindSampler);
         GET_PROC(DeleteSamplers);
         GET_PROC(GenSamplers);
