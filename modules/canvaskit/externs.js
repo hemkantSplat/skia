@@ -145,6 +145,7 @@ var CanvasKit = {
       precompileShader: function () {},
       pendingProgramLinks: function () {},
       maxSurfaceSampleCount: function () {},
+      resetContext: function () {},
       resetGpuStats: function () {},
       flushAndSubmit: function () {},
       submit: function () {},
@@ -164,6 +165,7 @@ var CanvasKit = {
     _precompileShader: function() {},
     _pendingProgramLinks: function() {},
     _maxSurfaceSampleCount: function() {},
+    _resetContext: function() {},
     _resetGpuStats: function() {},
     _flushAndSubmit: function() {},
     _submit: function() {},
@@ -510,6 +512,8 @@ var CanvasKit = {
     HLG: {},
     ScaledHLG: function() {},
   },
+
+  GLBackendState: {},
 
   NamedGamut: {
     SRGB: {},

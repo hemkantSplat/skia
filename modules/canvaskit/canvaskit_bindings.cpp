@@ -1365,6 +1365,18 @@ EMSCRIPTEN_BINDINGS(Skia) {
     value_object<SimpleSurfaceOptions>("SurfaceOptions")
         .field("sampleCount", &SimpleSurfaceOptions::sampleCount)
         .field("dynamicMSAA", &SimpleSurfaceOptions::dynamicMSAA);
+    constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendState);
+    constant("_GLBackendState_TextureBinding", (uint32_t)kTextureBinding_GrGLBackendState);
+    constant("_GLBackendState_View", (uint32_t)kView_GrGLBackendState);
+    constant("_GLBackendState_Blend", (uint32_t)kBlend_GrGLBackendState);
+    constant("_GLBackendState_MSAAEnable", (uint32_t)kMSAAEnable_GrGLBackendState);
+    constant("_GLBackendState_Vertex", (uint32_t)kVertex_GrGLBackendState);
+    constant("_GLBackendState_Stencil", (uint32_t)kStencil_GrGLBackendState);
+    constant("_GLBackendState_PixelStore", (uint32_t)kPixelStore_GrGLBackendState);
+    constant("_GLBackendState_Program", (uint32_t)kProgram_GrGLBackendState);
+    constant("_GLBackendState_FixedFunction", (uint32_t)kFixedFunction_GrGLBackendState);
+    constant("_GLBackendState_Misc", (uint32_t)kMisc_GrGLBackendState);
+    constant("_GLBackendState_All", kAll_GrBackendState);
 #endif // CK_ENABLE_WEBGL
 
 #ifdef CK_ENABLE_WEBGPU
@@ -1547,6 +1559,9 @@ EMSCRIPTEN_BINDINGS(Skia) {
                 return 0;
             }
             return static_cast<GrGLGpu*>(self.priv().getGpu())->pendingProgramLinks();
+        }))
+        .function("_resetContext", optional_override([](GrDirectContext& self, uint32_t state)->void {
+            self.resetContext(state);
         }))
 #endif
         .function("_maxSurfaceSampleCount",

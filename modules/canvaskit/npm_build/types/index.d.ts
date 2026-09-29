@@ -578,6 +578,8 @@ export interface CanvasKit {
     readonly nativeEffectsApi?: number;
     /** API level of the F16 MSAA patches (queried float sample counts, maxSurfaceSampleCount); absent in stock. */
     readonly f16MsaaApi?: number;
+    /** GrGLBackendState bits for GrDirectContext.resetContext (shared GL patches); absent in stock. */
+    readonly GLBackendState?: GLBackendStateEnumValues;
     /** API level of the HDR colour patches (ColorSpace.MakeRGB, named transfer functions and gamuts, MakeColorSpaceXform); absent in stock. */
     readonly hdrColorApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
@@ -779,6 +781,22 @@ export interface GpuStats {
     dynamicMSAALoads: number;
 }
 
+/** GrGLBackendState bits for GrDirectContext.resetContext; All is every bit. */
+export interface GLBackendStateEnumValues {
+    readonly RenderTarget: number;
+    readonly TextureBinding: number;
+    readonly View: number;
+    readonly Blend: number;
+    readonly MSAAEnable: number;
+    readonly Vertex: number;
+    readonly Stencil: number;
+    readonly PixelStore: number;
+    readonly Program: number;
+    readonly FixedFunction: number;
+    readonly Misc: number;
+    readonly All: number;
+}
+
 export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     getResourceCacheLimitBytes(): number;
     getResourceCacheUsageBytes(): number;
@@ -800,6 +818,11 @@ export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
      * single-sample only, 0 not renderable. A requested count rounds up to a supported one.
      */
     maxSurfaceSampleCount(colorType: ColorType): number;
+    /**
+     * Tells Ganesh that another library changed GL state on this context. The GLBackendState bits
+     * name the cached state to drop (default All); Ganesh re-sends it before its next GL use.
+     */
+    resetContext(state?: number): void;
     resetGpuStats(): void;
     /**
      * Flushes and submits all pending work without waiting for it. options.onFinished runs once
