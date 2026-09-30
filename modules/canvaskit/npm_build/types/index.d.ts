@@ -737,7 +737,7 @@ export interface GrContextOptions {
     allowDynamicMSAA?: boolean;
     /** Multisampled half/float targets on WebGL 2, at the counts the browser reports. Default false. */
     allowFloatMSAA?: boolean;
-    /** Ganesh's persistent program cache (SkSL blobs); precompileShader() takes what store() receives. */
+    /** Ganesh's persistent program cache (SkSL plus caps-keyed GLSL); precompileShader() takes what store() receives. */
     programCache?: ProgramCache;
 }
 
@@ -745,7 +745,10 @@ export interface GrContextOptions {
 export interface ProgramCache {
     /** The blob stored under `key`, or null. */
     load(key: Uint8Array): Uint8Array | null;
-    /** A program Ganesh compiled: its key, SkSL blob and a readable description. */
+    /**
+     * A program Ganesh compiled or re-translated: its key, blob and a readable description. A key
+     * stored again replaces its blob (this context's GLSL); a precompile's store has description "".
+     */
     store(key: Uint8Array, data: Uint8Array, description: string): void;
 }
 
@@ -772,6 +775,8 @@ export interface GpuStats {
     renderPasses: number;
     reorderedDAGsOverBudget: number;
     shaderCompilations: number;
+    /** SkSL -> GLSL translations of program stages; stages whose cached GLSL was reused are not counted. */
+    skslTranslations: number;
     programCacheHits: number;
     programCacheMisses: number;
     softwarePathMasks: number;
@@ -813,7 +818,10 @@ export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     performDeferredCleanup(msNotUsed: number): void;
     /** GPU counters since the last resetGpuStats(). */
     gpuStats(): GpuStats;
-    /** Compiles a stored (key, SkSL blob) pair ahead of use; false when the blob is refused. */
+    /**
+     * Compiles a stored (key, blob) pair ahead of use, reusing its GLSL when made under these caps
+     * (else translating and storing the blob again); false when the blob is refused.
+     */
     precompileShader(key: Uint8Array, data: Uint8Array): boolean;
     /** Precompiled programs whose parallel link has not completed (KHR_parallel_shader_compile). */
     pendingProgramLinks(): number;
