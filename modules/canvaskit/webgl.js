@@ -145,6 +145,10 @@
       // stock leaves it undefined.
       CanvasKit.motionBlurApi = 1;
 
+      // API level of tools/canvaskit-build's program sharing (caps-keyed GLSL in program cache
+      // entries, re-stored after a translation, gpuStats().skslTranslations); stock leaves it undefined.
+      CanvasKit.programShareApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();

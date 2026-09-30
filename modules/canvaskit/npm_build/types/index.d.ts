@@ -586,6 +586,8 @@ export interface CanvasKit {
     readonly sharedGlApi?: number;
     /** API level of the motion blur patches (ImageFilter.MakeTransformBlur); absent in stock. */
     readonly motionBlurApi?: number;
+    /** API level of the program sharing patches (caps-keyed GLSL in program cache entries); absent in stock. */
+    readonly programShareApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
     readonly rt_effect?: boolean; // true if RuntimeEffect was compiled in
     readonly skottie?: boolean; // true if base Skottie code was compiled in
