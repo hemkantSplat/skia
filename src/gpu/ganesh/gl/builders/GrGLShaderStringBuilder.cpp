@@ -14,9 +14,66 @@
 #include "src/gpu/ganesh/gl/GrGLDefines.h"
 #include "src/gpu/ganesh/gl/GrGLGpu.h"
 #include "src/gpu/ganesh/gl/GrGLUtil.h"
+#include "src/core/SkChecksum.h"
+#include "src/sksl/SkSLProgramSettings.h"
 #include "src/sksl/SkSLString.h"
+#include "src/sksl/SkSLUtil.h"
 
 #include <cstdint>
+#include <initializer_list>
+#include <string>
+
+uint64_t GrGLTranslationKey(const SkSL::ShaderCaps& caps, const SkSL::ProgramSettings& settings) {
+    // Layout mirror of SkSL::ShaderCaps: a field added there must be added here and hashed below.
+    struct KnownShaderCaps {
+        SkSL::GLSLGeneration fGeneration;
+        bool fFlags[39];
+        const char* fStrings[5];
+        SkSL::ShaderCaps::AdvBlendEqInteraction fAdvBlendEqInteraction;
+    };
+    static_assert(sizeof(KnownShaderCaps) == sizeof(SkSL::ShaderCaps));
+
+    std::string bytes;
+    auto flags = [&](std::initializer_list<bool> values) {
+        for (bool value : values) {
+            bytes.push_back(value ? '1' : '0');
+        }
+    };
+    auto text = [&](const char* value) {
+        bytes.push_back(value ? '"' : '-');
+        bytes.append(value ? value : "");
+        bytes.push_back('\0');
+    };
+    bytes.push_back(static_cast<char>(caps.fGLSLGeneration));
+    bytes.push_back(static_cast<char>(caps.fAdvBlendEqInteraction));
+    flags({caps.fDualSourceBlendingSupport, caps.fShaderDerivativeSupport,
+           caps.fExplicitTextureLodSupport, caps.fIntegerSupport, caps.fNonsquareMatrixSupport,
+           caps.fInverseHyperbolicSupport, caps.fFBFetchSupport, caps.fFBFetchNeedsCustomOutput,
+           caps.fUsesPrecisionModifiers, caps.fFlatInterpolationSupport,
+           caps.fNoPerspectiveInterpolationSupport, caps.fSampleMaskSupport,
+           caps.fExternalTextureSupport, caps.fFloatIs32Bits, caps.fInfinitySupport,
+           caps.fBuiltinFMASupport, caps.fBuiltinDeterminantSupport,
+           caps.fCanUseVoidInSequenceExpressions, caps.fCanUseMinAndAbsTogether,
+           caps.fCanUseFractForNegativeValues, caps.fMustForceNegatedAtanParamToFloat,
+           caps.fMustForceNegatedLdexpParamToMultiply, caps.fAtan2ImplementedAsAtanYOverX,
+           caps.fMustDoOpBetweenFloorAndAbs, caps.fMustGuardDivisionEvenAfterExplicitZeroCheck,
+           caps.fCanUseFragCoord, caps.fAddAndTrueToLoopCondition,
+           caps.fUnfoldShortCircuitAsTernary, caps.fEmulateAbsIntFunction,
+           caps.fRewriteDoWhileLoops, caps.fRewriteSwitchStatements,
+           caps.fRemovePowWithConstantExponent, caps.fNoDefaultPrecisionForExternalSamplers,
+           caps.fRewriteMatrixVectorMultiply, caps.fRewriteMatrixComparisons,
+           caps.fRemoveConstFromFunctionParameters, caps.fPerlinNoiseRoundingFix,
+           caps.fMustDeclareFragmentFrontFacing, caps.fForceStd430ArrayLayout});
+    text(caps.fVersionDeclString);
+    text(caps.fShaderDerivativeExtensionString);
+    text(caps.fExternalTextureExtensionString);
+    text(caps.fSecondExternalTextureExtensionString);
+    text(caps.fFBFetchColorName);
+    // The settings Ganesh GL varies per program or context; the rest keep their defaults.
+    flags({settings.fFragColorIsInOut, settings.fForceHighPrecision, settings.fSharpenTextures,
+           settings.fForceNoRTFlip});
+    return SkChecksum::Hash64(bytes.data(), bytes.size());
+}
 
 GrGLuint GrGLCompileAndAttachShader(const GrGLContext& glCtx,
                                     GrGLuint programId,

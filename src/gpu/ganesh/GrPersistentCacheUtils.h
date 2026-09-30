@@ -13,7 +13,10 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkTypes.h"
 #include "include/private/base/SkTArray.h"
+#include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "src/sksl/ir/SkSLProgram.h"
+
+#include <cstdint>
 
 #include <string>
 
@@ -29,7 +32,12 @@ struct ShaderMetadata {
     SkSL::ProgramSettings* fSettings = nullptr;
     skia_private::TArray<std::string> fAttributeNames;
     bool fHasSecondaryColorOutput = false;
+    // Backend source the entry's SkSL translated to, valid where the translation key matches.
+    uint64_t fTranslationKey = 0;
+    std::string fTranslation[kGrShaderTypeCount];
     sk_sp<SkData> fPlatformData;
+
+    bool hasTranslation() const { return !fTranslation[kFragment_GrShaderType].empty(); }
 };
 
 int GetCurrentVersion();

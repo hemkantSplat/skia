@@ -35,6 +35,8 @@ struct SK_API GrContextOptions {
 
     enum class ShaderCacheStrategy {
         kSkSL,
+        // GL: SkSL plus the GLSL it translated to, reused only under the same shader caps.
+        kSkSLAndBackendSource,
         kBackendSource,
         kBackendBinary,
     };

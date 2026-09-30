@@ -48,6 +48,10 @@ inline bool SkSLToGLSL(const SkSL::ShaderCaps* caps,
 
 }  // namespace skgpu
 
+// Everything SkSL -> GLSL reads besides the SkSL: the shader caps and the translation settings.
+// Equal keys translate the same SkSL to the same GLSL.
+uint64_t GrGLTranslationKey(const SkSL::ShaderCaps&, const SkSL::ProgramSettings&);
+
 // deferStatus leaves compile errors to the program's link status (KHR_parallel_shader_compile).
 GrGLuint GrGLCompileAndAttachShader(const GrGLContext& glCtx,
                                     GrGLuint programId,

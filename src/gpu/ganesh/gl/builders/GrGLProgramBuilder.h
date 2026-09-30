@@ -64,7 +64,11 @@ public:
                                             const GrProgramInfo&,
                                             const GrGLPrecompiledProgram* = nullptr);
 
-    static bool PrecompileProgram(GrDirectContext*, GrGLPrecompiledProgram*, const SkData&);
+    // Compiles a persistent-cache entry; one it had to translate is stored again under `key`.
+    static bool PrecompileProgram(GrDirectContext*,
+                                  GrGLPrecompiledProgram*,
+                                  const SkData& key,
+                                  const SkData& data);
 
     const GrCaps* caps() const override;
 
@@ -86,8 +90,8 @@ private:
                                  bool bindAttribLocations);
     void storeShaderInCache(const SkSL::Program::Interface&,
                             GrGLuint programID,
-                            const std::string shaders[],
-                            bool isSkSL,
+                            const std::string* sksl[],
+                            const std::string glsl[],
                             SkSL::ProgramSettings* settings);
     sk_sp<GrGLProgram> finalize(const GrGLPrecompiledProgram*);
     void bindProgramResourceLocations(GrGLuint programID);

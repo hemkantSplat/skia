@@ -18,7 +18,8 @@
 
 namespace GrPersistentCacheUtils {
 
-static constexpr int kCurrentVersion = 12;
+// 13: metadata carries an optional keyed translation (ShaderMetadata::fTranslation).
+static constexpr int kCurrentVersion = 13;
 
 int GetCurrentVersion() {
     // The persistent cache stores a copy of the SkSL::Program::Interface struct. If you alter the
@@ -68,6 +69,15 @@ sk_sp<SkData> PackCachedShaders(SkFourByteTag shaderType,
         }
 
         writer.writeBool(meta->fHasSecondaryColorOutput);
+
+        writer.writeBool(meta->hasTranslation());
+        if (meta->hasTranslation()) {
+            writer.writeUInt(static_cast<uint32_t>(meta->fTranslationKey));
+            writer.writeUInt(static_cast<uint32_t>(meta->fTranslationKey >> 32));
+            for (const std::string& source : meta->fTranslation) {
+                writer.writeByteArray(source.c_str(), source.size());
+            }
+        }
 
         if (meta->fPlatformData) {
             writer.writeByteArray(meta->fPlatformData->data(), meta->fPlatformData->size());
@@ -123,12 +133,27 @@ bool UnpackCachedShaders(SkReadBuffer* reader,
 
         meta->fHasSecondaryColorOutput = reader->readBool();
 
+        if (reader->readBool()) {
+            uint64_t low = reader->readUInt();
+            meta->fTranslationKey = low | (static_cast<uint64_t>(reader->readUInt()) << 32);
+            for (std::string& source : meta->fTranslation) {
+                size_t length = 0;
+                const char* bytes = static_cast<const char*>(reader->skipByteArray(&length));
+                if (bytes) {
+                    source.assign(bytes, length);
+                }
+            }
+        }
+
         // a given platform will be responsible for reading its data
     }
 
     if (!reader->isValid()) {
         for (int i = 0; i < kGrShaderTypeCount; ++i) {
             shaders[i].clear();
+            if (meta) {
+                meta->fTranslation[i].clear();
+            }
         }
     }
     return reader->isValid();

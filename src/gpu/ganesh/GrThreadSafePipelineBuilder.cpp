@@ -30,6 +30,7 @@ static const char* cache_result_to_str(int i) {
 
 void GrThreadSafePipelineBuilder::Stats::dump(SkString* out) {
     out->appendf("Shader Compilations: %d\n", fShaderCompilations.load());
+    out->appendf("SkSL Translations: %d\n", fSkSLTranslations.load());
 
     SkASSERT(fNumInlineCompilationFailures == 0);
     out->appendf("Number of Inline compile failures %d\n", fNumInlineCompilationFailures.load());
@@ -55,6 +56,7 @@ void GrThreadSafePipelineBuilder::Stats::dump(SkString* out) {
 void GrThreadSafePipelineBuilder::Stats::dumpKeyValuePairs(TArray<SkString>* keys,
                                                            TArray<double>* values) {
     keys->push_back(SkString("shader_compilations")); values->push_back(fShaderCompilations);
+    keys->push_back(SkString("sksl_translations")); values->push_back(fSkSLTranslations);
 }
 
 #endif // defined(GPU_TEST_UTILS)

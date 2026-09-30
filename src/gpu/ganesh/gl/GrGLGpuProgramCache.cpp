@@ -141,7 +141,7 @@ bool GrGLGpu::ProgramCache::precompileShader(GrDirectContext* dContext,
     }
 
     GrGLPrecompiledProgram precompiledProgram;
-    if (!GrGLProgramBuilder::PrecompileProgram(dContext, &precompiledProgram, data)) {
+    if (!GrGLProgramBuilder::PrecompileProgram(dContext, &precompiledProgram, key, data)) {
         return false;
     }
 
