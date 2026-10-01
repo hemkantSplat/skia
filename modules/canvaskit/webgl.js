@@ -149,6 +149,10 @@
       // entries, re-stored after a translation, gpuStats().skslTranslations); stock leaves it undefined.
       CanvasKit.programShareApi = 1;
 
+      // API level of tools/canvaskit-build's dst-copy attribution (gpuStats().dstCopiesBy and
+      // dstCopyCauses); stock leaves it undefined.
+      CanvasKit.dstAttributionApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();

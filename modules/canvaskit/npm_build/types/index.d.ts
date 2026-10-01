@@ -600,6 +600,8 @@ export interface CanvasKit {
     readonly motionBlurApi?: number;
     /** API level of the program sharing patches (caps-keyed GLSL in program cache entries); absent in stock. */
     readonly programShareApi?: number;
+    /** API level of the dst-copy attribution patches (gpuStats().dstCopiesBy/dstCopyCauses); absent in stock. */
+    readonly dstAttributionApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
     readonly rt_effect?: boolean; // true if RuntimeEffect was compiled in
     readonly skottie?: boolean; // true if base Skottie code was compiled in
