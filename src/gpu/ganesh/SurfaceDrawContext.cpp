@@ -736,6 +736,20 @@ void SurfaceDrawContext::drawRect(const GrClip* clip,
                                      GrStyledShape(rect, *style, DoSimplify::kNo));
 }
 
+// True when the paint's blend takes coverage only through a destination read (a dst copy on WebGL);
+// the same draw with per-sample MSAA coverage blends fixed-function.
+static bool analytic_coverage_reads_dst(const GrPaint& paint, const GrCaps& caps, GrClampType clamp) {
+    using Props = GrXPFactory::AnalysisProperties;
+    auto reads = [&](GrProcessorAnalysisCoverage coverage) {
+        return SkToBool(GrXPFactory::GetAnalysisProperties(paint.getXPFactory(),
+                                                           GrProcessorAnalysisColor(), coverage,
+                                                           caps, clamp) &
+                        Props::kReadsDstInShader);
+    };
+    return reads(GrProcessorAnalysisCoverage::kSingleChannel) &&
+           !reads(GrProcessorAnalysisCoverage::kNone);
+}
+
 void SurfaceDrawContext::fillRectToRect(const GrClip* clip,
                                         GrPaint&& paint,
                                         GrAA aa,
@@ -745,10 +759,14 @@ void SurfaceDrawContext::fillRectToRect(const GrClip* clip,
     DrawQuad quad{GrQuad::MakeFromRect(rectToDraw, viewMatrix), GrQuad(localRect),
                   aa == GrAA::kYes ? GrQuadAAFlags::kAll : GrQuadAAFlags::kNone};
 
-    // If we are using dmsaa then attempt to draw the rect with FillRRectOp.
+    // If we are using dmsaa then attempt to draw the rect with FillRRectOp, unless its analytic
+    // coverage would cost a dst read that MSAA coverage does not (the quad path below uses MSAA).
     if ((fContext->priv().caps()->reducedShaderMode() || this->alwaysAntialias()) &&
         this->caps()->drawInstancedSupport()                                      &&
-        aa == GrAA::kYes) {  // If aa is kNo when using dmsaa, the rect is axis aligned. Don't use
+        aa == GrAA::kYes                                                          &&
+        !analytic_coverage_reads_dst(paint, *this->caps(),
+                                     GrColorTypeClampType(this->colorInfo().colorType()))) {
+                             // If aa is kNo when using dmsaa, the rect is axis aligned. Don't use
                              // FillRRectOp because it might require dual source blending.
                              // http://skbug.com/11756
         QuadOptimization opt = this->attemptQuadOptimization(clip, nullptr/*stencil*/, &quad,
