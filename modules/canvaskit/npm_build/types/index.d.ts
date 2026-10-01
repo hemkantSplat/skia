@@ -3806,6 +3806,12 @@ export interface BlenderFactory {
     MakeAdd(): Blender;
 
     /**
+     * Create a blender returning min(src, dst) per premul channel. An uncovered draw needs no
+     * destination read on the GPU; opaque white drawn with it clamps a float target to 1.
+     */
+    MakeMin(): Blender;
+
+    /**
      * Resolve summed light, or an isolated layer, into its destination. Spaces are 'encoded' (sRGB
      * surface colour, light above coverage kept linear) or 'linear'. Emissive light keeps the
      * destination's alpha; other light adds coverage, clamped. A layer composites covered pixels

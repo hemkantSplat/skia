@@ -1634,6 +1634,7 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .smart_ptr<sk_sp<SkBlender>>("sk_sp<Blender>")
         .class_function("Mode", &SkBlender::Mode)
         .class_function("MakeAdd", &SkBlenders::Add)
+        .class_function("MakeMin", &SkBlenders::Min)
         // JS passes SkBlenders::LightSpace by value: 0 encoded, 1 linear.
         .class_function("_MakeLightResolve", optional_override([](int into, int light,
                                                                  bool emissive)->sk_sp<SkBlender> {
