@@ -12,6 +12,18 @@ export interface CanvasKitInitOptions {
     locateFile(file: string): string;
 }
 
+/** Why a draw read its destination (Ganesh's GrDstReadReason). */
+export type DstReadReason = 'blender' | 'plusClamp' | 'coverageBlend' | 'lcd' | 'advancedBlend' | 'lightAddClamp';
+
+export interface DstCopyCause {
+    reason: DstReadReason;
+    blend: string;
+    floatTarget: boolean;
+    msaa: boolean;
+    count: number;
+    pixels: number;
+}
+
 export interface CanvasKit {
     // Helpers
     /**
@@ -786,6 +798,10 @@ export interface GpuStats {
     /** Destination copies made because a draw's blend reads the destination. */
     dstCopies: number;
     dstCopyPixels: number;
+    /** Dst copies per reason (patch 0044): the Ganesh cause that asked for the destination. */
+    dstCopiesBy: { [reason in DstReadReason]?: number };
+    /** One row per reason, blend (SkBlendMode name, or Add / Blender / LightAdd), float target and MSAA pass. */
+    dstCopyCauses: DstCopyCause[];
     /** MSAA resolves into single-sample targets, dynamic MSAA pass ends included. */
     msaaResolves: number;
     /** Dynamic MSAA passes that load the single-sample target into the MSAA attachment. */

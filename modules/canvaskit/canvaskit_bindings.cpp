@@ -88,6 +88,7 @@
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 #include "src/gpu/ganesh/GrCaps.h"
 #include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrDstReadCause.h"
 #include "src/gpu/ganesh/GrGpu.h"
 #include "src/gpu/ganesh/GrThreadSafePipelineBuilder.h"
 #endif // ENABLE_GPU
@@ -330,9 +331,30 @@ struct SimpleGpuStats {
     int softwarePathMaskCacheHits = 0;
     int dstCopies = 0;
     double dstCopyPixels = 0;
+    // Dst copies per GrDstReadReason name, and one row per (reason, blend, float target, MSAA pass).
+    emscripten::val dstCopiesBy = emscripten::val::object();
+    emscripten::val dstCopyCauses = emscripten::val::array();
     int msaaResolves = 0;
     int dynamicMSAALoads = 0;
 };
+
+// Rows are GrRecordingContext::Stats::DstCopyRow, which is protected, hence the template.
+template <typename Rows> void ReadDstCopyCauses(const Rows& rows, SimpleGpuStats& out) {
+    for (const auto& row : rows) {
+        const GrDstReadCause cause = GrDstReadCause::Unpack(row.fCause);
+        const char* reason = GrDstReadCause::ReasonName(cause.fReason);
+        emscripten::val sum = out.dstCopiesBy[reason];
+        out.dstCopiesBy.set(reason, (sum.isUndefined() ? 0 : sum.as<int>()) + row.fCount);
+        emscripten::val entry = emscripten::val::object();
+        entry.set("reason", reason);
+        entry.set("blend", GrDstReadCause::BlendName(cause.fBlend));
+        entry.set("floatTarget", row.fFloatTarget);
+        entry.set("msaa", row.fMSAA);
+        entry.set("count", row.fCount);
+        entry.set("pixels", double(row.fPixels));
+        out.dstCopyCauses.call<void>("push", entry);
+    }
+}
 
 SimpleGpuStats ReadGpuStats(GrDirectContext& dContext) {
     SimpleGpuStats out;
@@ -370,6 +392,7 @@ SimpleGpuStats ReadGpuStats(GrDirectContext& dContext) {
     out.softwarePathMaskCacheHits = r.numPathMaskCacheHits();
     out.dstCopies = r.numDstCopies();
     out.dstCopyPixels = double(r.dstCopyPixels());
+    ReadDstCopyCauses(r.dstCopyRows(), out);
     return out;
 }
 
@@ -1504,6 +1527,8 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .field("softwarePathMaskCacheHits", &SimpleGpuStats::softwarePathMaskCacheHits)
         .field("dstCopies", &SimpleGpuStats::dstCopies)
         .field("dstCopyPixels", &SimpleGpuStats::dstCopyPixels)
+        .field("dstCopiesBy", &SimpleGpuStats::dstCopiesBy)
+        .field("dstCopyCauses", &SimpleGpuStats::dstCopyCauses)
         .field("msaaResolves", &SimpleGpuStats::msaaResolves)
         .field("dynamicMSAALoads", &SimpleGpuStats::dynamicMSAALoads);
     class_<GrDirectContext>("GrDirectContext")
