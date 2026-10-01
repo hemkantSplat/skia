@@ -52,6 +52,7 @@ var CanvasKit = {
   programShareApi: 0,
   dstAttributionApi: 0,
   minBlendApi: 0,
+  skottieApi: 0,
   MakeWebGLContext: function() {},
   /** @return {CanvasKit.AnimatedImage} */
   MakeAnimatedImageFromEncoded: function() {},

@@ -604,6 +604,8 @@ export interface CanvasKit {
     readonly dstAttributionApi?: number;
     /** API level of the min blend patches (Blender.MakeMin on the fixed-function min equation); absent in stock. */
     readonly minBlendApi?: number;
+    /** API level of the Skottie build (MakeManagedAnimation compiled in); absent in stock. */
+    readonly skottieApi?: number;
     readonly managed_skottie?: boolean; // true if advanced (managed) Skottie code was compiled in
     readonly rt_effect?: boolean; // true if RuntimeEffect was compiled in
     readonly skottie?: boolean; // true if base Skottie code was compiled in
