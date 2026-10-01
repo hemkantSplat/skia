@@ -417,6 +417,17 @@ SkRuntimeEffect* make_add_blender() {
     return SkMakeRuntimeEffect(SkRuntimeEffect::MakeForBlender, kAddBlenderCode, options);
 }
 
+SkRuntimeEffect* make_min_blender() {
+    SkRuntimeEffect::Options options = get_options(StableKey::kMin);
+
+    static constexpr char kMinBlenderCode[] =
+        "half4 main(half4 src, half4 dst) {"
+            "return min(src, dst);"
+        "}";
+
+    return SkMakeRuntimeEffect(SkRuntimeEffect::MakeForBlender, kMinBlenderCode, options);
+}
+
 SkRuntimeEffect* make_high_contrast_color_filter() {
     SkRuntimeEffect::Options options = get_options(StableKey::kHighContrast);
 
@@ -630,6 +641,10 @@ const SkRuntimeEffect* GetKnownRuntimeEffect(StableKey stableKey) {
         case StableKey::kAdd: {
             static const SkRuntimeEffect* sAddEffect = make_add_blender();
             return sAddEffect;
+        }
+        case StableKey::kMin: {
+            static const SkRuntimeEffect* sMinEffect = make_min_blender();
+            return sMinEffect;
         }
         case StableKey::kLightResolve: {
             static const SkRuntimeEffect* sLightResolveEffect =

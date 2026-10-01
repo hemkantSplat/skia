@@ -28,6 +28,7 @@ const char* GrDstReadCause::BlendName(uint8_t blend) {
         case kAddBlend:      return "Add";
         case kBlenderBlend:  return "Blender";
         case kLightAddBlend: return "LightAdd";
+        case kMinBlend:      return "Min";
         default:             return "Unknown";
     }
 }

@@ -319,11 +319,13 @@ static MTLBlendOperation blend_equation_to_mtl_blend_op(skgpu::BlendEquation equ
         MTLBlendOperationAdd,              // skgpu::BlendEquation::kAdd
         MTLBlendOperationSubtract,         // skgpu::BlendEquation::kSubtract
         MTLBlendOperationReverseSubtract,  // skgpu::BlendEquation::kReverseSubtract
+        MTLBlendOperationMin,              // skgpu::BlendEquation::kMin
     };
     static_assert(std::size(gTable) == (int)skgpu::BlendEquation::kFirstAdvanced);
     static_assert(0 == (int)skgpu::BlendEquation::kAdd);
     static_assert(1 == (int)skgpu::BlendEquation::kSubtract);
     static_assert(2 == (int)skgpu::BlendEquation::kReverseSubtract);
+    static_assert(3 == (int)skgpu::BlendEquation::kMin);
 
     SkASSERT((unsigned)equation < skgpu::kBlendEquationCnt);
     return gTable[(int)equation];

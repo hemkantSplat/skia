@@ -311,6 +311,8 @@ static D3D12_BLEND_OP blend_equation_to_d3d_op(skgpu::BlendEquation equation) {
         return D3D12_BLEND_OP_SUBTRACT;
     case skgpu::BlendEquation::kReverseSubtract:
         return D3D12_BLEND_OP_REV_SUBTRACT;
+    case skgpu::BlendEquation::kMin:
+        return D3D12_BLEND_OP_MIN;
     default:
         SkUNREACHABLE;
     }

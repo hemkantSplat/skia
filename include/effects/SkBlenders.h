@@ -28,6 +28,13 @@ public:
     static sk_sp<SkBlender> Add();
 
     /**
+     *  Create a blender that returns min(src, dst) per premul channel. Ganesh maps it to the
+     *  fixed-function min equation, so an uncovered draw needs no destination read. Drawing
+     *  opaque white with it clamps the destination to 1 on float targets.
+     */
+    static sk_sp<SkBlender> Min();
+
+    /**
      *  Where light-resolve colour lives: sRGB-encoded surface colour (light above coverage kept
      *  linear), or linear light.
      */

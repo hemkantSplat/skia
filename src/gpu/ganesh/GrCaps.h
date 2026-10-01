@@ -164,6 +164,9 @@ public:
         return fBlendEquationSupport >= kAdvanced_BlendEquationSupport;
     }
 
+    /** Whether the fixed-function min equation (BlendEquation::kMin) is available. */
+    bool minBlendEquationSupport() const { return fMinBlendEquationSupport; }
+
     bool advancedCoherentBlendEquationSupport() const {
         return kAdvancedCoherent_BlendEquationSupport == fBlendEquationSupport;
     }
@@ -594,6 +597,7 @@ protected:
     bool fGpuTracingSupport                          : 1;
     bool fOversizedStencilSupport                    : 1;
     bool fTextureBarrierSupport                      : 1;
+    bool fMinBlendEquationSupport                    : 1;
     bool fSampleLocationsSupport                     : 1;
     bool fDrawInstancedSupport                       : 1;
     bool fNativeDrawIndirectSupport                  : 1;

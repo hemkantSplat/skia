@@ -367,6 +367,8 @@ skia_ganesh_private = [
   "$_src/gpu/ganesh/effects/GrDistanceFieldGeoProc.h",
   "$_src/gpu/ganesh/effects/GrLightAddXP.cpp",
   "$_src/gpu/ganesh/effects/GrLightAddXP.h",
+  "$_src/gpu/ganesh/effects/GrMinXP.cpp",
+  "$_src/gpu/ganesh/effects/GrMinXP.h",
   "$_src/gpu/ganesh/effects/GrMatrixEffect.cpp",
   "$_src/gpu/ganesh/effects/GrMatrixEffect.h",
   "$_src/gpu/ganesh/effects/GrModulateAtlasCoverageEffect.cpp",

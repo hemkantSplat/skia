@@ -351,6 +351,7 @@ static VkBlendOp blend_equation_to_vk_blend_op(skgpu::BlendEquation equation) {
         VK_BLEND_OP_ADD,
         VK_BLEND_OP_SUBTRACT,
         VK_BLEND_OP_REVERSE_SUBTRACT,
+        VK_BLEND_OP_MIN,
 
         // Advanced blend ops
         VK_BLEND_OP_SCREEN_EXT,
@@ -375,21 +376,22 @@ static VkBlendOp blend_equation_to_vk_blend_op(skgpu::BlendEquation equation) {
     static_assert(0 == (int)skgpu::BlendEquation::kAdd);
     static_assert(1 == (int)skgpu::BlendEquation::kSubtract);
     static_assert(2 == (int)skgpu::BlendEquation::kReverseSubtract);
-    static_assert(3 == (int)skgpu::BlendEquation::kScreen);
-    static_assert(4 == (int)skgpu::BlendEquation::kOverlay);
-    static_assert(5 == (int)skgpu::BlendEquation::kDarken);
-    static_assert(6 == (int)skgpu::BlendEquation::kLighten);
-    static_assert(7 == (int)skgpu::BlendEquation::kColorDodge);
-    static_assert(8 == (int)skgpu::BlendEquation::kColorBurn);
-    static_assert(9 == (int)skgpu::BlendEquation::kHardLight);
-    static_assert(10 == (int)skgpu::BlendEquation::kSoftLight);
-    static_assert(11 == (int)skgpu::BlendEquation::kDifference);
-    static_assert(12 == (int)skgpu::BlendEquation::kExclusion);
-    static_assert(13 == (int)skgpu::BlendEquation::kMultiply);
-    static_assert(14 == (int)skgpu::BlendEquation::kHSLHue);
-    static_assert(15 == (int)skgpu::BlendEquation::kHSLSaturation);
-    static_assert(16 == (int)skgpu::BlendEquation::kHSLColor);
-    static_assert(17 == (int)skgpu::BlendEquation::kHSLLuminosity);
+    static_assert(3 == (int)skgpu::BlendEquation::kMin);
+    static_assert(4 == (int)skgpu::BlendEquation::kScreen);
+    static_assert(5 == (int)skgpu::BlendEquation::kOverlay);
+    static_assert(6 == (int)skgpu::BlendEquation::kDarken);
+    static_assert(7 == (int)skgpu::BlendEquation::kLighten);
+    static_assert(8 == (int)skgpu::BlendEquation::kColorDodge);
+    static_assert(9 == (int)skgpu::BlendEquation::kColorBurn);
+    static_assert(10 == (int)skgpu::BlendEquation::kHardLight);
+    static_assert(11 == (int)skgpu::BlendEquation::kSoftLight);
+    static_assert(12 == (int)skgpu::BlendEquation::kDifference);
+    static_assert(13 == (int)skgpu::BlendEquation::kExclusion);
+    static_assert(14 == (int)skgpu::BlendEquation::kMultiply);
+    static_assert(15 == (int)skgpu::BlendEquation::kHSLHue);
+    static_assert(16 == (int)skgpu::BlendEquation::kHSLSaturation);
+    static_assert(17 == (int)skgpu::BlendEquation::kHSLColor);
+    static_assert(18 == (int)skgpu::BlendEquation::kHSLLuminosity);
     static_assert(std::size(gTable) == skgpu::kBlendEquationCnt);
 
     SkASSERT((unsigned)equation < skgpu::kBlendEquationCnt);

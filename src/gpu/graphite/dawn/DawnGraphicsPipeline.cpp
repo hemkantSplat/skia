@@ -236,11 +236,13 @@ static wgpu::BlendOperation blend_equation_to_dawn_blend_op(skgpu::BlendEquation
             wgpu::BlendOperation::Add,              // skgpu::BlendEquation::kAdd
             wgpu::BlendOperation::Subtract,         // skgpu::BlendEquation::kSubtract
             wgpu::BlendOperation::ReverseSubtract,  // skgpu::BlendEquation::kReverseSubtract
+            wgpu::BlendOperation::Min,              // skgpu::BlendEquation::kMin
     };
     static_assert(std::size(gTable) == (int)skgpu::BlendEquation::kFirstAdvanced);
     static_assert(0 == (int)skgpu::BlendEquation::kAdd);
     static_assert(1 == (int)skgpu::BlendEquation::kSubtract);
     static_assert(2 == (int)skgpu::BlendEquation::kReverseSubtract);
+    static_assert(3 == (int)skgpu::BlendEquation::kMin);
 
     SkASSERT((unsigned)equation < skgpu::kBlendEquationCnt);
     return gTable[(int)equation];

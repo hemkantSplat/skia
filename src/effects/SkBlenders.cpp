@@ -57,3 +57,8 @@ sk_sp<SkBlender> SkBlenders::Add() {
     using namespace SkKnownRuntimeEffects;
     return GetKnownRuntimeEffect(StableKey::kAdd)->makeBlender(/*uniforms=*/nullptr);
 }
+
+sk_sp<SkBlender> SkBlenders::Min() {
+    using namespace SkKnownRuntimeEffects;
+    return GetKnownRuntimeEffect(StableKey::kMin)->makeBlender(/*uniforms=*/nullptr);
+}

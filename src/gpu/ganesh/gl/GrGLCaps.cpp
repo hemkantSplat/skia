@@ -1212,6 +1212,13 @@ void GrGLCaps::initFSAASupport(const GrContextOptions& contextOptions,
 void GrGLCaps::initBlendEqationSupport(const GrGLContextInfo& ctxInfo) {
     GrShaderCaps* shaderCaps = static_cast<GrShaderCaps*>(fShaderCaps.get());
 
+    // GL_MIN is core in desktop GL, ES 3.0 and WebGL 2; earlier ES and WebGL 1 need the extension.
+    fMinBlendEquationSupport =
+            GR_IS_GR_GL(fStandard) ||
+            (GR_IS_GR_GL_ES(fStandard) && ctxInfo.version() >= GR_GL_VER(3, 0)) ||
+            (GR_IS_GR_WEBGL(fStandard) && ctxInfo.version() >= GR_GL_VER(2, 0)) ||
+            ctxInfo.hasExtension("GL_EXT_blend_minmax");
+
     bool layoutQualifierSupport = false;
     if ((GR_IS_GR_GL(fStandard) && shaderCaps->fGLSLGeneration >= SkSL::GLSLGeneration::k140) ||
         (GR_IS_GR_GL_ES(fStandard) && shaderCaps->fGLSLGeneration >= SkSL::GLSLGeneration::k300es)){

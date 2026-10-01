@@ -100,7 +100,8 @@ static constexpr int kUnknownRuntimeEffectIDStart = kUserDefinedKnownRuntimeEffe
     M(ToneNeutral)          \
     M(OutputGrade)          \
     M(OutputLut)            \
-    M(TransformBlur)
+    M(TransformBlur)        \
+    M(Min)
 
 // WARNING: If any of the existing values are changed, UniqueKeys that have stably-keyed effects
 // will need to be invalidated. (Adding new values to the end of the enum should be fine though.)
@@ -116,7 +117,7 @@ enum class StableKey : uint32_t {
 #undef M1
 #undef M
 
-    kLast =    kTransformBlur,
+    kLast =    kMin,
 };
 
 static const int kStableKeyCnt = static_cast<int>(StableKey::kLast) -

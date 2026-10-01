@@ -48,6 +48,7 @@
 #include "src/gpu/ganesh/GrTextureProxy.h"
 #include "src/gpu/ganesh/GrXferProcessor.h"
 #include "src/gpu/ganesh/effects/GrLightAddXP.h"
+#include "src/gpu/ganesh/effects/GrMinXP.h"
 #include "src/gpu/ganesh/effects/GrPorterDuffXferProcessor.h"
 #include "src/gpu/ganesh/effects/GrSkSLFP.h"
 #include "src/gpu/ganesh/effects/GrTextureEffect.h"
@@ -532,6 +533,9 @@ static inline bool skpaint_to_grpaint_impl(
     } else if (is_known_blender(skPaint.getBlender(),
                                 SkKnownRuntimeEffects::StableKey::kLightAdd)) {
         grPaint->setXPFactory(GrLightAddXPFactory::Get());
+    } else if (is_known_blender(skPaint.getBlender(), SkKnownRuntimeEffects::StableKey::kMin)) {
+        // SkBlenders::Min() is exactly the fixed-function min equation.
+        grPaint->setXPFactory(GrMinXPFactory::Get());
     } else {
         // Apply a custom blend against the surface color, and force the XP to kSrc so that the
         // computed result is applied directly to the canvas while still honoring the alpha.
