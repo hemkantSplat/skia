@@ -227,6 +227,13 @@ private:
                                           const GrCaps&,
                                           GrClampType) const override;
 
+    GrDstReadCause dstReadCause(const GrProcessorAnalysisColor&,
+                                const GrProcessorAnalysisCoverage&,
+                                const GrCaps&,
+                                GrClampType) const override {
+        return GrDstReadCause::Mode(GrDstReadReason::kAdvancedBlend, fMode);
+    }
+
     GR_DECLARE_XP_FACTORY_TEST
 
     SkBlendMode fMode;

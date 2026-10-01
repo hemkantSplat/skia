@@ -1977,7 +1977,8 @@ void SurfaceDrawContext::addDrawOp(const GrClip* clip,
 
     GrDstProxyView dstProxyView;
     if (analysis.requiresDstTexture()) {
-        if (!this->setupDstProxyView(drawOp->bounds(), drawNeedsMSAA, &dstProxyView)) {
+        if (!this->setupDstProxyView(drawOp->bounds(), drawNeedsMSAA, analysis.dstReadCause(),
+                                     &dstProxyView)) {
             return;
         }
 #ifdef SK_DEBUG
@@ -2023,6 +2024,7 @@ void SurfaceDrawContext::addDrawOp(const GrClip* clip,
 
 bool SurfaceDrawContext::setupDstProxyView(const SkRect& opBounds,
                                            bool opRequiresMSAA,
+                                           GrDstReadCause cause,
                                            GrDstProxyView* dstProxyView) {
     // If we are wrapping a vulkan secondary command buffer, we can't make a dst copy because we
     // don't actually have a VkImage to make a copy of. Additionally we don't have the power to
@@ -2118,7 +2120,11 @@ bool SurfaceDrawContext::setupDstProxyView(const SkRect& opBounds,
                                      /*label=*/{},
                                      restrictions.fRectsMustMatch);
     SkASSERT(copy);
-    fContext->priv().stats()->incNumDstCopies(int64_t(copyRect.width()) * copyRect.height());
+    fContext->priv().stats()->incNumDstCopies(
+            int64_t(copyRect.width()) * copyRect.height(),
+            cause.pack(),
+            GrColorTypeClampType(colorType) != GrClampType::kAuto,
+            opRequiresMSAA || this->getOpsTask()->usesMSAASurface());
 
     dstProxyView->setProxyView({std::move(copy), this->origin(), this->readSwizzle()});
     dstProxyView->setOffset(dstOffset);

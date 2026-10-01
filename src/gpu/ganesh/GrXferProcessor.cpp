@@ -88,6 +88,15 @@ GrXPFactory::AnalysisProperties GrXPFactory::GetAnalysisProperties(
     return result;
 }
 
+GrDstReadCause GrXPFactory::DstReadCause(const GrXPFactory* factory,
+                                         const GrProcessorAnalysisColor& color,
+                                         const GrProcessorAnalysisCoverage& coverage,
+                                         const GrCaps& caps,
+                                         GrClampType clampType) {
+    return factory ? factory->dstReadCause(color, coverage, caps, clampType)
+                   : GrPorterDuffXPFactory::SrcOverDstReadCause(color, coverage, caps, clampType);
+}
+
 sk_sp<const GrXferProcessor> GrXPFactory::MakeXferProcessor(const GrXPFactory* factory,
                                                             const GrProcessorAnalysisColor& color,
                                                             GrProcessorAnalysisCoverage coverage,

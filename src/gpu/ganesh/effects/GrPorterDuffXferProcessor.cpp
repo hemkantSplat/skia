@@ -414,9 +414,16 @@ sk_sp<const GrXferProcessor> GrPorterDuffXPFactory::makeXferProcessor(
 
 static inline GrXPFactory::AnalysisProperties analysis_properties(
         const GrProcessorAnalysisColor& color, const GrProcessorAnalysisCoverage& coverage,
-        const GrCaps& caps, GrClampType clampType, SkBlendMode mode, bool unclampedPlus) {
+        const GrCaps& caps, GrClampType clampType, SkBlendMode mode, bool unclampedPlus,
+        GrDstReadReason* why = nullptr) {
     using AnalysisProperties = GrXPFactory::AnalysisProperties;
     AnalysisProperties props = AnalysisProperties::kNone;
+    auto readsDst = [&](GrDstReadReason reason) {
+        props |= AnalysisProperties::kReadsDstInShader;
+        if (why) {
+            *why = reason;
+        }
+    };
     bool hasCoverage = GrProcessorAnalysisCoverage::kNone != coverage;
     bool isLCD = GrProcessorAnalysisCoverage::kLCD == coverage;
     BlendFormula formula = [&](){
@@ -445,20 +452,20 @@ static inline GrXPFactory::AnalysisProperties analysis_properties(
             if (SkBlendMode::kSrcOver != mode ||
                 /*!color.isOpaque() ||*/ // See comment in MakeSrcOverXferProcessor about isOpaque.
                 (formula.hasSecondaryOutput() && !caps.shaderCaps()->fDualSourceBlendingSupport)) {
-                props |= AnalysisProperties::kReadsDstInShader;
+                readsDst(GrDstReadReason::kLCD);
             }
         }
     } else {
         // With dual-source blending we never need the destination color in the shader.
         if (!caps.shaderCaps()->fDualSourceBlendingSupport) {
             if (formula.hasSecondaryOutput()) {
-                props |= AnalysisProperties::kReadsDstInShader;
+                readsDst(GrDstReadReason::kCoverageBlend);
             }
         }
     }
 
     if (plus_needs_shader_clamp(mode, unclampedPlus, clampType)) {
-        props |= AnalysisProperties::kReadsDstInShader;
+        readsDst(GrDstReadReason::kPlusClamp);
     }
 
     if (!formula.modifiesDst() || !formula.usesInputColor()) {
@@ -477,6 +484,16 @@ GrXPFactory::AnalysisProperties GrPorterDuffXPFactory::analysisProperties(
         const GrCaps& caps,
         GrClampType clampType) const {
     return analysis_properties(color, coverage, caps, clampType, fBlendMode, fUnclampedPlus);
+}
+
+GrDstReadCause GrPorterDuffXPFactory::dstReadCause(const GrProcessorAnalysisColor& color,
+                                                   const GrProcessorAnalysisCoverage& coverage,
+                                                   const GrCaps& caps,
+                                                   GrClampType clampType) const {
+    GrDstReadReason why = GrDstReadReason::kNone;
+    analysis_properties(color, coverage, caps, clampType, fBlendMode, fUnclampedPlus, &why);
+    return fUnclampedPlus ? GrDstReadCause{why, GrDstReadCause::kAddBlend}
+                          : GrDstReadCause::Mode(why, fBlendMode);
 }
 
 GR_DEFINE_XP_FACTORY_TEST(GrPorterDuffXPFactory)
@@ -561,6 +578,16 @@ sk_sp<const GrXferProcessor> GrPorterDuffXPFactory::MakeSrcOverXferProcessor(
 sk_sp<const GrXferProcessor> GrPorterDuffXPFactory::MakeNoCoverageXP(SkBlendMode blendmode) {
     BlendFormula formula = skgpu::GetBlendFormula(false, false, blendmode);
     return sk_make_sp<PorterDuffXferProcessor>(formula, GrProcessorAnalysisCoverage::kNone);
+}
+
+GrDstReadCause GrPorterDuffXPFactory::SrcOverDstReadCause(const GrProcessorAnalysisColor& color,
+                                                          const GrProcessorAnalysisCoverage& coverage,
+                                                          const GrCaps& caps,
+                                                          GrClampType clampType) {
+    GrDstReadReason why = GrDstReadReason::kNone;
+    analysis_properties(color, coverage, caps, clampType, SkBlendMode::kSrcOver,
+                        /*unclampedPlus=*/false, &why);
+    return GrDstReadCause::Mode(why, SkBlendMode::kSrcOver);
 }
 
 GrXPFactory::AnalysisProperties GrPorterDuffXPFactory::SrcOverAnalysisProperties(

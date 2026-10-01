@@ -15,6 +15,7 @@
 #include "src/gpu/Blend.h"
 #include "src/gpu/Swizzle.h"
 #include "src/gpu/ganesh/GrCaps.h"
+#include "src/gpu/ganesh/GrDstReadCause.h"
 #include "src/gpu/ganesh/GrNonAtomicRef.h"
 #include "src/gpu/ganesh/GrProcessor.h"
 #include "src/gpu/ganesh/GrProcessorAnalysis.h"
@@ -251,6 +252,13 @@ public:
 
     static const GrXPFactory* FromBlendMode(SkBlendMode);
 
+    /** Why the factory's XP reads the destination; asked only when GetAnalysisProperties said it does. */
+    static GrDstReadCause DstReadCause(const GrXPFactory*,
+                                       const GrProcessorAnalysisColor&,
+                                       const GrProcessorAnalysisCoverage&,
+                                       const GrCaps&,
+                                       GrClampType);
+
 protected:
     constexpr GrXPFactory() {}
 
@@ -268,6 +276,14 @@ private:
                                                   const GrProcessorAnalysisCoverage&,
                                                   const GrCaps&,
                                                   GrClampType) const = 0;
+
+    /** Subclasses that can read the destination say why, from the same test analysisProperties uses. */
+    virtual GrDstReadCause dstReadCause(const GrProcessorAnalysisColor&,
+                                        const GrProcessorAnalysisCoverage&,
+                                        const GrCaps&,
+                                        GrClampType) const {
+        return {};
+    }
 };
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop

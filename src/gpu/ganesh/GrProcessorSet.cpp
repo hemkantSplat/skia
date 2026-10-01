@@ -154,6 +154,14 @@ GrProcessorSet::Analysis GrProcessorSet::finalize(
             this->xpFactory(), colorAnalysis.outputColor(), outputCoverage, caps, clampType);
     analysis.fRequiresDstTexture = (props & GrXPFactory::AnalysisProperties::kRequiresDstTexture) ||
                                    colorAnalysis.requiresDstTexture(caps);
+    if (analysis.fRequiresDstTexture) {
+        GrDstReadCause cause =
+                colorAnalysis.requiresDstTexture(caps)
+                        ? GrDstReadCause{GrDstReadReason::kBlender, GrDstReadCause::kBlenderBlend}
+                        : GrXPFactory::DstReadCause(this->xpFactory(), colorAnalysis.outputColor(),
+                                                    outputCoverage, caps, clampType);
+        analysis.fDstReadCause = cause.pack();
+    }
     analysis.fCompatibleWithCoverageAsAlpha &=
             SkToBool(props & GrXPFactory::AnalysisProperties::kCompatibleWithCoverageAsAlpha);
     analysis.fRequiresNonOverlappingDraws =

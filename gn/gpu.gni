@@ -173,6 +173,8 @@ skia_ganesh_private = [
   "$_src/gpu/ganesh/GrDrawingManager.h",
   "$_src/gpu/ganesh/GrDriverBugWorkarounds.cpp",
   "$_src/gpu/ganesh/GrDstProxyView.h",
+  "$_src/gpu/ganesh/GrDstReadCause.cpp",
+  "$_src/gpu/ganesh/GrDstReadCause.h",
   "$_src/gpu/ganesh/GrDynamicAtlas.cpp",
   "$_src/gpu/ganesh/GrDynamicAtlas.h",
   "$_src/gpu/ganesh/GrEagerVertexAllocator.cpp",

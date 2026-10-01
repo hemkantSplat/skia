@@ -222,7 +222,29 @@ protected:
 
         int numDstCopies() const { return fNumDstCopies; }
         int64_t dstCopyPixels() const { return fDstCopyPixels; }
-        void incNumDstCopies(int64_t pixels) { fNumDstCopies++; fDstCopyPixels += pixels; }
+
+        // Dst copies per cause (a packed GrDstReadCause), float target and multisampled pass.
+        struct DstCopyRow {
+            uint16_t fCause;
+            bool fFloatTarget;
+            bool fMSAA;
+            int fCount;
+            int64_t fPixels;
+        };
+        const skia_private::TArray<DstCopyRow>& dstCopyRows() const { return fDstCopyRows; }
+
+        void incNumDstCopies(int64_t pixels, uint16_t cause, bool floatTarget, bool msaa) {
+            fNumDstCopies++;
+            fDstCopyPixels += pixels;
+            for (DstCopyRow& row : fDstCopyRows) {
+                if (row.fCause == cause && row.fFloatTarget == floatTarget && row.fMSAA == msaa) {
+                    row.fCount++;
+                    row.fPixels += pixels;
+                    return;
+                }
+            }
+            fDstCopyRows.push_back({cause, floatTarget, msaa, 1, pixels});
+        }
 
 #if defined(GPU_TEST_UTILS)
         void dump(SkString* out) const;
@@ -235,11 +257,12 @@ protected:
         int fNumPathMaskCacheHits{0};
         int fNumDstCopies{0};
         int64_t fDstCopyPixels{0};
+        skia_private::TArray<DstCopyRow> fDstCopyRows;
 
 #else // GR_GPU_STATS
         void incNumPathMasksGenerated() {}
         void incNumPathMasksCacheHits() {}
-        void incNumDstCopies(int64_t) {}
+        void incNumDstCopies(int64_t, uint16_t, bool, bool) {}
 
 #if defined(GPU_TEST_UTILS)
         void dump(SkString*) const {}

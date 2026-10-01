@@ -41,6 +41,13 @@ private:
                                           const GrCaps&,
                                           GrClampType) const override;
 
+    GrDstReadCause dstReadCause(const GrProcessorAnalysisColor&,
+                                const GrProcessorAnalysisCoverage&,
+                                const GrCaps&,
+                                GrClampType) const override {
+        return {GrDstReadReason::kLightAddClamp, GrDstReadCause::kLightAddBlend};
+    }
+
     sk_sp<const GrXferProcessor> makeXferProcessor(const GrProcessorAnalysisColor&,
                                                    GrProcessorAnalysisCoverage,
                                                    const GrCaps&,

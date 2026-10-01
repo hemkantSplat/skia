@@ -99,6 +99,8 @@ public:
         }
         bool usesNonCoherentHWBlending() const { return fUsesNonCoherentHWBlending; }
         bool unaffectedByDstValue() const { return fUnaffectedByDstValue; }
+        // Why requiresDstTexture() is set (dst-copy attribution); kNone otherwise.
+        GrDstReadCause dstReadCause() const { return GrDstReadCause::Unpack(fDstReadCause); }
 
     private:
         constexpr Analysis(Empty)
@@ -110,7 +112,8 @@ public:
                 , fIsInitialized(true)
                 , fUsesNonCoherentHWBlending(false)
                 , fUnaffectedByDstValue(false)
-                , fInputColorType(kOriginal_InputColorType) {}
+                , fInputColorType(kOriginal_InputColorType)
+                , fDstReadCause(0) {}
         enum InputColorType : uint32_t {
             kOriginal_InputColorType,
             kOverridden_InputColorType,
@@ -130,6 +133,7 @@ public:
         PackedBool fUsesNonCoherentHWBlending : 1;
         PackedBool fUnaffectedByDstValue : 1;
         PackedInputColorType fInputColorType : 2;
+        uint32_t fDstReadCause : GrDstReadCause::kPackedBits;
 
         friend class GrProcessorSet;
     };
