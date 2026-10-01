@@ -38,12 +38,20 @@ public:
         float   weight;
     };
 
-    /** A sharp rounded box at full strength; its edge ramps over half a device pixel. */
+    /**
+     *  A rounded box at full strength; a sharp one's edge ramps over half a device pixel. A blurred
+     *  core (sigma > 0, Make only) is its box convolved with Gaussian(sigma); radii are then unused.
+     */
     struct Core {
         PMColor     color = {0, 0, 0, 0};
         SkRect      box = SkRect::MakeEmpty();
         float       radii[4] = {0, 0, 0, 0};  // one circular radius per corner: TL, TR, BR, BL
         float       pxScale = 1;              // device pixels per local unit
+        float       sigma = 0;                // 0 is sharp
+        // Nonzero: the lobes light only outside the core, as an outer glow never lights its own
+        // box. A sharp core scales them by (1 - coverage); a blurred one subtracts each lobe's part
+        // on the box, taken at the mean of the Gaussian truncated to the box (the caller bounds it).
+        float       maskLobes = 0;
     };
 
     /** The sum of at most kMaxLobes lobes plus the core; null for invalid input. */
@@ -51,7 +59,7 @@ public:
 
     /**
      *  Texel i of `profile` (row-major, wrapped at its width) is the colour at distance i × step,
-     *  interpolated and zero from texel length - 1 on, times `tint`; plus the core.
+     *  interpolated and zero from texel length - 1 on, times `tint`; plus a sharp core.
      */
     static sk_sp<SkShader> MakeRadial(sk_sp<SkImage> profile, int length, float step,
                                       const PMColor& tint, const Core* core = nullptr);

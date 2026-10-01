@@ -242,7 +242,7 @@ SkImageFilters::CropRect ptrToCropRect(WASMPointerF32 rPtr) {
 
 // JS passes glow lobes and cores as flat floats in the structs' field order.
 static_assert(sizeof(SkGlowShader::Lobe) == 10 * sizeof(float));
-static_assert(sizeof(SkGlowShader::Core) == 13 * sizeof(float));
+static_assert(sizeof(SkGlowShader::Core) == 15 * sizeof(float));
 
 SkColor4f ptrToSkColor4f(WASMPointerF32 cPtr) {
     float* fourFloats = reinterpret_cast<float*>(cPtr);

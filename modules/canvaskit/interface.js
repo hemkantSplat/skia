@@ -1249,12 +1249,16 @@ CanvasKit.onRuntimeInitialized = function() {
     return CanvasKit.Shader._MakeColor(cPtr, colorSpace);
   };
 
-  // A glow core is 13 floats: premul RGBA, box LTRB, corner radii TL TR BR BL, pxScale.
-  function copyGlowCoreToWasm(core) {
-    if (core && core.length !== 13) {
-      throw 'a glow core is 13 floats';
+  // A glow core is 15 floats: premul RGBA, box LTRB, corner radii TL TR BR BL, pxScale, sigma,
+  // maskLobes. The 13-float form (no sigma, no mask) is a sharp core that masks nothing.
+  function glowCore(core) {
+    if (core && core.length === 13) {
+      return Array.prototype.slice.call(core).concat([0, 0]);
     }
-    return copy1dArray(core, 'HEAPF32');
+    if (core && core.length !== 15) {
+      throw 'a glow core is 13 or 15 floats';
+    }
+    return core;
   }
 
   // Each lobe is 10 floats: box LTRB, premul RGBA, sigma, weight.
@@ -1263,8 +1267,9 @@ CanvasKit.onRuntimeInitialized = function() {
     if (lobes.length % 10) {
       throw 'glow lobes are 10 floats each';
     }
+    core = glowCore(core);
     var lPtr = copy1dArray(lobes, 'HEAPF32');
-    var cPtr = copyGlowCoreToWasm(core);
+    var cPtr = copy1dArray(core, 'HEAPF32');
     var shader = CanvasKit.Shader._MakeGlow(lPtr, lobes.length / 10, cPtr);
     lPtr && freeArraysThatAreNotMallocedByUsers(lPtr, lobes);
     cPtr && freeArraysThatAreNotMallocedByUsers(cPtr, core);
@@ -1272,8 +1277,9 @@ CanvasKit.onRuntimeInitialized = function() {
   };
 
   CanvasKit.Shader.MakeRadialGlow = function(profile, length, step, tint, core) {
+    core = glowCore(core);
     var tPtr = copyColorToWasm(tint);
-    var cPtr = copyGlowCoreToWasm(core);
+    var cPtr = copy1dArray(core, 'HEAPF32');
     var shader = CanvasKit.Shader._MakeRadialGlow(profile, length, step, tPtr, cPtr);
     cPtr && freeArraysThatAreNotMallocedByUsers(cPtr, core);
     return shader;

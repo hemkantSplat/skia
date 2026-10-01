@@ -4431,8 +4431,10 @@ export interface ShaderFactory {
      * optional sharp rounded-box core. Output is premultiplied and unclamped, in local coordinates.
      * @param lobes - 10 floats per lobe: box LTRB, premultiplied RGBA, sigma (> 0), weight.
      *                At most 32 lobes.
-     * @param core - null, or 13 floats: premultiplied RGBA, box LTRB, circular corner radii
-     *               (TL, TR, BR, BL), device pixels per local unit.
+     * @param core - null, or 15 floats: premultiplied RGBA, box LTRB, circular corner radii
+     *               (TL, TR, BR, BL), device pixels per local unit, sigma (0 sharp; else the box
+     *               blurred by it), maskLobes (nonzero: the lobes light only outside the core).
+     *               13 floats are a sharp core that masks nothing.
      * @returns null for invalid input.
      */
     MakeGlow(lobes: Float32Array | number[], core?: Float32Array | number[] | null): Shader | null;
@@ -4440,7 +4442,8 @@ export interface ShaderFactory {
     /**
      * Returns a shader sampling a radial glow profile: texel i of `profile` (row-major, wrapped at
      * its width, nearest) is the colour at distance i * step from the origin, linearly interpolated
-     * and zero from texel length - 1 on, times `tint`; plus the optional core of MakeGlow.
+     * and zero from texel length - 1 on, times `tint`; plus the optional core of MakeGlow,
+     * which must be sharp (sigma 0).
      * @returns null for invalid input.
      */
     MakeRadialGlow(profile: Image, length: number, step: number, tint: InputColor,
