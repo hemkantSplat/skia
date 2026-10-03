@@ -2080,6 +2080,28 @@ EMSCRIPTEN_BINDINGS(Skia) {
                                                      glyphIDs, expectedCodePoints);
             return actualCodePoints;
         }))
+        .function("getPath", optional_override([](const SkFont& self, SkGlyphID glyph) -> SkPathOrNull {
+            SkPath path;
+            return self.getPath(glyph, &path) ? emscripten::val(path) : emscripten::val::null();
+        }))
+        .function("_getPaths", optional_override([](const SkFont& self, WASMPointerU16 gPtr,
+                                                   int count) -> JSObject {
+            struct Context {
+                JSObject paths = emscripten::val::array();
+                int index = 0;
+            } context;
+            self.getPaths(reinterpret_cast<const SkGlyphID*>(gPtr), count,
+                [](const SkPath* original, const SkMatrix& matrix, void* ctx) {
+                    auto& result = *static_cast<Context*>(ctx);
+                    SkPath path;
+                    if (original) {
+                        original->transform(matrix, &path);
+                    }
+                    result.paths.set(result.index++, original ? emscripten::val(path)
+                                                              : emscripten::val::null());
+                }, &context);
+            return context.paths;
+        }))
         .function("getMetrics", optional_override([](SkFont& self) -> JSObject {
             SkFontMetrics fm;
             self.getMetrics(&fm);
