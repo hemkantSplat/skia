@@ -61,6 +61,8 @@ protected:
     void flatten(SkWriteBuffer&) const override;
 
 private:
+    bool onSupportsRasterF16() const override { return true; }
+
     friend void ::SkRegisterRuntimeImageFilterFlattenable();
     SK_FLATTENABLE_HOOKS(SkRuntimeImageFilter)
 

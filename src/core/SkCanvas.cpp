@@ -773,8 +773,12 @@ void SkCanvas::internalDrawDeviceWithFilter(SkDevice* src,
     }
 
     // Start out with an empty source image, to be replaced with the snapped 'src' device.
+    const bool supportsRasterF16 = std::all_of(filters.begin(), filters.end(),
+            [](const sk_sp<SkImageFilter>& filter) {
+                return !filter || as_IFB(filter)->supportsRasterF16();
+            });
     auto backend = dst->createImageFilteringBackend(src ? src->surfaceProps() : dst->surfaceProps(),
-                                                    filterColorType);
+                                                    filterColorType, supportsRasterF16);
     skif::Stats stats;
     skif::Context ctx{std::move(backend),
                       mapping,
@@ -2298,7 +2302,8 @@ void SkCanvas::onDrawImageRect2(const SkImage* image, const SkRect& src, const S
         // how the image filters will access 'image' (possibly different than just 'outputBounds').
         auto backend = device->createImageFilteringBackend(
                 device->surfaceProps(),
-                image_filter_color_type(device->imageInfo().colorInfo()));
+                image_filter_color_type(device->imageInfo().colorInfo()),
+                as_IFB(realPaint.getImageFilter())->supportsRasterF16());
         auto [mapping, srcBounds] = *mappingAndBounds;
         skif::Stats stats;
         skif::Context ctx{std::move(backend),

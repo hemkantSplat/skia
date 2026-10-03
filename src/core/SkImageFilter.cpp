@@ -247,7 +247,8 @@ skif::FilterResult SkImageFilter_Base::filterImage(const skif::Context& context)
     SkImageFilterCacheKey key(fUniqueID,
                               context.mapping().layerMatrix().asM33(),
                               SkIRect(context.desiredOutput()),
-                              srcGenID, srcSubset);
+                              srcGenID, srcSubset,
+                              context.backend()->colorType(), context.colorSpace());
     if (context.backend()->cache() && context.backend()->cache()->get(key, &result)) {
         context.markCacheHit();
         return result;
@@ -332,6 +333,19 @@ std::optional<skif::DeviceSpace<SkIRect>> SkImageFilter_Base::getOutputBounds(
         // Infinite layer output is infinite device-space output too
         return {};
     }
+}
+
+bool SkImageFilter_Base::supportsRasterF16() const {
+    if (!this->onSupportsRasterF16()) {
+        return false;
+    }
+    for (int i = 0; i < this->countInputs(); ++i) {
+        const SkImageFilter_Base* input = as_IFB(this->getInput(i));
+        if (input && !input->supportsRasterF16()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 SkImageFilter_Base::MatrixCapability SkImageFilter_Base::getCTMCapability() const {

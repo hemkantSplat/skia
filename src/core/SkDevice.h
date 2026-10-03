@@ -514,6 +514,11 @@ private:
     friend class SkCanvas; // for setOrigin/setDeviceCoordinateSystem
     friend class DeviceTestingAccess;
 
+    // Apply the graph's raster capability without changing GPU backend selection.
+    sk_sp<skif::Backend> createImageFilteringBackend(const SkSurfaceProps& surfaceProps,
+                                                    SkColorType colorType,
+                                                    bool supportsRasterF16) const;
+
     // Defaults to a CPU image filtering backend.
     virtual sk_sp<skif::Backend> createImageFilteringBackend(const SkSurfaceProps& surfaceProps,
                                                              SkColorType colorType) const;

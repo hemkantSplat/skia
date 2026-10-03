@@ -77,8 +77,8 @@ static void test_find_existing(skiatest::Reporter* reporter,
     sk_sp<SkImageFilterCache> cache(SkImageFilterCache::Create(kCacheSize));
 
     SkIRect clip = SkIRect::MakeWH(100, 100);
-    SkImageFilterCacheKey key1(0, SkMatrix::I(), clip, image->uniqueID(), image->subset());
-    SkImageFilterCacheKey key2(0, SkMatrix::I(), clip, subset->uniqueID(), subset->subset());
+    SkImageFilterCacheKey key1(0, SkMatrix::I(), clip, image->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
+    SkImageFilterCacheKey key2(0, SkMatrix::I(), clip, subset->uniqueID(), subset->subset(), kN32_SkColorType, nullptr);
 
     SkIPoint offset = SkIPoint::Make(3, 4);
     auto filter = make_filter();
@@ -103,12 +103,12 @@ static void test_dont_find_if_diff_key(skiatest::Reporter* reporter,
 
     SkIRect clip1 = SkIRect::MakeWH(100, 100);
     SkIRect clip2 = SkIRect::MakeWH(200, 200);
-    SkImageFilterCacheKey key0(0, SkMatrix::I(), clip1, image->uniqueID(), image->subset());
-    SkImageFilterCacheKey key1(1, SkMatrix::I(), clip1, image->uniqueID(), image->subset());
+    SkImageFilterCacheKey key0(0, SkMatrix::I(), clip1, image->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
+    SkImageFilterCacheKey key1(1, SkMatrix::I(), clip1, image->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
     SkImageFilterCacheKey key2(0, SkMatrix::Translate(5, 5), clip1,
-                                   image->uniqueID(), image->subset());
-    SkImageFilterCacheKey key3(0, SkMatrix::I(), clip2, image->uniqueID(), image->subset());
-    SkImageFilterCacheKey key4(0, SkMatrix::I(), clip1, subset->uniqueID(), subset->subset());
+                                   image->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
+    SkImageFilterCacheKey key3(0, SkMatrix::I(), clip2, image->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
+    SkImageFilterCacheKey key4(0, SkMatrix::I(), clip1, subset->uniqueID(), subset->subset(), kN32_SkColorType, nullptr);
 
     SkIPoint offset = SkIPoint::Make(3, 4);
     auto filter = make_filter();
@@ -128,8 +128,8 @@ static void test_internal_purge(skiatest::Reporter* reporter, const sk_sp<SkSpec
     sk_sp<SkImageFilterCache> cache(SkImageFilterCache::Create(kCacheSize));
 
     SkIRect clip = SkIRect::MakeWH(100, 100);
-    SkImageFilterCacheKey key1(0, SkMatrix::I(), clip, image->uniqueID(), image->subset());
-    SkImageFilterCacheKey key2(1, SkMatrix::I(), clip, image->uniqueID(), image->subset());
+    SkImageFilterCacheKey key1(0, SkMatrix::I(), clip, image->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
+    SkImageFilterCacheKey key2(1, SkMatrix::I(), clip, image->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
 
     SkIPoint offset = SkIPoint::Make(3, 4);
     auto filter1 = make_filter();
@@ -155,8 +155,8 @@ static void test_explicit_purging(skiatest::Reporter* reporter,
     sk_sp<SkImageFilterCache> cache(SkImageFilterCache::Create(kCacheSize));
 
     SkIRect clip = SkIRect::MakeWH(100, 100);
-    SkImageFilterCacheKey key1(0, SkMatrix::I(), clip, image->uniqueID(), image->subset());
-    SkImageFilterCacheKey key2(1, SkMatrix::I(), clip, subset->uniqueID(), image->subset());
+    SkImageFilterCacheKey key1(0, SkMatrix::I(), clip, image->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
+    SkImageFilterCacheKey key2(1, SkMatrix::I(), clip, subset->uniqueID(), image->subset(), kN32_SkColorType, nullptr);
 
     SkIPoint offset = SkIPoint::Make(3, 4);
     auto filter1 = make_filter();
@@ -348,5 +348,32 @@ DEF_SERIAL_TEST(PurgeImageFilterCache, r) {
     {
         cache = SkImageFilterCache::Get(SkImageFilterCache::CreateIfNecessary::kYes);
         REPORTER_ASSERT(r, cache);
+    }
+}
+
+DEF_TEST(ImageFilterCacheWorkingFormat, reporter) {
+    auto srgb = SkColorSpace::MakeSRGB();
+    auto linear = SkColorSpace::MakeSRGBLinear();
+    const auto bounds = SkIRect::MakeWH(1, 1);
+    SkImageFilterCacheKey n32(1, SkMatrix::I(), bounds, 0, bounds,
+                              kN32_SkColorType, srgb.get());
+    SkImageFilterCacheKey f16(1, SkMatrix::I(), bounds, 0, bounds,
+                              kRGBA_F16_SkColorType, srgb.get());
+    SkImageFilterCacheKey f16Linear(1, SkMatrix::I(), bounds, 0, bounds,
+                                    kRGBA_F16_SkColorType, linear.get());
+    SkImageFilterCacheKey f16Again(1, SkMatrix::I(), bounds, 0, bounds,
+                                   kRGBA_F16_SkColorType, srgb.get());
+    REPORTER_ASSERT(reporter, !(n32 == f16));
+    REPORTER_ASSERT(reporter, !(f16 == f16Linear));
+    REPORTER_ASSERT(reporter, f16 == f16Again);
+
+    auto filter = make_filter();
+    skif::FilterResult found;
+    for (const auto& key : {n32, f16, f16Linear}) {
+        auto cache = SkImageFilterCache::Create(1000000);
+        cache->set(key, filter.get(), {});
+        for (const auto& candidate : {n32, f16, f16Linear, f16Again}) {
+            REPORTER_ASSERT(reporter, cache->get(candidate, &found) == (candidate == key));
+        }
     }
 }

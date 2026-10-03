@@ -35,6 +35,8 @@ protected:
     void flatten(SkWriteBuffer&) const override;
 
 private:
+    bool onSupportsRasterF16() const override { return true; }
+
     SK_FLATTENABLE_HOOKS(SkLocalMatrixImageFilter)
 
     SkLocalMatrixImageFilter(const SkMatrix& localMatrix,

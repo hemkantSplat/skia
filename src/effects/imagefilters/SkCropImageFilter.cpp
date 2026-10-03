@@ -44,6 +44,8 @@ protected:
     void flatten(SkWriteBuffer&) const override;
 
 private:
+    bool onSupportsRasterF16() const override { return true; }
+
     friend void ::SkRegisterCropImageFilterFlattenable();
     SK_FLATTENABLE_HOOKS(SkCropImageFilter)
     static sk_sp<SkFlattenable> LegacyTileCreateProc(SkReadBuffer&);

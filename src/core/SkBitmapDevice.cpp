@@ -7,6 +7,8 @@
 
 #include "src/core/SkBitmapDevice.h"
 
+#include "src/core/SkImageFilter_Base.h"
+
 #include "include/core/SkAlphaType.h"
 #include "include/core/SkBlender.h"
 #include "include/core/SkClipOp.h"
@@ -290,12 +292,10 @@ sk_sp<SkDevice> SkBitmapDevice::createDevice(const CreateInfo& cinfo, const SkPa
     const SkSurfaceProps surfaceProps =
         this->surfaceProps().cloneWithPixelGeometry(cinfo.fPixelGeometry);
 
-    // Need to force L32 for now if we have an image filter.
-    // If filters ever support other colortypes, e.g. F16, we can modify this check.
     SkImageInfo info = cinfo.fInfo;
-    if (layerPaint && layerPaint->getImageFilter()) {
-        // TODO: can we query the imagefilter, to see if it can handle floats (so we don't always
-        //       use N32 when the layer itself was float)?
+    if (layerPaint && layerPaint->getImageFilter() &&
+        (info.colorType() != kRGBA_F16_SkColorType ||
+         !as_IFB(layerPaint->getImageFilter())->supportsRasterF16())) {
         info = info.makeColorType(kN32_SkColorType);
     }
 

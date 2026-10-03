@@ -692,8 +692,8 @@ bool SkImageShader::appendStages(const SkStageRec& rec, const SkShaders::MatrixR
             at = kUnpremul_SkAlphaType;
         }
 
-        // Bicubic filtering naturally produces out of range values on both sides of [0,1].
-        if (sampling.useCubic) {
+        // Full F16 stores signed HDR values, including bicubic overshoot.
+        if (sampling.useCubic && upper.pm.colorType() != kRGBA_F16_SkColorType) {
             p->append(at == kUnpremul_SkAlphaType || fClampAsIfUnpremul
                           ? SkRasterPipelineOp::clamp_01
                           : SkRasterPipelineOp::clamp_gamut);

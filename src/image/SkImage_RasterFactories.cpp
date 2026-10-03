@@ -107,7 +107,8 @@ sk_sp<SkImage> MakeWithFilter(sk_sp<SkImage> src,
         return nullptr;
     }
 
-    sk_sp<skif::Backend> backend = skif::MakeRasterBackend({}, src->colorType());
+    sk_sp<skif::Backend> backend = skif::MakeRasterBackend(
+            {}, src->colorType(), as_IFB(filter)->supportsRasterF16());
     return as_IFB(filter)->makeImageWithFilter(std::move(backend),
                                                std::move(src),
                                                subset,

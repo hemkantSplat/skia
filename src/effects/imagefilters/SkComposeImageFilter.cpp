@@ -44,6 +44,8 @@ protected:
     // by the parent implementation.
 
 private:
+    bool onSupportsRasterF16() const override { return true; }
+
     friend void ::SkRegisterComposeImageFilterFlattenable();
     SK_FLATTENABLE_HOOKS(SkComposeImageFilter)
 

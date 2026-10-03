@@ -48,6 +48,14 @@ protected:
     void flatten(SkWriteBuffer&) const override;
 
 private:
+    bool onSupportsRasterF16() const override {
+#if defined(SK_USE_LEGACY_BLUR_RASTER)
+        return false;
+#else
+        return true;
+#endif
+    }
+
     friend void ::SkRegisterBlurImageFilterFlattenable();
     SK_FLATTENABLE_HOOKS(SkBlurImageFilter)
 

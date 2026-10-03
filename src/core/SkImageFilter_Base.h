@@ -121,6 +121,9 @@ public:
     // Returns true if this image filter graph references the Context's source image.
     bool usesSource() const { return fUsesSrcInput; }
 
+    // Every node must support signed F16 storage; null inputs use the supplied source.
+    bool supportsRasterF16() const;
+
     /**
      *  This call returns the maximum "kind" of CTM for a filter and all of its (non-null) inputs.
      */
@@ -215,6 +218,8 @@ private:
      *  w/o cropping constraints.
      */
     virtual bool onIsColorFilterNode(SkColorFilter** /*filterPtr*/) const { return false; }
+
+    virtual bool onSupportsRasterF16() const { return false; }
 
     /**
      *  Return the most complex matrix type this filter can support (mapping from its parameter
