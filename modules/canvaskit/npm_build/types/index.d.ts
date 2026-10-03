@@ -4418,6 +4418,13 @@ export interface RuntimeEffectFactory {
 /**
  * For more information, see SkShaders.h.
  */
+/** Explicit interpolation overrides legacy flags; omission keeps the legacy overload. */
+export interface GradientInterpolation {
+    inPremul: boolean;
+    colorSpace: "destination" | "srgbLinear" | "lab" | "oklab" | "oklabGamutMap" | "lch" | "oklch" | "oklchGamutMap" | "srgb" | "hsl" | "hwb" | "displayP3" | "rec2020" | "prophotoRGB" | "a98RGB";
+    hueMethod: "shorter" | "longer" | "increasing" | "decreasing";
+}
+
 export interface ShaderFactory {
     /**
      * Returns a shader that combines the given shaders with a BlendMode.
@@ -4490,7 +4497,7 @@ export interface ShaderFactory {
      */
     MakeLinearGradient(start: InputPoint, end: InputPoint, colors: InputFlexibleColorArray,
                        pos: number[] | null, mode: TileMode, localMatrix?: InputMatrix,
-                       flags?: number, colorSpace?: ColorSpace): Shader;
+                       flags?: number, colorSpace?: ColorSpace, interpolation?: GradientInterpolation): Shader;
 
     /**
      * Returns a shader that generates a radial gradient given the center and radius.
@@ -4507,7 +4514,7 @@ export interface ShaderFactory {
      */
     MakeRadialGradient(center: InputPoint, radius: number, colors: InputFlexibleColorArray,
                        pos: number[] | null, mode: TileMode, localMatrix?: InputMatrix,
-                       flags?: number, colorSpace?: ColorSpace): Shader;
+                       flags?: number, colorSpace?: ColorSpace, interpolation?: GradientInterpolation): Shader;
 
     /**
      * Returns a shader that generates a sweep gradient given a center.
@@ -4527,7 +4534,7 @@ export interface ShaderFactory {
     MakeSweepGradient(cx: number, cy: number, colors: InputFlexibleColorArray,
                       pos: number[] | null, mode: TileMode, localMatrix?: InputMatrix | null,
                       flags?: number, startAngle?: AngleInDegrees, endAngle?: AngleInDegrees,
-                      colorSpace?: ColorSpace): Shader;
+                      colorSpace?: ColorSpace, interpolation?: GradientInterpolation): Shader;
 
     /**
      * Returns a shader with Perlin Turbulence.
@@ -4561,7 +4568,7 @@ export interface ShaderFactory {
     MakeTwoPointConicalGradient(start: InputPoint, startRadius: number, end: InputPoint,
                                 endRadius: number, colors: InputFlexibleColorArray,
                                 pos: number[] | null, mode: TileMode, localMatrix?: InputMatrix,
-                                flags?: number, colorSpace?: ColorSpace): Shader;
+                                flags?: number, colorSpace?: ColorSpace, interpolation?: GradientInterpolation): Shader;
 }
 
 /**

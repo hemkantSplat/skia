@@ -1091,6 +1091,42 @@ struct StrokeOpts {
     float precision;
 };
 
+// Decode the public interpolation object and the stop colours once for every gradient geometry.
+struct InterpolatedGradient {
+    SkGradientShader::Interpolation info;
+    std::vector<SkColor4f> converted;
+    const SkColor4f* colors = nullptr;
+    sk_sp<SkColorSpace> space;
+
+    bool read(val value, WASMPointerF32 cPtr, SkColorType colorType, int count, sk_sp<SkColorSpace> colorSpace) {
+        using I = SkGradientShader::Interpolation;
+        static constexpr const char* spaces[] = {"destination", "srgbLinear", "lab", "oklab", "oklabGamutMap", "lch", "oklch", "oklchGamutMap", "srgb", "hsl", "hwb", "displayP3", "rec2020", "prophotoRGB", "a98RGB"};
+        static constexpr const char* hues[] = {"shorter", "longer", "increasing", "decreasing"};
+        static_assert(std::size(spaces) == I::kColorSpaceCount);
+        static_assert(std::size(hues) == I::kHueMethodCount);
+        const auto spaceName = value["colorSpace"].as<std::string>();
+        const auto hue = value["hueMethod"].as<std::string>();
+        int si = 0, hi = 0;
+        while (si < I::kColorSpaceCount && spaceName != spaces[si]) { ++si; }
+        while (hi < I::kHueMethodCount && hue != hues[hi]) { ++hi; }
+        if (si == I::kColorSpaceCount || hi == I::kHueMethodCount) { return false; }
+        info.fInPremul = value["inPremul"].as<bool>() ? I::InPremul::kYes : I::InPremul::kNo;
+        info.fColorSpace = static_cast<I::ColorSpace>(si);
+        info.fHueMethod = static_cast<I::HueMethod>(hi);
+        if (colorType == kRGBA_F32_SkColorType) {
+            colors = reinterpret_cast<const SkColor4f*>(cPtr);
+            space = std::move(colorSpace);
+            return true;
+        }
+        if (colorType != kRGBA_8888_SkColorType) { return false; }
+        // Packed stops are sRGB; a null colour space means sRGB.
+        const auto* packed = reinterpret_cast<const SkColor*>(cPtr);
+        for (int i = 0; i < count; ++i) { converted.push_back(SkColor4f::FromColor(packed[i])); }
+        colors = converted.data();
+        return true;
+    }
+};
+
 bool ApplyStroke(SkPath& path, StrokeOpts opts) {
     SkPaint p;
     p.setStyle(SkPaint::kStroke_Style);
@@ -2684,10 +2720,16 @@ EMSCRIPTEN_BINDINGS(Skia) {
                                          WASMPointerF32 pPtr,
                                          int count, SkTileMode mode, uint32_t flags,
                                          WASMPointerF32 mPtr,
-                                         sk_sp<SkColorSpace> colorSpace)->sk_sp<SkShader> {
+                                         sk_sp<SkColorSpace> colorSpace, val interpolation)->sk_sp<SkShader> {
              const SkPoint* points = reinterpret_cast<const SkPoint*>(fourFloatsPtr);
              const SkScalar* positions = reinterpret_cast<const SkScalar*>(pPtr);
              OptionalMatrix localMatrix(mPtr);
+            if (!interpolation.isNull() && !interpolation.isUndefined()) {
+                InterpolatedGradient g;
+                if (!g.read(interpolation, cPtr, colorType, count, colorSpace)) { return nullptr; }
+                return SkGradientShader::MakeLinear(points, g.colors, g.space, positions, count, mode, g.info,
+                                                     mPtr ? &localMatrix : nullptr);
+            }
 
              if (colorType == SkColorType::kRGBA_F32_SkColorType) {
                  const SkColor4f* colors  = reinterpret_cast<const SkColor4f*>(cPtr);
@@ -2709,9 +2751,16 @@ EMSCRIPTEN_BINDINGS(Skia) {
                                          WASMPointerF32 pPtr,
                                          int count, SkTileMode mode, uint32_t flags,
                                          WASMPointerF32 mPtr,
-                                         sk_sp<SkColorSpace> colorSpace)->sk_sp<SkShader> {
+                                         sk_sp<SkColorSpace> colorSpace, val interpolation)->sk_sp<SkShader> {
             const SkScalar* positions = reinterpret_cast<const SkScalar*>(pPtr);
             OptionalMatrix localMatrix(mPtr);
+            if (!interpolation.isNull() && !interpolation.isUndefined()) {
+                InterpolatedGradient g;
+                if (!g.read(interpolation, cPtr, colorType, count, colorSpace)) { return nullptr; }
+                return SkGradientShader::MakeRadial({cx, cy}, radius, g.colors, g.space, positions, count, mode, g.info,
+                                                     mPtr ? &localMatrix : nullptr);
+            }
+
             if (colorType == SkColorType::kRGBA_F32_SkColorType) {
                const SkColor4f* colors  = reinterpret_cast<const SkColor4f*>(cPtr);
                return SkGradientShader::MakeRadial({cx, cy}, radius, colors, colorSpace,
@@ -2733,9 +2782,16 @@ EMSCRIPTEN_BINDINGS(Skia) {
                                          SkScalar startAngle, SkScalar endAngle,
                                          uint32_t flags,
                                          WASMPointerF32 mPtr,
-                                         sk_sp<SkColorSpace> colorSpace)->sk_sp<SkShader> {
+                                         sk_sp<SkColorSpace> colorSpace, val interpolation)->sk_sp<SkShader> {
             const SkScalar* positions = reinterpret_cast<const SkScalar*>(pPtr);
             OptionalMatrix localMatrix(mPtr);
+            if (!interpolation.isNull() && !interpolation.isUndefined()) {
+                InterpolatedGradient g;
+                if (!g.read(interpolation, cPtr, colorType, count, colorSpace)) { return nullptr; }
+                return SkGradientShader::MakeSweep(cx, cy, g.colors, g.space, positions, count, mode, startAngle, endAngle, g.info,
+                                                     mPtr ? &localMatrix : nullptr);
+            }
+
             if (colorType == SkColorType::kRGBA_F32_SkColorType) {
                const SkColor4f* colors  = reinterpret_cast<const SkColor4f*>(cPtr);
                return SkGradientShader::MakeSweep(cx, cy, colors, colorSpace, positions, count,
@@ -2782,10 +2838,16 @@ EMSCRIPTEN_BINDINGS(Skia) {
                                          WASMPointerF32 pPtr,
                                          int count, SkTileMode mode, uint32_t flags,
                                          WASMPointerF32 mPtr,
-                                         sk_sp<SkColorSpace> colorSpace)->sk_sp<SkShader> {
+                                         sk_sp<SkColorSpace> colorSpace, val interpolation)->sk_sp<SkShader> {
             const SkPoint* startAndEnd = reinterpret_cast<const SkPoint*>(fourFloatsPtr);
             const SkScalar* positions = reinterpret_cast<const SkScalar*>(pPtr);
             OptionalMatrix localMatrix(mPtr);
+            if (!interpolation.isNull() && !interpolation.isUndefined()) {
+                InterpolatedGradient g;
+                if (!g.read(interpolation, cPtr, colorType, count, colorSpace)) { return nullptr; }
+                return SkGradientShader::MakeTwoPointConical(startAndEnd[0], startRadius, startAndEnd[1], endRadius, g.colors, g.space, positions, count, mode, g.info,
+                                                     mPtr ? &localMatrix : nullptr);
+            }
 
             if (colorType == SkColorType::kRGBA_F32_SkColorType) {
                const SkColor4f* colors  = reinterpret_cast<const SkColor4f*>(cPtr);

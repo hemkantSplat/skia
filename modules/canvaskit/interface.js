@@ -1347,7 +1347,7 @@ CanvasKit.onRuntimeInitialized = function() {
   CanvasKit.Shader.Blend = CanvasKit.Shader.MakeBlend;
   CanvasKit.Shader.Color = CanvasKit.Shader.MakeColor;
 
-  CanvasKit.Shader.MakeLinearGradient = function(start, end, colors, pos, mode, localMatrix, flags, colorSpace) {
+  CanvasKit.Shader.MakeLinearGradient = function(start, end, colors, pos, mode, localMatrix, flags, colorSpace, interpolation) {
     colorSpace = colorSpace || null;
     var cPtrInfo = copyFlexibleColorArray(colors);
     var posPtr = copy1dArray(pos, 'HEAPF32');
@@ -1360,14 +1360,14 @@ CanvasKit.onRuntimeInitialized = function() {
     startEndPts.set(end, 2);
 
     var lgs = CanvasKit.Shader._MakeLinearGradient(_scratchFourFloatsAPtr, cPtrInfo.colorPtr, cPtrInfo.colorType, posPtr,
-                                                   cPtrInfo.count, mode, flags, localMatrixPtr, colorSpace);
+                                                   cPtrInfo.count, mode, flags, localMatrixPtr, colorSpace, interpolation || null);
 
     freeArraysThatAreNotMallocedByUsers(cPtrInfo.colorPtr, colors);
     pos && freeArraysThatAreNotMallocedByUsers(posPtr, pos);
     return lgs;
   };
 
-  CanvasKit.Shader.MakeRadialGradient = function(center, radius, colors, pos, mode, localMatrix, flags, colorSpace) {
+  CanvasKit.Shader.MakeRadialGradient = function(center, radius, colors, pos, mode, localMatrix, flags, colorSpace, interpolation) {
     colorSpace = colorSpace || null;
     var cPtrInfo = copyFlexibleColorArray(colors);
     var posPtr = copy1dArray(pos, 'HEAPF32');
@@ -1376,14 +1376,14 @@ CanvasKit.onRuntimeInitialized = function() {
 
     var rgs = CanvasKit.Shader._MakeRadialGradient(center[0], center[1], radius, cPtrInfo.colorPtr,
                                                    cPtrInfo.colorType, posPtr, cPtrInfo.count, mode,
-                                                   flags, localMatrixPtr, colorSpace);
+                                                   flags, localMatrixPtr, colorSpace, interpolation || null);
 
     freeArraysThatAreNotMallocedByUsers(cPtrInfo.colorPtr, colors);
     pos && freeArraysThatAreNotMallocedByUsers(posPtr, pos);
     return rgs;
   };
 
-  CanvasKit.Shader.MakeSweepGradient = function(cx, cy, colors, pos, mode, localMatrix, flags, startAngle, endAngle, colorSpace) {
+  CanvasKit.Shader.MakeSweepGradient = function(cx, cy, colors, pos, mode, localMatrix, flags, startAngle, endAngle, colorSpace, interpolation) {
     colorSpace = colorSpace || null;
     var cPtrInfo = copyFlexibleColorArray(colors);
     var posPtr = copy1dArray(pos, 'HEAPF32');
@@ -1395,7 +1395,7 @@ CanvasKit.onRuntimeInitialized = function() {
     var sgs = CanvasKit.Shader._MakeSweepGradient(cx, cy, cPtrInfo.colorPtr, cPtrInfo.colorType, posPtr,
                                                   cPtrInfo.count, mode,
                                                   startAngle, endAngle, flags,
-                                                  localMatrixPtr, colorSpace);
+                                                  localMatrixPtr, colorSpace, interpolation || null);
 
     freeArraysThatAreNotMallocedByUsers(cPtrInfo.colorPtr, colors);
     pos && freeArraysThatAreNotMallocedByUsers(posPtr, pos);
@@ -1403,7 +1403,7 @@ CanvasKit.onRuntimeInitialized = function() {
   };
 
   CanvasKit.Shader.MakeTwoPointConicalGradient = function(start, startRadius, end, endRadius,
-                                                          colors, pos, mode, localMatrix, flags, colorSpace) {
+                                                          colors, pos, mode, localMatrix, flags, colorSpace, interpolation) {
     colorSpace = colorSpace || null;
     var cPtrInfo = copyFlexibleColorArray(colors);
     var posPtr =   copy1dArray(pos, 'HEAPF32');
@@ -1417,7 +1417,7 @@ CanvasKit.onRuntimeInitialized = function() {
 
     var rgs = CanvasKit.Shader._MakeTwoPointConicalGradient(_scratchFourFloatsAPtr,
                           startRadius, endRadius, cPtrInfo.colorPtr, cPtrInfo.colorType,
-                          posPtr, cPtrInfo.count, mode, flags, localMatrixPtr, colorSpace);
+                          posPtr, cPtrInfo.count, mode, flags, localMatrixPtr, colorSpace, interpolation || null);
 
     freeArraysThatAreNotMallocedByUsers(cPtrInfo.colorPtr, colors);
     pos && freeArraysThatAreNotMallocedByUsers(posPtr, pos);
