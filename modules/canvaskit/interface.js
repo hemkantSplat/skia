@@ -1220,6 +1220,10 @@ CanvasKit.onRuntimeInitialized = function() {
     CanvasKit.Surface.prototype.drawOnce = CanvasKit.Surface.prototype._drawOnceInternal;
   }
 
+  CanvasKit.Canvas.prototype.clipShader = function(shader, clipOp) {
+    this._clipShader(shader, clipOp === undefined ? CanvasKit.ClipOp.Intersect : clipOp);
+  };
+
   CanvasKit.PathEffect.MakeDash = function(intervals, phase) {
     if (!phase) {
       phase = 0;

@@ -1586,6 +1586,9 @@ export interface Canvas extends EmbindObject<"Canvas"> {
      * @param op
      * @param doAntiAlias
      */
+    /** Intersects with shader alpha by default; Difference complements the alpha mask. */
+    clipShader(shader: Shader, clipOp?: ClipOp): void;
+
     clipPath(path: Path, op: ClipOp, doAntiAlias: boolean): void;
 
     /**
@@ -3208,7 +3211,10 @@ export interface RuntimeEffect extends EmbindObject<"RuntimeEffect"> {
 /**
  * See SkShader.h for more on this class. The objects are opaque.
  */
-export type Shader = EmbindObject<"Shader">;
+export interface Shader extends EmbindObject<"Shader"> {
+    /** Composes a colour filter with this shader; MakeLuma converts RGB to mask alpha. */
+    makeWithColorFilter(filter: ColorFilter): Shader;
+}
 
 export interface Surface extends EmbindObject<"Surface"> {
     /**

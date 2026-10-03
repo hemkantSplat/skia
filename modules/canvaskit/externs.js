@@ -346,6 +346,7 @@ var CanvasKit = {
   Canvas: {
     // public API (from C++ bindings)
     clipPath: function() {},
+    _clipShader: function() {},
     getSaveCount: function() {},
     makeSurface: function() {},
     restore: function() {},
@@ -1342,6 +1343,9 @@ CanvasKit.RuntimeEffect.prototype.makeShaderWithChildren = function() {};
 CanvasKit.RuntimeEffect.prototype.makeColorFilter = function() {};
 
 // Define StrokeOpts object
+CanvasKit.Canvas.prototype.clipShader = function() {};
+CanvasKit.Shader.prototype.makeWithColorFilter = function() {};
+
 var StrokeOpts = {};
 StrokeOpts.prototype.width;
 StrokeOpts.prototype.miter_limit;

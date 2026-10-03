@@ -1651,6 +1651,7 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .function("_clear", optional_override([](SkCanvas& self, WASMPointerF32 cPtr) {
             self.clear(ptrToSkColor4f(cPtr));
         }))
+        .function("_clipShader", &SkCanvas::clipShader)
         .function("clipPath", select_overload<void (const SkPath&, SkClipOp, bool)>(&SkCanvas::clipPath))
         .function("_clipRRect", optional_override([](SkCanvas& self, WASMPointerF32 fPtr, SkClipOp op, bool doAntiAlias) {
             self.clipRRect(ptrToSkRRect(fPtr), op, doAntiAlias);
@@ -2638,6 +2639,7 @@ EMSCRIPTEN_BINDINGS(Skia) {
 
     class_<SkShader>("Shader")
         .smart_ptr<sk_sp<SkShader>>("sk_sp<Shader>")
+        .function("makeWithColorFilter", &SkShader::makeWithColorFilter)
         .class_function("MakeBlend", select_overload<sk_sp<SkShader>(SkBlendMode, sk_sp<SkShader>, sk_sp<SkShader>)>(&SkShaders::Blend))
         .class_function("_MakeColor",
             optional_override([](WASMPointerF32 cPtr, sk_sp<SkColorSpace> colorSpace)->sk_sp<SkShader> {
