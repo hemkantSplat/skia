@@ -2628,6 +2628,20 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .function("_transform", select_overload<void(SkPath&, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar)>(&ApplyTransform))
 
         // PathEffects
+        .function("_makeWithEffect", optional_override([](const SkPath& self,
+                                                         sk_sp<SkPathEffect> effect,
+                                                         bool stroke,
+                                                         SkScalar resScale) -> SkPathOrNull {
+            if (!effect || !(resScale > 0) || !std::isfinite(resScale)) {
+                return emscripten::val::null();
+            }
+            // A stroke's effects act on its centreline (dash needs that); a fill's act on its outline.
+            SkStrokeRec rec(stroke ? SkStrokeRec::kHairline_InitStyle : SkStrokeRec::kFill_InitStyle);
+            rec.setResScale(resScale);
+            SkPath path;
+            return effect->filterPath(&path, self, &rec, nullptr) ? emscripten::val(path)
+                                                                 : emscripten::val::null();
+        }))
         .function("_dash", &ApplyDash)
         .function("_trim", &ApplyTrim)
         .function("_stroke", &ApplyStroke)

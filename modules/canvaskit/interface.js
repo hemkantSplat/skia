@@ -315,6 +315,13 @@ CanvasKit.onRuntimeInitialized = function() {
     return this;
   };
 
+  CanvasKit.Path.prototype.makeWithEffect = function(effect, style, resScale) {
+    if (style !== 'fill' && style !== 'stroke') {
+      return null;
+    }
+    return this._makeWithEffect(effect, style === 'stroke', resScale === undefined ? 1 : resScale);
+  };
+
   CanvasKit.Path.prototype.dash = function(on, off, phase) {
     if (this._dash(on, off, phase)) {
       return this;

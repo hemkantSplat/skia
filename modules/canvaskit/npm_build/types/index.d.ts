@@ -2635,6 +2635,10 @@ export interface Paint extends EmbindObject<"Paint"> {
  * See SkPath.h for more information on this class.
  */
 export interface Path extends EmbindObject<"Path"> {
+    /** New geometry: 'stroke' filters the centreline (hairline record), 'fill' the outline.
+     *  Null if the effect refuses (dash on a fill) or resScale is not finite and positive. */
+    makeWithEffect(effect: PathEffect, style: "fill" | "stroke", resScale?: number): Path | null;
+
     /**
      * Appends arc to Path, as the start of new contour. Arc added is part of ellipse
      * bounded by oval, from startAngle through sweepAngle. Both startAngle and
