@@ -736,6 +736,7 @@ var CanvasKit = {
   PathEffect: {
     MakeCorner: function() {},
     MakeDash: function() {},
+    MakeTrim: function() {},
     MakeDiscrete: function() {},
     MakePath1D: function() {},
     MakeLine2D: function() {},

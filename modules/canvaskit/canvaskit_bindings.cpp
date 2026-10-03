@@ -2442,6 +2442,7 @@ EMSCRIPTEN_BINDINGS(Skia) {
     class_<SkPathEffect>("PathEffect")
         .smart_ptr<sk_sp<SkPathEffect>>("sk_sp<PathEffect>")
         .class_function("MakeCorner", &SkCornerPathEffect::Make)
+        .class_function("MakeTrim", &SkTrimPathEffect::Make)
         .class_function("_MakeDash", optional_override([](WASMPointerF32 cptr, int count,
                                                           SkScalar phase)->sk_sp<SkPathEffect> {
             const float* intervals = reinterpret_cast<const float*>(cptr);
@@ -3135,6 +3136,10 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .value("Solid",  SkBlurStyle::kSolid_SkBlurStyle)
         .value("Outer",  SkBlurStyle::kOuter_SkBlurStyle)
         .value("Inner",  SkBlurStyle::kInner_SkBlurStyle);
+
+    enum_<SkTrimPathEffect::Mode>("TrimPathEffectMode")
+        .value("Normal", SkTrimPathEffect::Mode::kNormal)
+        .value("Inverted", SkTrimPathEffect::Mode::kInverted);
 
     enum_<SkClipOp>("ClipOp")
         .value("Difference", SkClipOp::kDifference)

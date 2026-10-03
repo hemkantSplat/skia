@@ -491,6 +491,7 @@ export interface CanvasKit {
     readonly ImageFilter: ImageFilterFactory;
     readonly MaskFilter: MaskFilterFactory;
     readonly PathEffect: PathEffectFactory;
+    readonly TrimPathEffectMode: { Normal: TrimPathEffectMode; Inverted: TrimPathEffectMode };
     readonly RuntimeEffect: RuntimeEffectFactory;
     readonly Shader: ShaderFactory;
     readonly TextBlob: TextBlobFactory;
@@ -4294,7 +4295,11 @@ export interface PathConstructorAndFactory extends DefaultConstructor<Path> {
 /**
  * See SkPathEffect.h for more details.
  */
+export type TrimPathEffectMode = EmbindEnumEntity;
+
 export interface PathEffectFactory {
+    /** Retained normalized-length trim; Inverted preserves the complement. */
+    MakeTrim(start: number, end: number, mode: TrimPathEffectMode): PathEffect | null;
     /**
      * Returns a PathEffect that can turn sharp corners into rounded corners.
      * @param radius - if <=0, returns null
