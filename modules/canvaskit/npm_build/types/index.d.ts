@@ -3151,7 +3151,16 @@ export interface PictureRecorder extends EmbindObject<"PictureRecorder"> {
 /**
  * See SkRuntimeEffect.h for more details.
  */
+export interface RuntimeEffectBuilder extends EmbindObject<"RuntimeEffectBuilder"> {
+    /** Copies packed floats; integer uniforms are converted as in makeShader. False on size mismatch. */
+    setUniforms(uniforms: Float32Array | number[] | MallocObj): boolean;
+    /** Binds a retained shader child by name. False for an unknown or non-shader child. */
+    setChild(name: string, shader: Shader | null): boolean;
+}
+
 export interface RuntimeEffect extends EmbindObject<"RuntimeEffect"> {
+    /** Copies packed uniforms into a native builder; null on size mismatch or a non-shader effect. */
+    makeBuilder(uniforms: Float32Array | number[] | MallocObj): RuntimeEffectBuilder | null;
     /**
      * Returns a shader executed using the given uniform data.
      * @param uniforms
@@ -4022,6 +4031,9 @@ export interface FontMgrFactory {
  * See //include/effects/SkImageFilters.h for more.
  */
 export interface ImageFilterFactory {
+    /** Named dynamic children; null inputs use the source. Snapshots builder state. Radius defaults to 0. */
+    MakeRuntimeShader(builder: RuntimeEffectBuilder, childNames: string[],
+                      inputs: (ImageFilter | null)[], sampleRadius?: number): ImageFilter | null;
     /**
      * Create a filter that computes k1*fg*bg + k2*fg + k3*bg + k4 per channel (SVG feComposite
      * arithmetic), on premultiplied colors.

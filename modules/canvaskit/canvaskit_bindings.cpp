@@ -2215,6 +2215,26 @@ EMSCRIPTEN_BINDINGS(Skia) {
 
     class_<SkImageFilter>("ImageFilter")
         .smart_ptr<sk_sp<SkImageFilter>>("sk_sp<ImageFilter>")
+#ifdef CK_INCLUDE_RUNTIME_EFFECT
+        .class_function("_MakeRuntimeShader", optional_override([](
+                const SkRuntimeEffectBuilder& builder, val childNames, val inputs,
+                SkScalar sampleRadius)->sk_sp<SkImageFilter> {
+            const auto count = childNames["length"].as<unsigned>();
+            if (count != inputs["length"].as<unsigned>() || !std::isfinite(sampleRadius) ||
+                sampleRadius < 0) { return nullptr; }
+            std::vector<std::string> names(count);
+            std::vector<std::string_view> views(count);
+            std::vector<sk_sp<SkImageFilter>> filters(count);
+            for (unsigned i = 0; i < count; ++i) {
+                if (childNames[i].isNull() || childNames[i].isUndefined()) { return nullptr; }
+                names[i] = childNames[i].as<std::string>();
+                views[i] = names[i];
+                filters[i] = inputs[i].isNull() ? nullptr : inputs[i].as<sk_sp<SkImageFilter>>();
+            }
+            return SkImageFilters::RuntimeShader(builder, sampleRadius, views.data(),
+                                                  filters.data(), count);
+        }))
+#endif
         .function("_getOutputBounds", optional_override([](const SkImageFilter& self, WASMPointerF32 bPtr, WASMPointerF32 mPtr, WASMPointerU32 oPtr)->void {
           SkRect* rect = reinterpret_cast<SkRect*>(bPtr);
           OptionalMatrix ctm(mPtr);
@@ -2812,7 +2832,35 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .field("shader",     &SkRuntimeEffect::TracedShader::shader)
         .field("debugTrace", &SkRuntimeEffect::TracedShader::debugTrace);
 
+    class_<SkRuntimeEffectBuilder>("RuntimeEffectBuilder")
+        .smart_ptr<std::shared_ptr<SkRuntimeEffectBuilder>>("shared_ptr<RuntimeEffectBuilder>")
+        .function("_setUniforms", optional_override([](SkRuntimeEffectBuilder& self,
+                                                      WASMPointerF32 ptr, size_t bytes) {
+            if (bytes != self.effect()->uniformSize()) { return false; }
+            auto data = SkData::MakeWithCopy(reinterpret_cast<void*>(ptr), bytes);
+            castUniforms(data->writable_data(), bytes, *self.effect());
+            for (const auto& u : self.effect()->uniforms()) {
+                self.uniform(u.name).set(data->bytes() + u.offset, u.sizeInBytes());
+            }
+            return true;
+        }))
+        .function("setChild", optional_override([](SkRuntimeEffectBuilder& self,
+                                                    std::string name, sk_sp<SkShader> shader) {
+            const auto* child = self.effect()->findChild(name);
+            if (!child || child->type != SkRuntimeEffect::ChildType::kShader) { return false; }
+            self.child(name) = std::move(shader);
+            return true;
+        }));
+
     class_<SkRuntimeEffect>("RuntimeEffect")
+        .function("_makeBuilder", optional_override([](sk_sp<SkRuntimeEffect> self,
+                                                       WASMPointerF32 ptr, size_t bytes)
+                ->std::shared_ptr<SkRuntimeEffectBuilder> {
+            if (!self->allowShader() || bytes != self->uniformSize()) { return nullptr; }
+            auto data = SkData::MakeWithCopy(reinterpret_cast<void*>(ptr), bytes);
+            castUniforms(data->writable_data(), bytes, *self);
+            return std::make_shared<SkRuntimeEffectBuilder>(std::move(self), std::move(data));
+        }))
         .smart_ptr<sk_sp<SkRuntimeEffect>>("sk_sp<RuntimeEffect>")
         .class_function("_Make", optional_override([](std::string sksl,
                                                      emscripten::val errHandler

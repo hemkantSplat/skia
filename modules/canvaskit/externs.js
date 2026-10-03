@@ -305,6 +305,11 @@ var CanvasKit = {
     _compute: function() {},
   },
 
+  RuntimeEffectBuilder: {
+    prototype: { setUniforms: function() {} },
+    _setUniforms: function() {},
+    setChild: function() {},
+  },
   RuntimeEffect: {
     // public API (from JS bindings)
     Make: function() {},
@@ -317,6 +322,7 @@ var CanvasKit = {
     prototype: {
       makeShader: function() {},
       makeShaderWithChildren: function() {},
+      makeBuilder: function() {},
       makeColorFilter: function() {},
       makeBlender: function() {},
     },
@@ -326,6 +332,7 @@ var CanvasKit = {
     _MakeForColorFilter: function() {},
     _makeShader: function() {},
     _makeShaderWithChildren: function() {},
+    _makeBuilder: function() {},
     _makeColorFilter: function() {},
     _makeBlender: function() {},
   },
@@ -639,6 +646,8 @@ var CanvasKit = {
     MakeOffset: function() {},
     MakeShader: function() {},
     MakeTransformBlur: function() {},
+    MakeRuntimeShader: function() {},
+    _MakeRuntimeShader: function() {},
 
     prototype: {
       getOutputBounds: function() {},
