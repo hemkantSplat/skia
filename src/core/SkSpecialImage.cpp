@@ -19,11 +19,9 @@
 #include "src/image/SkImage_Base.h"
 #include "src/shaders/SkImageShader.h"
 
-// Currently, the raster imagefilters can only handle certain imageinfos. Call this to know if
-// a given info is supported.
+// Preserve full F16 storage for float-capable raster filter graphs.
 static bool valid_for_imagefilters(const SkImageInfo& info) {
-    // no support for other swizzles/depths yet
-    return info.colorType() == kN32_SkColorType;
+    return info.colorType() == kN32_SkColorType || info.colorType() == kRGBA_F16_SkColorType;
 }
 
 SkSpecialImage::SkSpecialImage(const SkIRect& subset,
@@ -136,7 +134,7 @@ sk_sp<SkSpecialImage> MakeFromRaster(const SkIRect& subset,
 
     const SkBitmap* srcBM = &bm;
     SkBitmap tmp;
-    // ImageFilters only handle N32 at the moment, so force our src to be that
+    // Other raster formats retain the legacy N32 conversion.
     if (!valid_for_imagefilters(bm.info())) {
         if (!tmp.tryAllocPixels(bm.info().makeColorType(kN32_SkColorType)) ||
             !bm.readPixels(tmp.info(), tmp.getPixels(), tmp.rowBytes(), 0, 0))
@@ -159,7 +157,7 @@ sk_sp<SkSpecialImage> CopyFromRaster(const SkIRect& subset,
 
     SkBitmap tmp;
     SkImageInfo info = bm.info().makeDimensions(subset.size());
-    // As in MakeFromRaster, must force src to N32 for ImageFilters
+    // Match the supported storage formats in MakeFromRaster.
     if (!valid_for_imagefilters(bm.info())) {
         info = info.makeColorType(kN32_SkColorType);
     }
