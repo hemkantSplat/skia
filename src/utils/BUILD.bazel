@@ -56,6 +56,7 @@ skia_filegroup(
         "SkParseColor.cpp",
         "SkParsePath.cpp",
         "SkPathOffset.cpp",
+        "SkWidthStroke.cpp",
         "SkPatchUtils.cpp",
         "SkPolyUtils.cpp",
         "SkShadowTessellator.cpp",

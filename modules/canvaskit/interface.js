@@ -8,6 +8,23 @@
 CanvasKit.onRuntimeInitialized = function() {
   // All calls to 'this' need to go in externs.js so closure doesn't minify them away.
 
+  CanvasKit.MakeWidthStroke = function(rows, options) {
+    if (!(rows instanceof Float32Array) || rows.length < 16 || rows.length % 8 || !options ||
+        !Number.isFinite(options['envelope']) || options['envelope'] <= 0 ||
+        !Number.isFinite(options['pathLength']) || options['pathLength'] < 0 ||
+        typeof options['mergeJoins'] !== 'boolean' || typeof options['subdivide'] !== 'boolean' ||
+        (options['batches'] !== 'none' && options['batches'] !== 'disjoint')) {
+      return null;
+    }
+    var ptr = copy1dArray(rows, 'HEAPF32');
+    try {
+      return CanvasKit._MakeWidthStroke(ptr, rows.length, options['envelope'], options['pathLength'],
+          options['mergeJoins'], options['batches'] === 'disjoint' ? 1 : 0, options['subdivide']);
+    } finally {
+      freeArraysThatAreNotMallocedByUsers(ptr, rows);
+    }
+  };
+
   _scratchColor = CanvasKit.Malloc(Float32Array, 4); // 4 color scalars.
   _scratchColorPtr = _scratchColor['byteOffset'];
 

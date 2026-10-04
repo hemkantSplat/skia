@@ -21,6 +21,7 @@ skia_filegroup(
         "SkParse.h",
         "SkParsePath.h",
         "SkPathOffset.h",
+        "SkWidthStroke.h",
         "SkShadowUtils.h",
         "SkTextUtils.h",
         "SkTraceEventPhase.h",

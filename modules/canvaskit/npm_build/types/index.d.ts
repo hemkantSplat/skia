@@ -25,6 +25,7 @@ export interface DstCopyCause {
 }
 
 export interface CanvasKit {
+    MakeWidthStroke(rows: Float32Array, options: WidthStrokeOptions): WidthStroke | null;
     // Helpers
     /**
      * Constructs a Color with the same API as CSS's rgba(), that is
@@ -5384,4 +5385,27 @@ export interface ResizePolicyEnumValues extends EmbindEnum {
     // Same kScaleToFit if the text doesn't fit at the specified font size.
     // Otherwise, same as kNone.
     DownscaleToFit: ResizePolicy;
+}
+
+export interface WidthStrokeOptions {
+  envelope: number;
+  pathLength: number;
+  mergeJoins: boolean;
+  batches: "none" | "disjoint";
+  subdivide: boolean;
+}
+/** Ranges address the global triangle index stream, in index elements. */
+export interface WidthStrokeRange { start: number; count: number }
+export interface WidthStrokeChunk extends WidthStrokeRange { batch: number }
+export interface WidthStroke extends EmbindObject<"WidthStroke"> {
+  /** Retained chunk handle; delete the returned reference after use. Null outside chunkCount(). */
+  vertices(chunk: number): Vertices | null;
+  chunkCount(): number;
+  chunks(): WidthStrokeChunk[];
+  batches(): WidthStrokeRange[];
+  depositCuts(): number[];
+  bounds(): number[];
+  vertexCount(): number;
+  /** Independent diagnostic copies; drawing never calls this method. */
+  geometry(): { positions: Float32Array; uv: Float32Array; indices: Uint32Array };
 }

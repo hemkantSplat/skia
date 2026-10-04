@@ -27,6 +27,7 @@
 #include "include/core/SkPaint.h"
 #include "include/core/SkPath.h"
 #include "include/utils/SkPathOffset.h"
+#include "include/utils/SkWidthStroke.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPathMeasure.h"
 #include "include/core/SkPathUtils.h"
@@ -3260,6 +3261,57 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return actualCodePoints;
         }));
 #endif
+
+    function("_MakeWidthStroke", optional_override([](WASMPointerF32 ptr, size_t length,
+            double envelope, double pathLength, bool mergeJoins, int batches, bool subdivide) {
+        return SkWidthStroke::Make(reinterpret_cast<const float*>(ptr),length,
+            {envelope,pathLength,mergeJoins,static_cast<SkWidthStroke::Batches>(batches),subdivide});
+    }));
+    class_<SkWidthStroke>("WidthStroke")
+        .smart_ptr<sk_sp<SkWidthStroke>>("sk_sp<WidthStroke>")
+        .function("vertices", &SkWidthStroke::vertices)
+        .function("vertexCount", &SkWidthStroke::vertexCount)
+        .function("chunkCount", optional_override([](const SkWidthStroke& self) {
+            return self.chunks().size();
+        }))
+        .function("bounds", optional_override([](const SkWidthStroke& self) {
+            const SkRect& b=self.bounds();
+            val result=val::array();
+            result.call<void>("push",b.left(),b.top(),b.right(),b.bottom());
+            return result;
+        }))
+        .function("batches", optional_override([](const SkWidthStroke& self) {
+            val result=val::array();
+            for (auto range : self.batches()) {
+                val item=val::object(); item.set("start",range.start); item.set("count",range.count);
+                result.call<void>("push",item);
+            }
+            return result;
+        }))
+        .function("chunks", optional_override([](const SkWidthStroke& self) {
+            val result=val::array();
+            for (const auto& chunk : self.chunks()) {
+                val item=val::object(); item.set("start",chunk.range.start);
+                item.set("count",chunk.range.count); item.set("batch",chunk.batch);
+                result.call<void>("push",item);
+            }
+            return result;
+        }))
+        .function("depositCuts", optional_override([](const SkWidthStroke& self) {
+            val result=val::array();
+            for (uint32_t cut : self.depositCuts()) { result.call<void>("push",cut); }
+            return result;
+        }))
+        .function("geometry", optional_override([](const SkWidthStroke& self) {
+            val result=val::object();
+            result.set("positions",val(typed_memory_view(self.positions().size()*2,
+                reinterpret_cast<const float*>(self.positions().data()))).call<val>("slice"));
+            result.set("uv",val(typed_memory_view(self.texCoords().size()*2,
+                reinterpret_cast<const float*>(self.texCoords().data()))).call<val>("slice"));
+            result.set("indices",val(typed_memory_view(self.indices().size(),
+                self.indices().data())).call<val>("slice"));
+            return result;
+        }));
 
     class_<SkVertices>("Vertices")
         .smart_ptr<sk_sp<SkVertices>>("sk_sp<Vertices>")
