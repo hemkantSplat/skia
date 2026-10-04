@@ -998,6 +998,17 @@ CanvasKit.onRuntimeInitialized = function() {
     return cropRect ? copyRectToWasm(cropRect, _scratchFourFloatsBPtr) : nullptr;
   }
 
+  CanvasKit.ImageFilter.MakeCrop = function(rect, tileMode, input) {
+    if ((input !== null && !(input instanceof CanvasKit.ImageFilter)) ||
+        !rect || rect.length !== 4 || !Array.prototype.every.call(rect, Number.isFinite) ||
+        rect[0] > rect[2] || rect[1] > rect[3] ||
+        [CanvasKit.TileMode.Clamp, CanvasKit.TileMode.Repeat,
+         CanvasKit.TileMode.Mirror, CanvasKit.TileMode.Decal].indexOf(tileMode) < 0) {
+      return null;
+    }
+    return CanvasKit.ImageFilter._MakeCrop(copyRectToWasm(rect), tileMode, input);
+  };
+
   CanvasKit.ImageFilter.MakeArithmetic = function(k1, k2, k3, k4, enforcePMColor,
                                                    background, foreground, cropRect) {
     return CanvasKit.ImageFilter._MakeArithmetic(k1, k2, k3, k4, !!enforcePMColor,

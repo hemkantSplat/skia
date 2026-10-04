@@ -2324,6 +2324,12 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return SkImageFilters::ColorFilter(cf, input);
         }))
         .class_function("MakeCompose", &SkImageFilters::Compose)
+        .class_function("_MakeCrop", optional_override([](WASMPointerF32 rectPtr,
+                SkTileMode tileMode, sk_sp<SkImageFilter> input)->sk_sp<SkImageFilter> {
+            const SkRect& rect = *reinterpret_cast<const SkRect*>(rectPtr);
+            if (!rect.isFinite() || !rect.isSorted()) { return nullptr; }
+            return SkImageFilters::Crop(rect, tileMode, std::move(input));
+        }))
         .class_function("_MakeDilate", optional_override([](SkScalar radiusX, SkScalar radiusY,
                                                             sk_sp<SkImageFilter> input,
                                                             WASMPointerF32 cropPtr)->sk_sp<SkImageFilter> {

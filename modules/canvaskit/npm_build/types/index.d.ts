@@ -4042,6 +4042,8 @@ export interface FontMgrFactory {
  * See //include/effects/SkImageFilters.h for more.
  */
 export interface ImageFilterFactory {
+    /** Tiles a finite local rectangle. Null input uses the source; invalid arguments return null. */
+    MakeCrop(rect: InputRect, tileMode: TileMode, input: ImageFilter | null): ImageFilter | null;
     /** Device-grid output with parameter-space uniforms/children. Noninvertible/non-affine CTMs draw empty. */
     MakeRuntimeShaderAtDeviceResolution(builder: RuntimeEffectBuilder, childNames: string[],
                       inputs: (ImageFilter | null)[], sampleRadius?: number): ImageFilter | null;
