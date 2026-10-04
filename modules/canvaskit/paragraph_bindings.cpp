@@ -762,6 +762,11 @@ EMSCRIPTEN_BINDINGS(Paragraph) {
       .class_function("Make", optional_override([]()-> sk_sp<para::TypefaceFontProvider> {
           return sk_make_sp<para::TypefaceFontProvider>();
       }))
+      .function("registerTypeface", optional_override([](para::TypefaceFontProvider& self,
+                                                        sk_sp<SkTypeface> typeface,
+                                                        std::string family) {
+          self.registerTypeface(typeface, SkString(family.c_str()));
+      }))
       .function("_registerFont", optional_override([](para::TypefaceFontProvider& self,
                                                       sk_sp<SkTypeface> typeface,
                                                       WASMPointerU8 familyPtr) {

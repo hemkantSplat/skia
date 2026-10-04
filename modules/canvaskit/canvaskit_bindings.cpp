@@ -3194,6 +3194,38 @@ EMSCRIPTEN_BINDINGS(Skia) {
             stream->setMemoryOwned(font, flen);
             return SkTypeface_FreeType::MakeFromStream(std::move(stream), SkFontArguments());
         }), allow_raw_pointers())
+          .function("getVariationAxes", optional_override([](SkTypeface& self) {
+              const int count = self.getVariationDesignParameters(nullptr, 0);
+              std::vector<SkFontParameters::Variation::Axis> axes(std::max(0, count));
+              self.getVariationDesignParameters(axes.data(), axes.size());
+              val result = val::array();
+              for (const auto& axis : axes) {
+                  char tag[5] = {char(axis.tag >> 24), char(axis.tag >> 16),
+                                 char(axis.tag >> 8), char(axis.tag), 0};
+                  val entry = val::object();
+                  entry.set("tag", std::string(tag));
+                  entry.set("min", axis.min);
+                  entry.set("default", axis.def);
+                  entry.set("max", axis.max);
+                  result.call<void>("push", entry);
+              }
+              return result;
+          }))
+          .function("makeVariation", optional_override([](SkTypeface& self, val axes) {
+              const unsigned count = axes["length"].as<unsigned>();
+              std::vector<SkFontArguments::VariationPosition::Coordinate> coordinates;
+              coordinates.reserve(count);
+              for (unsigned i = 0; i < count; ++i) {
+                  const std::string tag = axes[i]["tag"].as<std::string>();
+                  const float value = axes[i]["value"].as<float>();
+                  if (tag.size() != 4 || !std::isfinite(value)) {
+                      return sk_sp<SkTypeface>(nullptr);
+                  }
+                  coordinates.push_back({SkSetFourByteTag(tag[0], tag[1], tag[2], tag[3]), value});
+              }
+              return self.makeClone(SkFontArguments().setVariationDesignPosition(
+                      {coordinates.data(), static_cast<int>(coordinates.size())}));
+          }))
         .function("getFamilyName", optional_override([](SkTypeface& self)->JSString {
             SkString s;
             self.getFamilyName(&s);
