@@ -78,7 +78,7 @@ private:
 
         const char* atlasDimensionsInvName;
         fAtlasDimensionsInvUniform = uniformHandler->addUniform(nullptr,
-                                                                kVertex_GrShaderFlag,
+                                                                kVertex_GrShaderFlag | kFragment_GrShaderFlag,
                                                                 SkSLType::kFloat2,
                                                                 "AtlasDimensionsInv",
                                                                 &atlasDimensionsInvName);
@@ -111,6 +111,7 @@ private:
         append_index_uv_varyings(args,
                                  dfTexEffect.numTextureSamplers(),
                                  dfTexEffect.fInTextureCoords.name(),
+                                 dfTexEffect.fInAtlasRect.name(), SK_DistanceFieldInset,
                                  atlasDimensionsInvName,
                                  &uv,
                                  &texIdx,
@@ -242,7 +243,8 @@ GrDistanceFieldA8TextGeoProc::GrDistanceFieldA8TextGeoProc(const GrShaderCaps& c
     fInColor = {"inColor", kUByte4_norm_GrVertexAttribType, SkSLType::kHalf4 };
     fInTextureCoords = {"inTextureCoords", kUShort2_GrVertexAttribType,
                         caps.fIntegerSupport ? SkSLType::kUShort2 : SkSLType::kFloat2};
-    this->setVertexAttributesWithImplicitOffsets(&fInPosition, 3);
+    fInAtlasRect = {"inAtlasRect", kShort4_GrVertexAttribType, SkSLType::kFloat4};
+    this->setVertexAttributesWithImplicitOffsets(&fInPosition, 4);
 
     if (numViews) {
         fAtlasDimensions = views[0].proxy()->dimensions();
@@ -285,6 +287,9 @@ void GrDistanceFieldA8TextGeoProc::addToKey(const GrShaderCaps& caps,
     key |= ProgramImpl::ComputeMatrixKey(caps, fLocalMatrix) << 16;
     b->add32(key);
     b->add32(this->numTextureSamplers());
+    b->addBool(this->numTextureSamplers() &&
+               this->textureSampler(0).samplerState().filter() == GrSamplerState::Filter::kLinear,
+               "atlasBilerp");
 }
 
 std::unique_ptr<GrGeometryProcessor::ProgramImpl> GrDistanceFieldA8TextGeoProc::makeProgramImpl(
@@ -364,7 +369,7 @@ private:
 
         const char* atlasDimensionsInvName;
         fAtlasDimensionsInvUniform = uniformHandler->addUniform(nullptr,
-                                                                kVertex_GrShaderFlag,
+                                                                kVertex_GrShaderFlag | kFragment_GrShaderFlag,
                                                                 SkSLType::kFloat2,
                                                                 "AtlasDimensionsInv",
                                                                 &atlasDimensionsInvName);
@@ -373,6 +378,7 @@ private:
         append_index_uv_varyings(args,
                                  dfPathEffect.numTextureSamplers(),
                                  dfPathEffect.fInTextureCoords.name(),
+                                 dfPathEffect.fInAtlasRect.name(), SK_DistanceFieldPad,
                                  atlasDimensionsInvName,
                                  &uv,
                                  &texIdx,
@@ -494,7 +500,8 @@ GrDistanceFieldPathGeoProc::GrDistanceFieldPathGeoProc(const GrShaderCaps& caps,
     fInColor = MakeColorAttribute("inColor", SkToBool(flags & kWideColor_DistanceFieldEffectFlag));
     fInTextureCoords = {"inTextureCoords", kUShort2_GrVertexAttribType,
                         caps.fIntegerSupport ? SkSLType::kUShort2 : SkSLType::kFloat2};
-    this->setVertexAttributesWithImplicitOffsets(&fInPosition, 3);
+    fInAtlasRect = {"inAtlasRect", kShort4_GrVertexAttribType, SkSLType::kFloat4};
+    this->setVertexAttributesWithImplicitOffsets(&fInPosition, 4);
 
     if (numViews) {
         fAtlasDimensions = views[0].proxy()->dimensions();
@@ -538,6 +545,9 @@ void GrDistanceFieldPathGeoProc::addToKey(const GrShaderCaps& caps,
     key |= fLocalMatrix.hasPerspective() << (16 + ProgramImpl::kMatrixKeyBits);
     b->add32(key);
     b->add32(this->numTextureSamplers());
+    b->addBool(this->numTextureSamplers() &&
+               this->textureSampler(0).samplerState().filter() == GrSamplerState::Filter::kLinear,
+               "atlasBilerp");
 }
 
 std::unique_ptr<GrGeometryProcessor::ProgramImpl> GrDistanceFieldPathGeoProc::makeProgramImpl(
@@ -616,7 +626,7 @@ private:
 
         const char* atlasDimensionsInvName;
         fAtlasDimensionsInvUniform = uniformHandler->addUniform(nullptr,
-                                                                kVertex_GrShaderFlag,
+                                                                kVertex_GrShaderFlag | kFragment_GrShaderFlag,
                                                                 SkSLType::kFloat2,
                                                                 "AtlasDimensionsInv",
                                                                 &atlasDimensionsInvName);
@@ -643,6 +653,7 @@ private:
         append_index_uv_varyings(args,
                                  dfTexEffect.numTextureSamplers(),
                                  dfTexEffect.fInTextureCoords.name(),
+                                 dfTexEffect.fInAtlasRect.name(), SK_DistanceFieldInset,
                                  atlasDimensionsInvName,
                                  &uv,
                                  &texIdx,
@@ -652,15 +663,15 @@ private:
         varyingHandler->addVarying("Delta", &delta);
         if (dfTexEffect.fFlags & kPortrait_DistanceFieldEffectFlag) {
             if (dfTexEffect.fFlags & kBGR_DistanceFieldEffectFlag) {
-                vertBuilder->codeAppendf("%s = -%s.y/3.0;", delta.vsOut(), atlasDimensionsInvName);
+                vertBuilder->codeAppendf("%s = -1.0/3.0;", delta.vsOut());
             } else {
-                vertBuilder->codeAppendf("%s = %s.y/3.0;", delta.vsOut(), atlasDimensionsInvName);
+                vertBuilder->codeAppendf("%s = 1.0/3.0;", delta.vsOut());
             }
         } else {
             if (dfTexEffect.fFlags & kBGR_DistanceFieldEffectFlag) {
-                vertBuilder->codeAppendf("%s = -%s.x/3.0;", delta.vsOut(), atlasDimensionsInvName);
+                vertBuilder->codeAppendf("%s = -1.0/3.0;", delta.vsOut());
             } else {
-                vertBuilder->codeAppendf("%s = %s.x/3.0;", delta.vsOut(), atlasDimensionsInvName);
+                vertBuilder->codeAppendf("%s = 1.0/3.0;", delta.vsOut());
             }
         }
 
@@ -817,7 +828,8 @@ GrDistanceFieldLCDTextGeoProc::GrDistanceFieldLCDTextGeoProc(const GrShaderCaps&
     fInColor = {"inColor", kUByte4_norm_GrVertexAttribType, SkSLType::kHalf4};
     fInTextureCoords = {"inTextureCoords", kUShort2_GrVertexAttribType,
                         caps.fIntegerSupport ? SkSLType::kUShort2 : SkSLType::kFloat2};
-    this->setVertexAttributesWithImplicitOffsets(&fInPosition, 3);
+    fInAtlasRect = {"inAtlasRect", kShort4_GrVertexAttribType, SkSLType::kFloat4};
+    this->setVertexAttributesWithImplicitOffsets(&fInPosition, 4);
 
     if (numViews) {
         fAtlasDimensions = views[0].proxy()->dimensions();
@@ -861,6 +873,9 @@ void GrDistanceFieldLCDTextGeoProc::addToKey(const GrShaderCaps& caps,
     key |= fFlags << 16;
     b->add32(key);
     b->add32(this->numTextureSamplers());
+    b->addBool(this->numTextureSamplers() &&
+               this->textureSampler(0).samplerState().filter() == GrSamplerState::Filter::kLinear,
+               "atlasBilerp");
 }
 
 std::unique_ptr<GrGeometryProcessor::ProgramImpl> GrDistanceFieldLCDTextGeoProc::makeProgramImpl(

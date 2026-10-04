@@ -87,6 +87,7 @@ private:
     Attribute                fInPosition;
     Attribute                fInColor;
     Attribute                fInTextureCoords;
+    Attribute        fInAtlasRect;
     skgpu::MaskFormat        fMaskFormat;
 
     GR_DECLARE_GEOMETRY_PROCESSOR_TEST

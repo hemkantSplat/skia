@@ -75,13 +75,14 @@ private:
         varyingHandler->emitAttributes(btgp);
 
         const char* atlasDimensionsInvName;
-        fAtlasDimensionsInvUniform = uniformHandler->addUniform(nullptr, kVertex_GrShaderFlag,
+        fAtlasDimensionsInvUniform = uniformHandler->addUniform(nullptr, kVertex_GrShaderFlag | kFragment_GrShaderFlag,
                 SkSLType::kFloat2, "AtlasSizeInv", &atlasDimensionsInvName);
 
         GrGLSLVarying uv, texIdx;
         append_index_uv_varyings(args,
                                  btgp.numTextureSamplers(),
                                  btgp.fInTextureCoords.name(),
+                                 btgp.fInAtlasRect.name(), 1,
                                  atlasDimensionsInvName,
                                  &uv,
                                  &texIdx,
@@ -170,7 +171,8 @@ GrBitmapTextGeoProc::GrBitmapTextGeoProc(const GrShaderCaps& caps,
 
     fInTextureCoords = {"inTextureCoords", kUShort2_GrVertexAttribType,
                         caps.fIntegerSupport ? SkSLType::kUShort2 : SkSLType::kFloat2};
-    this->setVertexAttributesWithImplicitOffsets(&fInPosition, 3);
+    fInAtlasRect = {"inAtlasRect", kShort4_GrVertexAttribType, SkSLType::kFloat4};
+    this->setVertexAttributesWithImplicitOffsets(&fInPosition, 4);
 
     if (numActiveViews) {
         fAtlasDimensions = views[0].proxy()->dimensions();
@@ -215,6 +217,9 @@ void GrBitmapTextGeoProc::addToKey(const GrShaderCaps& caps, skgpu::KeyBuilder* 
                ProgramImpl::ComputeMatrixKey(caps, fLocalMatrix),
                "localMatrixType");
     b->add32(this->numTextureSamplers(), "numTextures");
+    b->addBool(this->numTextureSamplers() &&
+               this->textureSampler(0).samplerState().filter() == GrSamplerState::Filter::kLinear,
+               "atlasBilerp");
     b->add32(GrColorSpaceXform::XformKey(fColorSpaceXform.get()), "colorSpaceXform");
 }
 

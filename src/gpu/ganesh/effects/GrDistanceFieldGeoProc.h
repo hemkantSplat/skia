@@ -134,6 +134,7 @@ private:
     Attribute        fInPosition;
     Attribute        fInColor;
     Attribute        fInTextureCoords;
+    Attribute        fInAtlasRect;
     uint32_t         fFlags;
 #ifdef SK_GAMMA_APPLY_TO_A8
     float            fDistanceAdjust;
@@ -193,6 +194,7 @@ private:
     Attribute        fInPosition;
     Attribute        fInColor;
     Attribute        fInTextureCoords;
+    Attribute        fInAtlasRect;
     uint32_t         fFlags;
 
     GR_DECLARE_GEOMETRY_PROCESSOR_TEST
@@ -266,6 +268,7 @@ private:
     Attribute        fInPosition;
     Attribute        fInColor;
     Attribute        fInTextureCoords;
+    Attribute        fInAtlasRect;
     uint32_t         fFlags;
 
     GR_DECLARE_GEOMETRY_PROCESSOR_TEST
