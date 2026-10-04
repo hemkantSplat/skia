@@ -528,7 +528,7 @@ CanvasKit.onRuntimeInitialized = function() {
         retVal = new Uint8Array(CanvasKit.HEAPU8.buffer, pPtr, pBytes).slice();
         break;
       case CanvasKit.ColorType.RGBA_F32:
-        retVal = new Float32Array(CanvasKit.HEAPU8.buffer, pPtr, pBytes).slice();
+        retVal = new Float32Array(CanvasKit.HEAPU8.buffer, pPtr, pBytes / 4).slice();
         break;
       default:
         Debug('ColorType not yet supported');
