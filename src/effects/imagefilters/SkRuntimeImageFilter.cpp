@@ -27,8 +27,10 @@
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkRectPriv.h"
 #include "src/core/SkRuntimeEffectPriv.h"
+#include "src/core/SkSpecialImage.h"
 #include "src/core/SkWriteBuffer.h"
 
+#include <cmath>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -36,6 +38,7 @@
 #include <utility>
 
 using namespace skia_private;
+using RasterPolicy = SkImageFilters::RuntimeShaderRasterPolicy;
 
 // NOTE: Not in an anonymous namespace so that SkRuntimeShaderBuilder can friend it.
 class SkRuntimeImageFilter final : public SkImageFilter_Base {
@@ -44,10 +47,11 @@ public:
                          float maxSampleRadius,
                          std::string_view childShaderNames[],
                          const sk_sp<SkImageFilter> inputs[],
-                         int inputCount)
+                         int inputCount, RasterPolicy policy)
             : SkImageFilter_Base(inputs, inputCount)
             , fRuntimeEffectBuilder(builder)
-            , fMaxSampleRadius(maxSampleRadius) {
+            , fMaxSampleRadius(maxSampleRadius)
+            , fRasterPolicy(policy) {
         SkASSERT(maxSampleRadius >= 0.f);
         fChildShaderNames.reserve_exact(inputCount);
         for (int i = 0; i < inputCount; i++) {
@@ -56,6 +60,10 @@ public:
     }
 
     SkRect computeFastBounds(const SkRect& src) const override;
+    MatrixCapability getCTMCapability() const override {
+        return fRasterPolicy == RasterPolicy::kDevice ? MatrixCapability::kComplex
+                                                     : SkImageFilter_Base::getCTMCapability();
+    }
 
 protected:
     void flatten(SkWriteBuffer&) const override;
@@ -64,13 +72,31 @@ private:
     bool onSupportsRasterF16() const override { return true; }
 
     friend void ::SkRegisterRuntimeImageFilterFlattenable();
-    SK_FLATTENABLE_HOOKS(SkRuntimeImageFilter)
+    static sk_sp<SkFlattenable> CreateProc(SkReadBuffer& buffer) {
+        return Read(buffer, RasterPolicy::kParameter);
+    }
+    static sk_sp<SkFlattenable> CreateDeviceProc(SkReadBuffer& buffer) {
+        return Read(buffer, RasterPolicy::kDevice);
+    }
+    static sk_sp<SkFlattenable> Read(SkReadBuffer&, RasterPolicy);
+    Factory getFactory() const override {
+#if defined(SK_DISABLE_EFFECT_DESERIALIZATION)
+        return nullptr;
+#else
+        return fRasterPolicy == RasterPolicy::kDevice ? CreateDeviceProc : CreateProc;
+#endif
+    }
+    const char* getTypeName() const override {
+        return fRasterPolicy == RasterPolicy::kDevice
+                ? "SkRuntimeImageFilter_DeviceResolution" : "SkRuntimeImageFilter";
+    }
 
     bool onAffectsTransparentBlack() const override { return true; }
-    // Currently there is no way for a client to specify the semantics of geometric uniforms that
-    // should respond to the canvas matrix. Forcing translate-only is a hammer that lets the output
-    // be correct at the expense of resolution when there's a lot of scaling. See skbug.com/13416.
-    MatrixCapability onGetCTMCapability() const override { return MatrixCapability::kTranslate; }
+    // The opt-in policy keeps the CTM in layer space; shader evaluation remains in parameter space.
+    MatrixCapability onGetCTMCapability() const override {
+        return fRasterPolicy == RasterPolicy::kDevice ? MatrixCapability::kComplex
+                                                     : MatrixCapability::kTranslate;
+    }
 
     skif::FilterResult onFilterImage(const skif::Context&) const override;
 
@@ -88,14 +114,49 @@ private:
             skif::LayerSpace<SkIRect> bounds) const {
         skif::LayerSpace<SkISize> maxSampleRadius = mapping.paramToLayer(
                 skif::ParameterSpace<SkSize>({fMaxSampleRadius, fMaxSampleRadius})).ceil();
+        if (fRasterPolicy == RasterPolicy::kDevice) {
+            const SkMatrix matrix = mapping.layerMatrix().asM33();
+            // A parameter-space sampling square maps to the absolute row sums of the affine CTM.
+            maxSampleRadius = skif::LayerSpace<SkSize>({
+                    fMaxSampleRadius * (SkScalarAbs(matrix.getScaleX()) + SkScalarAbs(matrix.getSkewX())),
+                    fMaxSampleRadius * (SkScalarAbs(matrix.getSkewY()) + SkScalarAbs(matrix.getScaleY()))}).ceil();
+        }
         bounds.outset(maxSampleRadius);
         return bounds;
     }
+
+    struct ChildSpace {
+        skif::Mapping mapping;
+        skif::LayerSpace<SkMatrix> toChild;
+        skif::LayerSpace<SkMatrix> fromChild;
+        bool changed() const { return !static_cast<const SkMatrix&>(toChild).isIdentity(); }
+    };
+    std::optional<ChildSpace> childSpace(int index, const skif::Mapping& mapping) const {
+        ChildSpace space{mapping, skif::LayerSpace<SkMatrix>(SkMatrix::I()),
+                                 skif::LayerSpace<SkMatrix>(SkMatrix::I())};
+        if (fRasterPolicy != RasterPolicy::kDevice || !this->getInput(index)) {
+            return space;
+        }
+        skif::Mapping decomposition;
+        if (!decomposition.decomposeCTM(mapping.layerMatrix(),
+                as_IFB(this->getInput(index))->getCTMCapability(),
+                skif::ParameterSpace<SkPoint>({0.f, 0.f}))) {
+            return std::nullopt;
+        }
+        space.toChild = skif::LayerSpace<SkMatrix>(decomposition.deviceToLayer().asM33());
+        space.fromChild = skif::LayerSpace<SkMatrix>(decomposition.layerToDevice().asM33());
+        if (!space.mapping.adjustLayerSpace(decomposition.deviceToLayer())) {
+            return std::nullopt;
+        }
+        return space;
+    }
+    skif::FilterResult childOutput(int index, const skif::Context& ctx) const;
 
     mutable SkSpinlock fRuntimeEffectLock;
     mutable SkRuntimeShaderBuilder fRuntimeEffectBuilder;
     STArray<1, SkString> fChildShaderNames;
     float fMaxSampleRadius;
+    RasterPolicy fRasterPolicy;
 };
 
 sk_sp<SkImageFilter> SkImageFilters::RuntimeShader(const SkRuntimeShaderBuilder& builder,
@@ -120,7 +181,17 @@ sk_sp<SkImageFilter> SkImageFilters::RuntimeShader(const SkRuntimeShaderBuilder&
                                                    std::string_view childShaderNames[],
                                                    const sk_sp<SkImageFilter> inputs[],
                                                    int inputCount) {
-    if (maxSampleRadius < 0.f) {
+    return RuntimeShader(builder, maxSampleRadius, childShaderNames, inputs, inputCount,
+                         RasterPolicy::kParameter);
+}
+
+sk_sp<SkImageFilter> SkImageFilters::RuntimeShader(const SkRuntimeShaderBuilder& builder,
+                                                   SkScalar maxSampleRadius,
+                                                   std::string_view childShaderNames[],
+                                                   const sk_sp<SkImageFilter> inputs[],
+                                                   int inputCount, RasterPolicy policy) {
+    if (maxSampleRadius < 0.f ||
+        (policy == RasterPolicy::kDevice && !std::isfinite(maxSampleRadius))) {
         return nullptr; // invalid sample radius
     }
 
@@ -144,14 +215,18 @@ sk_sp<SkImageFilter> SkImageFilters::RuntimeShader(const SkRuntimeShaderBuilder&
     }
 
     return sk_sp<SkImageFilter>(new SkRuntimeImageFilter(builder, maxSampleRadius, childShaderNames,
-                                                         inputs, inputCount));
+                                                         inputs, inputCount, policy));
 }
 
 void SkRegisterRuntimeImageFilterFlattenable() {
     SK_REGISTER_FLATTENABLE(SkRuntimeImageFilter);
+#if !defined(SK_DISABLE_EFFECT_DESERIALIZATION)
+    SkFlattenable::Register("SkRuntimeImageFilter_DeviceResolution",
+                            SkRuntimeImageFilter::CreateDeviceProc);
+#endif
 }
 
-sk_sp<SkFlattenable> SkRuntimeImageFilter::CreateProc(SkReadBuffer& buffer) {
+sk_sp<SkFlattenable> SkRuntimeImageFilter::Read(SkReadBuffer& buffer, RasterPolicy policy) {
     // We don't know how many inputs to expect yet. Passing -1 allows any number of children.
     SK_IMAGEFILTER_UNFLATTEN_COMMON(common, -1);
     if (common.cropRect()) {
@@ -213,7 +288,7 @@ sk_sp<SkFlattenable> SkRuntimeImageFilter::CreateProc(SkReadBuffer& buffer) {
     }
 
     return SkImageFilters::RuntimeShader(builder, maxSampleRadius, childShaderNames.data(),
-                                         common.inputs(), common.inputCount());
+                                         common.inputs(), common.inputCount(), policy);
 }
 
 void SkRuntimeImageFilter::flatten(SkWriteBuffer& buffer) const {
@@ -234,8 +309,35 @@ void SkRuntimeImageFilter::flatten(SkWriteBuffer& buffer) const {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+skif::FilterResult SkRuntimeImageFilter::childOutput(int index, const skif::Context& ctx) const {
+    auto space = this->childSpace(index, ctx.mapping());
+    if (!space) {
+        return {};
+    }
+    if (!space->changed()) {
+        return this->getChildOutput(index, ctx);
+    }
+    auto desired = space->toChild.mapRect(ctx.desiredOutput());
+    desired.outset(skif::LayerSpace<SkISize>({1, 1}));
+    auto childCtx = ctx.withNewMapping(space->mapping).withNewDesiredOutput(desired);
+    auto required = this->getChildInputLayerBounds(index, space->mapping, desired, std::nullopt);
+    auto source = ctx.source().applyTransform(childCtx.withNewDesiredOutput(required),
+                                              space->toChild, SkFilterMode::kLinear);
+    // Resolve the child's source in its raster space, retaining native F16 storage and cache identity.
+    auto [image, origin] = source.imageAndOffset(childCtx.withNewDesiredOutput(required));
+    auto result = this->getChildOutput(index,
+            childCtx.withNewSource(skif::FilterResult(std::move(image), origin)));
+    return result.applyTransform(ctx, space->fromChild, SkFilterMode::kLinear);
+}
+
 skif::FilterResult SkRuntimeImageFilter::onFilterImage(const skif::Context& ctx) const {
     using ShaderFlags = skif::FilterResult::ShaderFlags;
+    if (fRasterPolicy == RasterPolicy::kDevice) {
+        const SkMatrix matrix = ctx.mapping().layerMatrix().asM33();
+        if (!matrix.isFinite() || matrix.hasPerspective() || !matrix.invert(nullptr)) {
+            return {};
+        }
+    }
 
     const int inputCount = this->countInputs();
     SkASSERT(inputCount == fChildShaderNames.size());
@@ -247,7 +349,7 @@ skif::FilterResult SkRuntimeImageFilter::onFilterImage(const skif::Context& ctx)
         // Record the input context's desired output as the sample bounds for the child shaders
         // since the runtime shader can go up to max sample radius away from its desired output
         // (which is the default sample bounds if we didn't override it here).
-        builder.add(this->getChildOutput(i, inputCtx),
+        builder.add(this->childOutput(i, inputCtx),
                     inputCtx.desiredOutput(),
                     ShaderFlags::kNonTrivialSampling);
     }
@@ -275,6 +377,11 @@ skif::LayerSpace<SkIRect> SkRuntimeImageFilter::onGetInputLayerBounds(
         const skif::Mapping& mapping,
         const skif::LayerSpace<SkIRect>& desiredOutput,
         std::optional<skif::LayerSpace<SkIRect>> contentBounds) const {
+    const SkMatrix matrix = mapping.layerMatrix().asM33();
+    if (fRasterPolicy == RasterPolicy::kDevice &&
+        (!matrix.isFinite() || matrix.hasPerspective() || !matrix.invert(nullptr))) {
+        return skif::LayerSpace<SkIRect>::Empty();
+    }
     const int inputCount = this->countInputs();
     if (inputCount <= 0) {
         return skif::LayerSpace<SkIRect>::Empty();
@@ -287,7 +394,21 @@ skif::LayerSpace<SkIRect> SkRuntimeImageFilter::onGetInputLayerBounds(
         return skif::LayerSpace<SkIRect>::Union(
                 inputCount,
                 [&](int i) {
-                    return this->getChildInputLayerBounds(i, mapping, requiredInput, contentBounds);
+                    auto space = this->childSpace(i, mapping);
+                    if (!space) {
+                        return skif::LayerSpace<SkIRect>::Empty();
+                    }
+                    if (!space->changed()) {
+                        return this->getChildInputLayerBounds(i, mapping, requiredInput, contentBounds);
+                    }
+                    auto desired = space->toChild.mapRect(requiredInput);
+                    desired.outset(skif::LayerSpace<SkISize>({1, 1}));
+                    auto content = contentBounds ? std::optional(space->toChild.mapRect(*contentBounds))
+                                                 : std::nullopt;
+                    auto required = this->getChildInputLayerBounds(i, space->mapping, desired, content);
+                    required = space->fromChild.mapRect(required);
+                    required.outset(skif::LayerSpace<SkISize>({1, 1}));
+                    return required;
                 });
     }
 }

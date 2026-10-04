@@ -4042,6 +4042,9 @@ export interface FontMgrFactory {
  * See //include/effects/SkImageFilters.h for more.
  */
 export interface ImageFilterFactory {
+    /** Device-grid output with parameter-space uniforms/children. Noninvertible/non-affine CTMs draw empty. */
+    MakeRuntimeShaderAtDeviceResolution(builder: RuntimeEffectBuilder, childNames: string[],
+                      inputs: (ImageFilter | null)[], sampleRadius?: number): ImageFilter | null;
     /** Named dynamic children; null inputs use the source. Snapshots builder state. Radius defaults to 0. */
     MakeRuntimeShader(builder: RuntimeEffectBuilder, childNames: string[],
                       inputs: (ImageFilter | null)[], sampleRadius?: number): ImageFilter | null;

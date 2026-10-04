@@ -463,6 +463,15 @@ public:
                                               const sk_sp<SkImageFilter> inputs[],
                                               int inputCount);
 
+    // Device resolution retains parameter coordinates for finite invertible affine CTMs; others draw empty.
+    enum class RuntimeShaderRasterPolicy { kParameter, kDevice };
+    static sk_sp<SkImageFilter> RuntimeShader(const SkRuntimeEffectBuilder& builder,
+                                              SkScalar maxSampleRadius,
+                                              std::string_view childShaderNames[],
+                                              const sk_sp<SkImageFilter> inputs[],
+                                              int inputCount,
+                                              RuntimeShaderRasterPolicy policy);
+
     enum class Dither : bool {
         kNo = false,
         kYes = true

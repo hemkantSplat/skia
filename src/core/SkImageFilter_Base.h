@@ -128,7 +128,8 @@ public:
      *  This call returns the maximum "kind" of CTM for a filter and all of its (non-null) inputs.
      */
     using MatrixCapability = skif::MatrixCapability;
-    MatrixCapability getCTMCapability() const;
+    // Filters that remap their children can establish an independent layer-space boundary.
+    virtual MatrixCapability getCTMCapability() const;
 
     uint32_t uniqueID() const { return fUniqueID; }
 

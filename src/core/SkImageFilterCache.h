@@ -25,9 +25,11 @@ namespace skif { class FilterResult; }
 struct SkImageFilterCacheKey {
     SkImageFilterCacheKey(const uint32_t uniqueID, const SkMatrix& matrix,
         const SkIRect& clipBounds, uint32_t srcGenID, const SkIRect& srcSubset,
-        SkColorType colorType, const SkColorSpace* colorSpace)
+        SkColorType colorType, const SkColorSpace* colorSpace,
+        const SkMatrix& totalMatrix = SkMatrix::I())
         : fUniqueID(uniqueID)
         , fMatrix(matrix)
+        , fTotalMatrix(totalMatrix)
         , fClipBounds(clipBounds)
         , fSrcGenID(srcGenID)
         , fSrcSubset(srcSubset)
@@ -35,16 +37,18 @@ struct SkImageFilterCacheKey {
         , fTransferFnHash(colorSpace ? colorSpace->transferFnHash() : 0)
         , fGamutHash(colorSpace ? colorSpace->toXYZD50Hash() : 0) {
         // Assert that Key is tightly-packed, since it is hashed.
-        static_assert(sizeof(SkImageFilterCacheKey) == sizeof(uint32_t) + sizeof(SkMatrix) +
+        static_assert(sizeof(SkImageFilterCacheKey) == sizeof(uint32_t) + 2 * sizeof(SkMatrix) +
                                      sizeof(SkIRect) + sizeof(uint32_t) + 4 * sizeof(int32_t) +
                                      sizeof(SkColorType) + 2 * sizeof(uint32_t),
                                      "image_filter_key_tight_packing");
         fMatrix.getType();  // force initialization of type, so hashes match
+        fTotalMatrix.getType();
         SkASSERT(fMatrix.isFinite());   // otherwise we can't rely on == self when comparing keys
     }
 
     uint32_t fUniqueID;
     SkMatrix fMatrix;
+    SkMatrix fTotalMatrix;
     SkIRect fClipBounds;
     uint32_t fSrcGenID;
     SkIRect fSrcSubset;
@@ -55,6 +59,7 @@ struct SkImageFilterCacheKey {
     bool operator==(const SkImageFilterCacheKey& other) const {
         return fUniqueID == other.fUniqueID &&
                fMatrix == other.fMatrix &&
+               fTotalMatrix == other.fTotalMatrix &&
                fClipBounds == other.fClipBounds &&
                fSrcGenID == other.fSrcGenID &&
                fSrcSubset == other.fSrcSubset &&
