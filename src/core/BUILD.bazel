@@ -497,6 +497,7 @@ skia_cc_library(
         "//src/base",
         "//src/opts",
         "//src/sksl:generated_sksl",
+        "//third_party/clipper2",
     ] + select({
         ":load_sksl_from_disk_true": ["//src/utils:get_executable_path"],
         ":load_sksl_from_disk_false": [],

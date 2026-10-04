@@ -1657,6 +1657,8 @@ skia_component("skia") {
     "modules/skcms",
   ]
 
+  deps += [ "//third_party/clipper2" ]
+
   public = skia_core_public
   public += skia_codec_public
   public += skia_utils_public

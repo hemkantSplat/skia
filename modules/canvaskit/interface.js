@@ -315,6 +315,16 @@ CanvasKit.onRuntimeInitialized = function() {
     return this;
   };
 
+  CanvasKit.Path.prototype.makeOffset = function(distance, join, miterLimit, tolerance) {
+    miterLimit = miterLimit === undefined ? 4 : miterLimit;
+    tolerance = tolerance === undefined ? 0.05 : tolerance;
+    var joins = {'round': 0, 'miter': 1, 'bevel': 2};
+    if (!Number.isFinite(distance) || !Object.prototype.hasOwnProperty.call(joins, join) ||
+        !Number.isFinite(miterLimit) || miterLimit < 1 ||
+        !Number.isFinite(tolerance) || tolerance <= 0) return null;
+    return this._makeOffset(distance, joins[join], miterLimit, tolerance);
+  };
+
   CanvasKit.Path.prototype.makeWithEffect = function(effect, style, resScale) {
     if (style !== 'fill' && style !== 'stroke') {
       return null;

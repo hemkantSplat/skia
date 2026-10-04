@@ -2637,6 +2637,8 @@ export interface Paint extends EmbindObject<"Paint"> {
 export interface Path extends EmbindObject<"Path"> {
     /** New geometry: 'stroke' filters the centreline (hairline record), 'fill' the outline.
      *  Null if the effect refuses (dash on a fill) or resScale is not finite and positive. */
+    /** Signed filled-boundary offset; zero preserves commands. Invalid inputs return null. */
+    makeOffset(distance: number, join: "round" | "miter" | "bevel", miterLimit?: number, tolerance?: number): Path | null;
     makeWithEffect(effect: PathEffect, style: "fill" | "stroke", resScale?: number): Path | null;
 
     /**

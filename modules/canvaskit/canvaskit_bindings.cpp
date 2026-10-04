@@ -26,6 +26,7 @@
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPath.h"
+#include "include/utils/SkPathOffset.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPathMeasure.h"
 #include "include/core/SkPathUtils.h"
@@ -2626,6 +2627,15 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .function("rewind", &ApplyRewind)
         .function("setIsVolatile", &SkPath::setIsVolatile)
         .function("_transform", select_overload<void(SkPath&, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar, SkScalar)>(&ApplyTransform))
+
+        .function("_makeOffset", optional_override([](const SkPath& self, SkScalar distance,
+                                                     int join, SkScalar miterLimit,
+                                                     SkScalar tolerance) -> SkPathOrNull {
+            SkPath path;
+            return SkPathOffset(self, distance, static_cast<SkPathOffsetJoin>(join),
+                                miterLimit, tolerance, &path) ? emscripten::val(path)
+                                                             : emscripten::val::null();
+        }))
 
         // PathEffects
         .function("_makeWithEffect", optional_override([](const SkPath& self,

@@ -785,6 +785,7 @@ var CanvasKit = {
     toSVGString: function() {},
 
     prototype: {
+      makeOffset: function() {},
       makeWithEffect: function() {},
       addArc: function() {},
       addCircle: function() {},
@@ -840,6 +841,7 @@ var CanvasKit = {
     _conicTo: function() {},
     _computeTightBounds: function() {},
     _cubicTo: function() {},
+    _makeOffset: function() {},
     _makeWithEffect: function() {},
     _dash: function() {},
     _getBounds: function() {},
