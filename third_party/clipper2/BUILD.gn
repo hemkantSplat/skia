@@ -1,0 +1,6 @@
+import("../third_party.gni")
+
+third_party("clipper2") {
+  public_include_dirs = [ "include" ]
+  sources = [ "src/clipper.engine.cpp", "src/clipper.offset.cpp" ]
+}

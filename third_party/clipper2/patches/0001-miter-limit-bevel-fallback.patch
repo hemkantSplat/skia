@@ -1,0 +1,30 @@
+--- a/include/clipper2/clipper.offset.h
++++ b/include/clipper2/clipper.offset.h
+@@ -61,6 +61,7 @@
+ 	double arc_tolerance_ = 0.0;
+ 	bool preserve_collinear_ = false;
+ 	bool reverse_solution_ = false;
++	bool miter_bevel_fallback_ = false;
+ 
+ #ifdef USINGZ
+ 	ZCallback64 zCallback64_ = nullptr;
+@@ -101,6 +102,9 @@
+ 	void Execute(double delta, PolyTree64& polytree);
+ 	void Execute(DeltaCallback64 delta_cb, Paths64& paths);
+ 
++	// Opt in to SVG/Skia bevel clipping when the miter limit is exceeded.
++	void MiterBevelFallback(bool enabled) { miter_bevel_fallback_ = enabled; }
++
+ 	double MiterLimit() const { return miter_limit_; }
+ 	void MiterLimit(double miter_limit) { miter_limit_ = miter_limit; }
+ 
+--- a/src/clipper.offset.cpp
++++ b/src/clipper.offset.cpp
+@@ -359,6 +359,7 @@
+ 	{
+ 		// miter unless the angle is sufficiently acute to exceed ML
+ 		if (cos_a > temp_lim_ - 1) DoMiter(path, j, k, cos_a);
++		else if (miter_bevel_fallback_) DoBevel(path, j, k);
+ 		else DoSquare(path, j, k);
+ 	}
+ 	else if (join_type_ == JoinType::Round)
