@@ -299,7 +299,7 @@ public:
         SkASSERT(fMetadata.colorType() == ColorType::kNone);
         auto iter = fQuads.metadata();
         while(iter.next()) {
-            auto colorType = skgpu::ganesh::QuadPerEdgeAA::MinColorType(iter->fColor);
+            auto colorType = skgpu::ganesh::QuadPerEdgeAA::MinColorType(iter->fColor, clampType, caps);
             colorType = std::max(static_cast<ColorType>(fMetadata.fColorType),
                                  colorType);
             if (caps.reducedShaderMode()) {

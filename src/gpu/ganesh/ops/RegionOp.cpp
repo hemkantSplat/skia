@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/RegionOp.h"
 
 #include "include/core/SkMatrix.h"
@@ -57,11 +58,10 @@ namespace {
 
 GrGeometryProcessor* make_gp(SkArenaAlloc* arena,
                                     const SkMatrix& viewMatrix,
-                                    bool wideColor) {
+                                    skgpu::VertexColorType colorType) {
     using namespace GrDefaultGeoProcFactory;
-    Color::Type colorType = wideColor ? Color::kPremulWideColorAttribute_Type
-                                      : Color::kPremulGrColorAttribute_Type;
-    return GrDefaultGeoProcFactory::Make(arena, colorType, Coverage::kSolid_Type,
+    Color::Type gpColorType = Color::AttributeType(colorType);
+    return GrDefaultGeoProcFactory::Make(arena, gpColorType, Coverage::kSolid_Type,
                                          LocalCoords::kUsePosition_Type, viewMatrix);
 }
 
@@ -111,7 +111,7 @@ public:
     GrProcessorSet::Analysis finalize(const GrCaps& caps, const GrAppliedClip* clip,
                                       GrClampType clampType) override {
         return fHelper.finalizeProcessors(caps, clip, clampType, GrProcessorAnalysisCoverage::kNone,
-                                          &fRegions[0].fColor, &fWideColor);
+                                          &fRegions[0].fColor, &fColorType);
     }
 
 private:
@@ -125,7 +125,7 @@ private:
                              const GrDstProxyView& dstProxyView,
                              GrXferBarrierFlags renderPassXferBarriers,
                              GrLoadOp colorLoadOp) override {
-        GrGeometryProcessor* gp = make_gp(arena, fViewMatrix, fWideColor);
+        GrGeometryProcessor* gp = make_gp(arena, fViewMatrix, fColorType);
         if (!gp) {
             SkDebugf("Couldn't create GrGeometryProcessor\n");
             return;
@@ -166,7 +166,7 @@ private:
         }
 
         for (int i = 0; i < numRegions; i++) {
-            VertexColor color(fRegions[i].fColor, fWideColor);
+            VertexColor color(fRegions[i].fColor, fColorType);
             SkRegion::Iterator iter(fRegions[i].fRegion);
             while (!iter.done()) {
                 SkRect rect = SkRect::Make(iter.rect());
@@ -199,7 +199,7 @@ private:
         }
 
         fRegions.push_back_n(that->fRegions.size(), that->fRegions.begin());
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -224,7 +224,7 @@ private:
     Helper fHelper;
     SkMatrix fViewMatrix;
     STArray<1, RegionInfo, true> fRegions;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
 
     GrSimpleMesh*  fMesh = nullptr;
     GrProgramInfo* fProgramInfo = nullptr;

@@ -10,10 +10,12 @@
 
 #include "include/core/SkColor.h"
 #include "include/gpu/ganesh/GrTypes.h"
+#include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "src/base/SkHalf.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkColorPriv.h"
 #include "src/gpu/BufferWriter.h"
+#include "src/gpu/ganesh/GrCaps.h"
 
 /**
  * GrColor is 4 bytes for R, G, B, A, in a specific order defined below. Whether the color is
@@ -70,10 +72,19 @@ static inline float GrNormalizeByteToFloat(uint8_t value) {
     return value * ONE_OVER_255;
 }
 
-/** Used to pick vertex attribute types. */
-static inline bool SkPMColor4fFitsInBytes(const SkPMColor4f& color) {
-    // Might want to instead check that the components are [0...a] instead of [0...1]?
-    return color.fitsInBytes();
+// Vertex precision follows the destination, including normalized formats wider than eight bits.
+static inline bool GrVertexColorIsWide(const SkPMColor4f& color, GrClampType clampType) {
+    return clampType != GrClampType::kAuto || !color.fitsInBytes();
+}
+
+static inline skgpu::VertexColorType GrVertexColorStorage(const SkPMColor4f& color,
+                                                         GrClampType clampType,
+                                                         const GrCaps& caps) {
+    if (!GrVertexColorIsWide(color, clampType)) {
+        return skgpu::VertexColorType::kByte;
+    }
+    return caps.halfFloatVertexAttributeSupport() ? skgpu::VertexColorType::kHalf
+                                                 : skgpu::VertexColorType::kFloat;
 }
 
 static inline uint64_t SkPMColor4f_toFP16(const SkPMColor4f& color) {

@@ -5,6 +5,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/SmallPathRenderer.h"
 
 #include "include/core/SkImageInfo.h"
@@ -159,7 +160,7 @@ public:
                                       GrClampType clampType) override {
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel,
-                                          &fShapes.front().fColor, &fWideColor);
+                                          &fShapes.front().fColor, &fColorType);
     }
 
 private:
@@ -236,7 +237,8 @@ private:
             flags |= ctm.isScaleTranslate() ? kScaleOnly_DistanceFieldEffectFlag : 0;
             flags |= ctm.isSimilarity() ? kSimilarity_DistanceFieldEffectFlag : 0;
             flags |= fGammaCorrect ? kGammaCorrect_DistanceFieldEffectFlag : 0;
-            flags |= fWideColor ? kWideColor_DistanceFieldEffectFlag : 0;
+            flags |= fColorType == skgpu::VertexColorType::kHalf ? kHalfColor_DistanceFieldEffectFlag :
+                     fColorType == skgpu::VertexColorType::kFloat ? kWideColor_DistanceFieldEffectFlag : 0;
             // We always use Point3 for position
             flags |= kPerspective_DistanceFieldEffectFlag;
 
@@ -246,7 +248,7 @@ private:
                     invert, flags);
         } else {
             flushInfo.fGeometryProcessor = GrBitmapTextGeoProc::Make(
-                    target->allocator(), *target->caps().shaderCaps(), this->color(), fWideColor,
+                    target->allocator(), *target->caps().shaderCaps(), this->color(), fColorType,
                     /*colorSpaceXform=*/nullptr, views, numActiveProxies,
                     GrSamplerState::Filter::kNearest, MaskFormat::kA8, invert, false);
         }
@@ -358,7 +360,7 @@ private:
             auto uploadTarget = target->deferredUploadTarget();
             atlasMgr->setUseToken(shapeData, uploadTarget->tokenTracker()->nextDrawToken());
 
-            this->writePathVertices(vertices, VertexColor(args.fColor, fWideColor),
+            this->writePathVertices(vertices, VertexColor(args.fColor, fColorType),
                                     args.fViewMatrix, shapeData);
             flushInfo.fInstancesToFlush++;
         }
@@ -689,7 +691,7 @@ private:
         }
 
         fShapes.push_back_n(that->fShapes.size(), that->fShapes.begin());
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -715,7 +717,7 @@ private:
     STArray<1, Entry> fShapes;
     Helper fHelper;
     bool fGammaCorrect;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
 
     using INHERITED = GrMeshDrawOp;
 };

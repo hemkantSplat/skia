@@ -89,7 +89,7 @@ public:
                               const SkPMColor4f& color,
                               SkArenaAlloc* alloc);
 
-        void fillVertexData(void* dst, int offset, int count) const;
+        void fillVertexData(void* dst, int offset, int count, skgpu::VertexColorType) const;
 
         const sktext::gpu::AtlasSubRun& fSubRun;
 
@@ -257,6 +257,7 @@ private:
                                           unsigned int numActiveViews) const;
 #endif
 
+    skgpu::VertexColorType fColorType = skgpu::VertexColorType::kByte;
     GrProcessorSet fProcessors;
     int fNumGlyphs; // Sum of glyphs in each geometry's subrun
 
@@ -269,7 +270,7 @@ private:
     uint32_t fUseGammaCorrectDistanceTable : 1;
     static_assert(kMaskTypeCount <= 8, "MaskType does not fit in 3 bits");
 #if !defined(SK_DISABLE_SDF_TEXT)
-    static_assert(kInvalid_DistanceFieldEffectFlag <= (1 << 9), "DFGP Flags do not fit in 10 bits");
+    static_assert(kInvalid_DistanceFieldEffectFlag <= (1 << 10), "DFGP Flags do not fit in 10 bits");
 #endif
 
     // Only needed for color emoji

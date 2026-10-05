@@ -364,7 +364,9 @@ public:
         if constexpr (req_attrib<PatchAttribs::kWideColorIfEnabled>::value) {
             fColor = color;
         } else if constexpr (opt_attrib<PatchAttribs::kWideColorIfEnabled>::value) {
-            fColor = VertexColor(color, fAttribs & PatchAttribs::kWideColorIfEnabled);
+            fColor = VertexColor(color, fAttribs & PatchAttribs::kHalfColorIfEnabled ? VertexColorType::kHalf
+                                : fAttribs & PatchAttribs::kWideColorIfEnabled ? VertexColorType::kFloat
+                                                                            : VertexColorType::kByte);
         } else {
             fColor = color.toBytes_RGBA();
         }

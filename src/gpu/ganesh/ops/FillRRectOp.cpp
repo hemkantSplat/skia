@@ -172,10 +172,17 @@ private:
         kWideColor        = 1 << 2,
         kMSAAEnabled      = 1 << 3,
         kFakeNonAA        = 1 << 4,
+        kHalfColor        = 1 << 5,
     };
-    constexpr static int kNumProcessorFlags = 5;
+    constexpr static int kNumProcessorFlags = 6;
 
     SK_DECL_BITFIELD_CLASS_OPS_FRIENDS(ProcessorFlags);
+
+    static skgpu::VertexColorType ColorStorage(ProcessorFlags flags) {
+        return flags & ProcessorFlags::kWideColor ? skgpu::VertexColorType::kFloat
+                 : flags & ProcessorFlags::kHalfColor ? skgpu::VertexColorType::kHalf
+                                                     : skgpu::VertexColorType::kByte;
+    }
 
     class Processor;
 
@@ -291,6 +298,7 @@ FillRRectOpImpl::FillRRectOpImpl(GrProcessorSet* processorSet,
                           : GrAAType::kCoverage)  // Use analytic AA even if the RT is MSAA.
         , fProcessorFlags(processorFlags & ~(ProcessorFlags::kHasLocalCoords |
                                              ProcessorFlags::kWideColor |
+                                             ProcessorFlags::kHalfColor |
                                              ProcessorFlags::kMSAAEnabled))
         , fHeadInstance(arena->make<Instance>(viewMatrix, rrect, localCoords, paintColor))
         , fTailInstance(&fHeadInstance->fNext) {
@@ -403,11 +411,13 @@ GrProcessorSet::Analysis FillRRectOpImpl::finalize(const GrCaps& caps, const GrA
     SkASSERT(fInstanceCount == 1);
     SkASSERT(fHeadInstance->fNext == nullptr);
 
-    bool isWideColor;
+    skgpu::VertexColorType colorType;
     auto analysis = fHelper.finalizeProcessors(caps, clip, clampType,
                                                GrProcessorAnalysisCoverage::kSingleChannel,
-                                               &fHeadInstance->fColor, &isWideColor);
-    if (isWideColor) {
+                                               &fHeadInstance->fColor, &colorType);
+    if (colorType == skgpu::VertexColorType::kHalf) {
+        fProcessorFlags |= ProcessorFlags::kHalfColor;
+    } else if (colorType == skgpu::VertexColorType::kFloat) {
         fProcessorFlags |= ProcessorFlags::kWideColor;
     }
     if (analysis.usesLocalCoords()) {
@@ -488,7 +498,7 @@ private:
                                           SkSLType::kFloat2);
         }
         fColorAttrib = &fInstanceAttribs.push_back(
-                MakeColorAttribute("color", (fFlags & ProcessorFlags::kWideColor)));
+                MakeColorAttribute("color", ColorStorage(fFlags)));
         SkASSERT(fInstanceAttribs.size() <= kMaxInstanceAttribs);
         this->setInstanceAttributesWithImplicitOffsets(fInstanceAttribs.begin(),
                                                        fInstanceAttribs.size());
@@ -681,7 +691,7 @@ void FillRRectOpImpl::onPrepareDraws(GrMeshDrawTarget* target) {
                 }
             }
 
-            instanceWriter << VertexColor(i->fColor, fProcessorFlags & ProcessorFlags::kWideColor);
+            instanceWriter << VertexColor(i->fColor, ColorStorage(fProcessorFlags));
         }
         SkASSERT(instanceWriter.mark() == end);
     }

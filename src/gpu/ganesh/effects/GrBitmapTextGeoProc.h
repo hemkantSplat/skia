@@ -8,6 +8,7 @@
 #ifndef GrBitmapTextGeoProc_DEFINED
 #define GrBitmapTextGeoProc_DEFINED
 
+#include "src/gpu/ganesh/GrColor.h"
 #include "include/core/SkMatrix.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkSize.h"
@@ -41,7 +42,7 @@ public:
     static GrGeometryProcessor* Make(SkArenaAlloc* arena,
                                      const GrShaderCaps& caps,
                                      const SkPMColor4f& color,
-                                     bool wideColor,
+                                     skgpu::VertexColorType colorType,
                                      sk_sp<GrColorSpaceXform> colorSpaceXform,
                                      const GrSurfaceProxyView* views,
                                      int numActiveViews,
@@ -50,7 +51,7 @@ public:
                                      const SkMatrix& localMatrix,
                                      bool usesW) {
         return arena->make([&](void* ptr) {
-            return new (ptr) GrBitmapTextGeoProc(caps, color, wideColor, std::move(colorSpaceXform),
+            return new (ptr) GrBitmapTextGeoProc(caps, color, colorType, std::move(colorSpaceXform),
                                                  views, numActiveViews,
                                                  p, format, localMatrix, usesW);
         });
@@ -69,7 +70,7 @@ public:
 private:
     class Impl;
 
-    GrBitmapTextGeoProc(const GrShaderCaps&, const SkPMColor4f&, bool wideColor,
+    GrBitmapTextGeoProc(const GrShaderCaps&, const SkPMColor4f&, skgpu::VertexColorType colorType,
                         sk_sp<GrColorSpaceXform> colorSpaceXform,
                         const GrSurfaceProxyView* views, int numViews, GrSamplerState params,
                         skgpu::MaskFormat format, const SkMatrix& localMatrix, bool usesW);

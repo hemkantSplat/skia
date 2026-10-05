@@ -240,7 +240,9 @@ GrDistanceFieldA8TextGeoProc::GrDistanceFieldA8TextGeoProc(const GrShaderCaps& c
     } else {
         fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
     }
-    fInColor = {"inColor", kUByte4_norm_GrVertexAttribType, SkSLType::kHalf4 };
+    fInColor = MakeColorAttribute("inColor", flags & kHalfColor_DistanceFieldEffectFlag ? skgpu::VertexColorType::kHalf
+                      : flags & kWideColor_DistanceFieldEffectFlag ? skgpu::VertexColorType::kFloat
+                                                                  : skgpu::VertexColorType::kByte);
     fInTextureCoords = {"inTextureCoords", kUShort2_GrVertexAttribType,
                         caps.fIntegerSupport ? SkSLType::kUShort2 : SkSLType::kFloat2};
     fInAtlasRect = {"inAtlasRect", kShort4_GrVertexAttribType, SkSLType::kFloat4};
@@ -497,7 +499,9 @@ GrDistanceFieldPathGeoProc::GrDistanceFieldPathGeoProc(const GrShaderCaps& caps,
     SkASSERT(!(flags & ~kPath_DistanceFieldEffectMask));
 
     fInPosition = {"inPosition", kFloat3_GrVertexAttribType, SkSLType::kFloat3};
-    fInColor = MakeColorAttribute("inColor", SkToBool(flags & kWideColor_DistanceFieldEffectFlag));
+    fInColor = MakeColorAttribute("inColor", flags & kHalfColor_DistanceFieldEffectFlag ? skgpu::VertexColorType::kHalf
+                      : flags & kWideColor_DistanceFieldEffectFlag ? skgpu::VertexColorType::kFloat
+                                                                  : skgpu::VertexColorType::kByte);
     fInTextureCoords = {"inTextureCoords", kUShort2_GrVertexAttribType,
                         caps.fIntegerSupport ? SkSLType::kUShort2 : SkSLType::kFloat2};
     fInAtlasRect = {"inAtlasRect", kShort4_GrVertexAttribType, SkSLType::kFloat4};
@@ -825,7 +829,9 @@ GrDistanceFieldLCDTextGeoProc::GrDistanceFieldLCDTextGeoProc(const GrShaderCaps&
     } else {
         fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
     }
-    fInColor = {"inColor", kUByte4_norm_GrVertexAttribType, SkSLType::kHalf4};
+    fInColor = MakeColorAttribute("inColor", flags & kHalfColor_DistanceFieldEffectFlag ? skgpu::VertexColorType::kHalf
+                      : flags & kWideColor_DistanceFieldEffectFlag ? skgpu::VertexColorType::kFloat
+                                                                  : skgpu::VertexColorType::kByte);
     fInTextureCoords = {"inTextureCoords", kUShort2_GrVertexAttribType,
                         caps.fIntegerSupport ? SkSLType::kUShort2 : SkSLType::kFloat2};
     fInAtlasRect = {"inAtlasRect", kShort4_GrVertexAttribType, SkSLType::kFloat4};

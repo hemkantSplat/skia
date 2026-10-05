@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/GrSimpleMeshDrawOpHelper.h"
 
 #include "include/private/base/SkTo.h"
@@ -74,12 +75,12 @@ bool GrSimpleMeshDrawOpHelper::isCompatible(const GrSimpleMeshDrawOpHelper& that
 
 GrProcessorSet::Analysis GrSimpleMeshDrawOpHelper::finalizeProcessors(
         const GrCaps& caps, const GrAppliedClip* clip, GrClampType clampType,
-        GrProcessorAnalysisCoverage geometryCoverage, SkPMColor4f* geometryColor, bool* wideColor) {
+        GrProcessorAnalysisCoverage geometryCoverage, SkPMColor4f* geometryColor, skgpu::VertexColorType* colorType) {
     GrProcessorAnalysisColor color = *geometryColor;
     auto result = this->finalizeProcessors(caps, clip, clampType, geometryCoverage, &color);
     color.isConstant(geometryColor);
-    if (wideColor) {
-        *wideColor = !geometryColor->fitsInBytes();
+    if (colorType) {
+        *colorType = GrVertexColorStorage(*geometryColor, clampType, caps);
     }
     return result;
 }

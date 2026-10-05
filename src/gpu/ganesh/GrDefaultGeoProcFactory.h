@@ -8,6 +8,7 @@
 #ifndef GrDefaultGeoProcFactory_DEFINED
 #define GrDefaultGeoProcFactory_DEFINED
 
+#include "src/gpu/ganesh/GrColor.h"
 #include "include/private/base/SkAssert.h"
 #include "src/core/SkColorData.h"
 
@@ -27,6 +28,7 @@ namespace GrDefaultGeoProcFactory {
             kPremulGrColorUniform_Type,
             kPremulGrColorAttribute_Type,
             kPremulWideColorAttribute_Type,
+            kPremulHalfColorAttribute_Type,
         };
         explicit Color(const SkPMColor4f& color)
                 : fType(kPremulGrColorUniform_Type)
@@ -35,6 +37,12 @@ namespace GrDefaultGeoProcFactory {
                 : fType(type)
                 , fColor(SK_PMColor4fILLEGAL) {
             SkASSERT(type != kPremulGrColorUniform_Type);
+        }
+
+        static Type AttributeType(skgpu::VertexColorType type) {
+            return type == skgpu::VertexColorType::kHalf ? kPremulHalfColorAttribute_Type
+                     : type == skgpu::VertexColorType::kFloat ? kPremulWideColorAttribute_Type
+                                                            : kPremulGrColorAttribute_Type;
         }
 
         Type fType;

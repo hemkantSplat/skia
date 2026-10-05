@@ -8,6 +8,7 @@
 #ifndef GrSimpleMeshDrawOpHelper_DEFINED
 #define GrSimpleMeshDrawOpHelper_DEFINED
 
+#include "src/gpu/ganesh/GrColor.h"
 #include "include/core/SkString.h"
 #include "include/private/base/SkAssert.h"
 #include "include/private/base/SkDebug.h"
@@ -105,7 +106,7 @@ public:
      */
     GrProcessorSet::Analysis finalizeProcessors(const GrCaps&, const GrAppliedClip*, GrClampType,
                                                 GrProcessorAnalysisCoverage geometryCoverage,
-                                                SkPMColor4f* geometryColor, bool* wideColor);
+                                                SkPMColor4f* geometryColor, skgpu::VertexColorType* colorType);
 
     bool isTrivial() const {
       return fProcessors == nullptr;

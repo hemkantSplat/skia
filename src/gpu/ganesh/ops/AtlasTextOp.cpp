@@ -152,9 +152,9 @@ auto AtlasTextOp::Geometry::Make(const sktext::gpu::AtlasSubRun& subRun,
                              color};
 }
 
-void AtlasTextOp::Geometry::fillVertexData(void *dst, int offset, int count) const {
+void AtlasTextOp::Geometry::fillVertexData(void *dst, int offset, int count, skgpu::VertexColorType type) const {
     fSubRun.fillVertexData(
-            dst, offset, count, fColor.toBytes_RGBA(), fDrawMatrix, fDrawOrigin, fClipRect);
+            dst, offset, count, fColor, type, fDrawMatrix, fDrawOrigin, fClipRect);
 }
 
 void AtlasTextOp::visitProxies(const GrVisitProxyFunc& func) const {
@@ -220,6 +220,11 @@ GrProcessorSet::Analysis AtlasTextOp::finalize(const GrCaps& caps,
     // the atlas op metadata can be fully const. This is okay for now since finalize() happens
     // before the op is merged, so during combineIfPossible, metadata is effectively const.
     fUsesLocalCoords = analysis.usesLocalCoords();
+    fColorType = GrVertexColorStorage(fHead->fColor, clampType, caps);
+#if !defined(SK_DISABLE_SDF_TEXT)
+    fDFGPFlags |= fColorType == skgpu::VertexColorType::kHalf ? kHalfColor_DistanceFieldEffectFlag
+                   : fColorType == skgpu::VertexColorType::kFloat ? kWideColor_DistanceFieldEffectFlag : 0;
+#endif
     return analysis;
 }
 
@@ -279,7 +284,7 @@ void AtlasTextOp::onPrepareDraws(GrMeshDrawTarget* target) {
         // color, so we can use the first's without worry.
         flushInfo.fGeometryProcessor = GrBitmapTextGeoProc::Make(
                 target->allocator(), *target->caps().shaderCaps(), fHead->fColor,
-                /*wideColor=*/false, fColorSpaceXform, views, numActiveViews, filter,
+                fColorType, fColorSpaceXform, views, numActiveViews, filter,
                 maskFormat, localMatrix, fHasPerspective);
     }
 
@@ -319,9 +324,9 @@ void AtlasTextOp::onPrepareDraws(GrMeshDrawTarget* target) {
 
     for (const Geometry* geo = fHead; geo != nullptr; geo = geo->fNext) {
         const sktext::gpu::AtlasSubRun& subRun = geo->fSubRun;
-        SkASSERTF((int) subRun.vertexStride(geo->fDrawMatrix) == vertexStride,
+        SkASSERTF((int) subRun.vertexStride(geo->fDrawMatrix, fColorType) == vertexStride,
                   "subRun stride: %d vertex buffer stride: %d\n",
-                  (int)subRun.vertexStride(geo->fDrawMatrix), vertexStride);
+                  (int)subRun.vertexStride(geo->fDrawMatrix, fColorType), vertexStride);
 
         const int subRunEnd = subRun.glyphCount();
         auto regenerateDelegate = [&](sktext::gpu::GlyphVector* glyphs,
@@ -342,7 +347,7 @@ void AtlasTextOp::onPrepareDraws(GrMeshDrawTarget* target) {
                 return;
             }
 
-            geo->fillVertexData(vertices + quadCursor * quadSize, subRunCursor, glyphsRegenerated);
+            geo->fillVertexData(vertices + quadCursor * quadSize, subRunCursor, glyphsRegenerated, fColorType);
 
             subRunCursor += glyphsRegenerated;
             quadCursor += glyphsRegenerated;
@@ -440,7 +445,7 @@ void AtlasTextOp::createDrawForGeneratedGlyphs(GrMeshDrawTarget* target,
 GrOp::CombineResult AtlasTextOp::onCombineIfPossible(GrOp* t, SkArenaAlloc*, const GrCaps& caps) {
     auto that = t->cast<AtlasTextOp>();
 
-    if (fDFGPFlags != that->fDFGPFlags ||
+    if (fColorType != that->fColorType || fDFGPFlags != that->fDFGPFlags ||
         fMaskType != that->fMaskType ||
         fUsesLocalCoords != that->fUsesLocalCoords ||
         fNeedsGlyphTransform != that->fNeedsGlyphTransform ||

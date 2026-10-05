@@ -142,7 +142,7 @@ private:
 
 GrBitmapTextGeoProc::GrBitmapTextGeoProc(const GrShaderCaps& caps,
                                          const SkPMColor4f& color,
-                                         bool wideColor,
+                                         skgpu::VertexColorType colorType,
                                          sk_sp<GrColorSpaceXform> colorSpaceXform,
                                          const GrSurfaceProxyView* views,
                                          int numActiveViews,
@@ -166,7 +166,7 @@ GrBitmapTextGeoProc::GrBitmapTextGeoProc(const GrShaderCaps& caps,
 
     bool hasVertexColor = MaskFormat::kA8 == fMaskFormat || MaskFormat::kA565 == fMaskFormat;
     if (hasVertexColor) {
-        fInColor = MakeColorAttribute("inColor", wideColor);
+        fInColor = MakeColorAttribute("inColor", colorType);
     }
 
     fInTextureCoords = {"inTextureCoords", kUShort2_GrVertexAttribType,
@@ -258,12 +258,12 @@ GrGeometryProcessor* GrBitmapTextGeoProc::TestCreate(GrProcessorTestData* d) {
     }
 
     GrColor color = GrTest::RandomColor(d->fRandom);
-    bool wideColor = d->fRandom->nextBool();
+    skgpu::VertexColorType colorType = d->fRandom->nextBool() ? skgpu::VertexColorType::kFloat : skgpu::VertexColorType::kByte;
     SkMatrix localMatrix = GrTest::TestMatrix(d->fRandom);
     bool usesW = d->fRandom->nextBool();
     return GrBitmapTextGeoProc::Make(d->allocator(), *d->caps()->shaderCaps(),
                                      SkPMColor4f::FromBytes_RGBA(color),
-                                     wideColor, /*colorSpaceXform=*/nullptr,
+                                     colorType, /*colorSpaceXform=*/nullptr,
                                      &view, 1, samplerState, format,
                                      localMatrix, usesW);
 }

@@ -81,14 +81,18 @@ public:
     void flatten(SkWriteBuffer &buffer) const;
 
 #if defined(SK_GANESH) || defined(SK_USE_LEGACY_GANESH_TEXT_APIS)
-    size_t vertexStride(const SkMatrix &matrix) const;
+    size_t vertexStride(const SkMatrix &matrix, skgpu::VertexColorType colorType) const;
 
     void fillVertexData(int offset, int count,
                         SkSpan<const Glyph*> glyphs,
-                        GrColor color,
+                        const SkPMColor4f& color, skgpu::VertexColorType colorType,
                         const SkMatrix& positionMatrix,
                         SkIRect clip,
                         void* vertexBuffer) const;
+
+    template<typename Color>
+    void fillVertexDataTyped(int offset, int count, SkSpan<const Glyph*> glyphs, Color color,
+                             const SkMatrix& positionMatrix, SkIRect clip, void* vertexBuffer) const;
 
     skgpu::ganesh::AtlasTextOp::MaskType opMaskType() const;
 #endif  // defined(SK_GANESH) || defined(SK_USE_LEGACY_GANESH_TEXT_APIS)

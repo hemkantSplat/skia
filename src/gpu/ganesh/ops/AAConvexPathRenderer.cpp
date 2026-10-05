@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/AAConvexPathRenderer.h"
 
 #include "include/core/SkMatrix.h"
@@ -600,9 +601,9 @@ public:
     static GrGeometryProcessor* Make(SkArenaAlloc* arena,
                                      const SkMatrix& localMatrix,
                                      bool usesLocalCoords,
-                                     bool wideColor) {
+                                     skgpu::VertexColorType colorType) {
         return arena->make([&](void* ptr) {
-            return new (ptr) QuadEdgeEffect(localMatrix, usesLocalCoords, wideColor);
+            return new (ptr) QuadEdgeEffect(localMatrix, usesLocalCoords, colorType);
         });
     }
 
@@ -620,12 +621,12 @@ public:
     std::unique_ptr<ProgramImpl> makeProgramImpl(const GrShaderCaps&) const override;
 
 private:
-    QuadEdgeEffect(const SkMatrix& localMatrix, bool usesLocalCoords, bool wideColor)
+    QuadEdgeEffect(const SkMatrix& localMatrix, bool usesLocalCoords, skgpu::VertexColorType colorType)
             : INHERITED(kQuadEdgeEffect_ClassID)
             , fLocalMatrix(localMatrix)
             , fUsesLocalCoords(usesLocalCoords) {
         fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
-        fInColor = MakeColorAttribute("inColor", wideColor);
+        fInColor = MakeColorAttribute("inColor", colorType);
         // GL on iOS 14 needs more precision for the quadedge attributes
         fInQuadEdge = {"inQuadEdge", kFloat4_GrVertexAttribType, SkSLType::kFloat4};
         this->setVertexAttributesWithImplicitOffsets(&fInPosition, 3);
@@ -723,10 +724,10 @@ GR_DEFINE_GEOMETRY_PROCESSOR_TEST(QuadEdgeEffect)
 GrGeometryProcessor* QuadEdgeEffect::TestCreate(GrProcessorTestData* d) {
     SkMatrix localMatrix = GrTest::TestMatrix(d->fRandom);
     bool usesLocalCoords = d->fRandom->nextBool();
-    bool wideColor = d->fRandom->nextBool();
+    skgpu::VertexColorType colorType = d->fRandom->nextBool() ? skgpu::VertexColorType::kFloat : skgpu::VertexColorType::kByte;
     // Doesn't work without derivative instructions.
     return d->caps()->shaderCaps()->fShaderDerivativeSupport
-                   ? QuadEdgeEffect::Make(d->allocator(), localMatrix, usesLocalCoords, wideColor)
+                   ? QuadEdgeEffect::Make(d->allocator(), localMatrix, usesLocalCoords, colorType)
                    : nullptr;
 }
 #endif
@@ -772,7 +773,7 @@ public:
                                       GrClampType clampType) override {
         return fHelper.finalizeProcessors(
                 caps, clip, clampType, GrProcessorAnalysisCoverage::kSingleChannel,
-                &fPaths.back().fColor, &fWideColor);
+                &fPaths.back().fColor, &fColorType);
     }
 
 private:
@@ -793,7 +794,7 @@ private:
 
         GrGeometryProcessor* quadProcessor = QuadEdgeEffect::Make(arena, invert,
                                                                   fHelper.usesLocalCoords(),
-                                                                  fWideColor);
+                                                                  fColorType);
 
         fProgramInfo = fHelper.createProgramInfoWithStencil(caps, arena, writeView, usesMSAASurface,
                                                             std::move(appliedClip),
@@ -872,7 +873,7 @@ private:
             }
 
             STArray<kPreallocDrawCnt, Draw, true> draws;
-            VertexColor color(args.fColor, fWideColor);
+            VertexColor color(args.fColor, fColorType);
             create_vertices(segments, fanPt, color, &draws, verts, idxs, kVertexStride);
 
             GrSimpleMesh* meshes = target->allocMeshes(draws.size());
@@ -914,7 +915,7 @@ private:
         }
 
         fPaths.push_back_n(that->fPaths.size(), that->fPaths.begin());
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -932,7 +933,7 @@ private:
 
     Helper fHelper;
     STArray<1, PathData, true> fPaths;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
 
     struct MeshDraw {
         GrSimpleMesh* fMeshes;

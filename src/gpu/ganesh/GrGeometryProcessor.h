@@ -8,6 +8,7 @@
 #ifndef GrGeometryProcessor_DEFINED
 #define GrGeometryProcessor_DEFINED
 
+#include "src/gpu/ganesh/GrColor.h"
 #include "include/core/SkMatrix.h"
 #include "include/gpu/ganesh/GrBackendSurface.h"
 #include "include/private/base/SkAlign.h"
@@ -231,12 +232,12 @@ public:
     virtual std::unique_ptr<ProgramImpl> makeProgramImpl(const GrShaderCaps&) const = 0;
 
 protected:
-    // GPs that need to use either float or ubyte colors can just call this to get a correctly
-    // configured Attribute struct
-    static Attribute MakeColorAttribute(const char* name, bool wideColor) {
-        return { name,
-                 wideColor ? kFloat4_GrVertexAttribType : kUByte4_norm_GrVertexAttribType,
-                 SkSLType::kHalf4 };
+    // The attribute format must match VertexColor storage.
+    static Attribute MakeColorAttribute(const char* name, skgpu::VertexColorType type) {
+        return {name, type == skgpu::VertexColorType::kHalf ? kHalf4_GrVertexAttribType
+                        : type == skgpu::VertexColorType::kFloat ? kFloat4_GrVertexAttribType
+                                                               : kUByte4_norm_GrVertexAttribType,
+                SkSLType::kHalf4};
     }
     void setVertexAttributes(const Attribute* attrs, int attrCount, size_t stride) {
         fVertexAttributes.initExplicit(attrs, attrCount, stride);

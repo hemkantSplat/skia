@@ -20,7 +20,7 @@ class SkRRect;
 namespace skgpu::ganesh::ShadowRRectOp {
 
 GrOp::Owner Make(GrRecordingContext*,
-                 GrColor,
+                 const SkPMColor4f&,
                  const SkMatrix& viewMatrix,
                  const SkRRect&,
                  SkScalar blurWidth,

@@ -244,7 +244,7 @@ public:
     DEFINE_OP_CLASS_ID
 
     // An insetWidth > 1/2 rect width or height indicates a simple fill.
-    ShadowCircularRRectOp(GrColor color, const SkRect& devRect,
+    ShadowCircularRRectOp(const SkPMColor4f& color, const SkRect& devRect,
                           float devRadius, bool isCircle, float blurRadius, float insetWidth,
                           GrSurfaceProxyView falloffView)
             : INHERITED(ClassID())
@@ -293,13 +293,15 @@ public:
 
     FixedFunctionFlags fixedFunctionFlags() const override { return FixedFunctionFlags::kNone; }
 
-    GrProcessorSet::Analysis finalize(const GrCaps&, const GrAppliedClip*, GrClampType) override {
+    GrProcessorSet::Analysis finalize(const GrCaps& caps, const GrAppliedClip*, GrClampType clampType) override {
+        fColorType = GrVertexColorStorage(fGeoData.front().fColor, clampType, caps);
         return GrProcessorSet::EmptySetAnalysis();
     }
 
 private:
+    skgpu::VertexColorType fColorType = skgpu::VertexColorType::kByte;
     struct Geometry {
-        GrColor   fColor;
+        SkPMColor4f fColor;
         SkScalar  fOuterRadius;
         SkScalar  fUmbraInset;
         SkScalar  fInnerRadius;
@@ -309,16 +311,17 @@ private:
         bool      fIsCircle;
     };
 
+    template<typename Color>
     struct CircleVertex {
         SkPoint fPos;
-        GrColor fColor;
+        Color fColor;
         SkPoint fOffset;
         SkScalar fDistanceCorrection;
     };
 
-    void fillInCircleVerts(const Geometry& args, bool isStroked, CircleVertex** verts) const {
+    template<typename Color>
+    void fillInCircleVerts(const Geometry& args, Color color, bool isStroked, CircleVertex<Color>** verts) const {
 
-        GrColor color = args.fColor;
         SkScalar outerRadius = args.fOuterRadius;
         SkScalar innerRadius = args.fInnerRadius;
         SkScalar blurRadius = args.fBlurRadius;
@@ -446,8 +449,8 @@ private:
         }
     }
 
-    void fillInRRectVerts(const Geometry& args, CircleVertex** verts) const {
-        GrColor color = args.fColor;
+    template<typename Color>
+    void fillInRRectVerts(const Geometry& args, Color color, CircleVertex<Color>** verts) const {
         SkScalar outerRadius = args.fOuterRadius;
 
         const SkRect& bounds = args.fDevBounds;
@@ -584,8 +587,7 @@ private:
                              const GrDstProxyView& dstProxyView,
                              GrXferBarrierFlags renderPassXferBarriers,
                              GrLoadOp colorLoadOp) override {
-        GrGeometryProcessor* gp = GrRRectShadowGeoProc::Make(arena, fFalloffView);
-        SkASSERT(sizeof(CircleVertex) == gp->vertexStride());
+        GrGeometryProcessor* gp = GrRRectShadowGeoProc::Make(arena, fFalloffView, fColorType);
 
         fProgramInfo = GrSimpleMeshDrawOpHelper::CreateProgramInfo(caps, arena, writeView,
                                                                    usesMSAASurface,
@@ -600,12 +602,31 @@ private:
     }
 
     void onPrepareDraws(GrMeshDrawTarget* target) override {
+        switch (fColorType) {
+            case skgpu::VertexColorType::kByte:
+                this->prepareDraws<uint32_t>(target, [](const SkPMColor4f& c) { return c.toBytes_RGBA(); });
+                break;
+            case skgpu::VertexColorType::kHalf:
+                this->prepareDraws<std::array<uint16_t, 4>>(target, [](const SkPMColor4f& c) {
+                    std::array<uint16_t, 4> value;
+                    to_half(skvx::float4::Load(c.vec())).store(value.data());
+                    return value;
+                });
+                break;
+            case skgpu::VertexColorType::kFloat:
+                this->prepareDraws<SkPMColor4f>(target, [](const SkPMColor4f& c) { return c; });
+                break;
+        }
+    }
+
+    template<typename Color, typename Pack>
+    void prepareDraws(GrMeshDrawTarget* target, Pack pack) {
         int instanceCount = fGeoData.size();
 
         sk_sp<const GrBuffer> vertexBuffer;
         int firstVertex;
-        CircleVertex* verts = (CircleVertex*)target->makeVertexSpace(
-                sizeof(CircleVertex), fVertCount, &vertexBuffer, &firstVertex);
+        CircleVertex<Color>* verts = (CircleVertex<Color>*)target->makeVertexSpace(
+                sizeof(CircleVertex<Color>), fVertCount, &vertexBuffer, &firstVertex);
         if (!verts) {
             SkDebugf("Could not allocate vertices\n");
             return;
@@ -625,7 +646,7 @@ private:
 
             if (args.fIsCircle) {
                 bool isStroked = SkToBool(kStroke_RRectType == args.fType);
-                this->fillInCircleVerts(args, isStroked, &verts);
+                this->fillInCircleVerts(args, pack(args.fColor), isStroked, &verts);
 
                 const uint16_t* primIndices = circle_type_to_indices(isStroked);
                 const int primIndexCount = circle_type_to_index_count(isStroked);
@@ -636,7 +657,7 @@ private:
                 currStartVertex += circle_type_to_vert_count(isStroked);
 
             } else {
-                this->fillInRRectVerts(args, &verts);
+                this->fillInRRectVerts(args, pack(args.fColor), &verts);
 
                 const uint16_t* primIndices = rrect_type_to_indices(args.fType);
                 const int primIndexCount = rrect_type_to_index_count(args.fType);
@@ -680,7 +701,8 @@ private:
             return CombineResult::kCannotCombine;
         }
 
-        fGeoData.push_back_n(that->fGeoData.size(), that->fGeoData.begin());
+        fColorType = std::max(fColorType, that->fColorType);
+    fGeoData.push_back_n(that->fGeoData.size(), that->fGeoData.begin());
         fVertCount += that->fVertCount;
         fIndexCount += that->fIndexCount;
         return CombineResult::kMerged;
@@ -693,7 +715,7 @@ private:
             string.appendf(
                     "Color: 0x%08x Rect [L: %.2f, T: %.2f, R: %.2f, B: %.2f],"
                     "OuterRad: %.2f, Umbra: %.2f, InnerRad: %.2f, BlurRad: %.2f\n",
-                    fGeoData[i].fColor, fGeoData[i].fDevBounds.fLeft, fGeoData[i].fDevBounds.fTop,
+                    fGeoData[i].fColor.toBytes_RGBA(), fGeoData[i].fDevBounds.fLeft, fGeoData[i].fDevBounds.fTop,
                     fGeoData[i].fDevBounds.fRight, fGeoData[i].fDevBounds.fBottom,
                     fGeoData[i].fOuterRadius, fGeoData[i].fUmbraInset,
                     fGeoData[i].fInnerRadius, fGeoData[i].fBlurRadius);
@@ -765,7 +787,7 @@ static GrSurfaceProxyView create_falloff_texture(GrRecordingContext* rContext) {
 }
 
 GrOp::Owner Make(GrRecordingContext* context,
-                 GrColor color,
+                 const SkPMColor4f& color,
                  const SkMatrix& viewMatrix,
                  const SkRRect& rrect,
                  SkScalar blurWidth,
@@ -826,7 +848,7 @@ GR_DRAW_OP_TEST_DEFINE(ShadowRRectOp) {
         SkScalar blurWidth = random->nextSScalar1() * 72.f;
         bool isCircle = random->nextBool();
         // This op doesn't use a full GrPaint, just a color.
-        GrColor color = paint.getColor4f().toBytes_RGBA();
+        SkPMColor4f color = paint.getColor4f();
         if (isCircle) {
             SkRect circle = GrTest::TestSquare(random);
             SkRRect rrect = SkRRect::MakeOval(circle);

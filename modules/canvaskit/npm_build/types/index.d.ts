@@ -596,6 +596,7 @@ export interface CanvasKit {
     readonly GLBackendState?: GLBackendStateEnumValues;
     /** API level of the HDR colour patches (ColorSpace.MakeRGB, named transfer functions and gamuts, MakeColorSpaceXform); absent in stock. */
     readonly hdrColorApi?: number;
+    readonly wideVertexColorApi?: number;
     /** API level of the shared GL patches (resetContext, GLBackendState); absent in stock. */
     readonly sharedGlApi?: number;
     /** API level of the motion blur patches (ImageFilter.MakeTransformBlur); absent in stock. */

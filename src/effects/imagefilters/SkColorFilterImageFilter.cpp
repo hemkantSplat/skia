@@ -50,6 +50,8 @@ private:
             const skif::Mapping& mapping,
             std::optional<skif::LayerSpace<SkIRect>> contentBounds) const override;
 
+    bool onSupportsRasterF16() const override { return true; }
+
     MatrixCapability onGetCTMCapability() const override { return MatrixCapability::kComplex; }
 
     bool onAffectsTransparentBlack() const override {

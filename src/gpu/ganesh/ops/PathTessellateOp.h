@@ -62,9 +62,6 @@ private:
             , fProcessors(std::move(paint))
             , fShaderMatrix(viewMatrix) {
         SkASSERT(!path.isInverseFillType());
-        if (!this->headDraw().fColor.fitsInBytes()) {
-            fPatchAttribs |= PatchAttribs::kWideColorIfEnabled;
-        }
         this->setBounds(drawBounds, HasAABloat::kNo, IsHairline::kNo);
     }
 

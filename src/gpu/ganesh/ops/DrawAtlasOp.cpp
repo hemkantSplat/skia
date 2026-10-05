@@ -109,9 +109,15 @@ private:
 
     CombineResult onCombineIfPossible(GrOp* t, SkArenaAlloc*, const GrCaps&) override;
 
+    struct SpriteVertex {
+        SkPoint position;
+        SkPMColor4f color;
+        SkPoint uv;
+    };
+
     struct Geometry {
         SkPMColor4f fColor;
-        TArray<uint8_t, true> fVerts;
+        TArray<SpriteVertex, true> fVerts;
     };
 
     STArray<1, Geometry, true> fGeoData;
@@ -120,19 +126,20 @@ private:
     SkPMColor4f fColor;
     int fQuadCount;
     bool fHasColors;
+    skgpu::VertexColorType fColorType = skgpu::VertexColorType::kByte;
 
     GrSimpleMesh* fMesh = nullptr;
     GrProgramInfo* fProgramInfo = nullptr;
 };
 
 GrGeometryProcessor* make_gp(SkArenaAlloc* arena,
-                             bool hasColors,
+                             bool hasColors, skgpu::VertexColorType colorType,
                              const SkPMColor4f& color,
                              const SkMatrix& viewMatrix) {
     using namespace GrDefaultGeoProcFactory;
     Color gpColor(color);
     if (hasColors) {
-        gpColor.fType = Color::kPremulGrColorAttribute_Type;
+        gpColor.fType = Color::AttributeType(colorType);
     }
 
     return GrDefaultGeoProcFactory::Make(arena, gpColor, Coverage::kSolid_Type,
@@ -152,78 +159,25 @@ DrawAtlasOpImpl::DrawAtlasOpImpl(GrProcessorSet* processorSet, const SkPMColor4f
     Geometry& installedGeo = fGeoData.push_back();
     installedGeo.fColor = color;
 
-    // Figure out stride and offsets
-    // Order within the vertex is: position [color] texCoord
-    size_t texOffset = sizeof(SkPoint);
-    size_t vertexStride = 2 * sizeof(SkPoint);
     fHasColors = SkToBool(colors);
-    if (colors) {
-        texOffset += sizeof(GrColor);
-        vertexStride += sizeof(GrColor);
-    }
-
-    // Bail out if we'd overflow from a really large draw
-    if (spriteCount > SK_MaxS32 / static_cast<int>(4 * vertexStride)) {
+    if (spriteCount > SK_MaxS32 / static_cast<int>(4 * sizeof(SpriteVertex))) {
         return;
     }
-
-    // Compute buffer size and alloc buffer
     fQuadCount = spriteCount;
-    int allocSize = static_cast<int>(4 * vertexStride * spriteCount);
-    installedGeo.fVerts.reset(allocSize);
-    uint8_t* currVertex = installedGeo.fVerts.begin();
-
+    installedGeo.fVerts.reset(4 * spriteCount);
     SkRect bounds = SkRectPriv::MakeLargestInverted();
-    // TODO4F: Preserve float colors
-    int paintAlpha = GrColorUnpackA(installedGeo.fColor.toBytes_RGBA());
     for (int spriteIndex = 0; spriteIndex < spriteCount; ++spriteIndex) {
-        // Transform rect
         SkPoint strip[4];
-        const SkRect& currRect = rects[spriteIndex];
-        xforms[spriteIndex].toTriStrip(currRect.width(), currRect.height(), strip);
-
-        // Copy colors if necessary
-        if (colors) {
-            // convert to GrColor
-            SkColor spriteColor = colors[spriteIndex];
-            if (paintAlpha != 255) {
-                spriteColor = SkColorSetA(spriteColor,
-                                          SkMulDiv255Round(SkColorGetA(spriteColor), paintAlpha));
-            }
-            GrColor grColor = SkColorToPremulGrColor(spriteColor);
-
-            *(reinterpret_cast<GrColor*>(currVertex + sizeof(SkPoint))) = grColor;
-            *(reinterpret_cast<GrColor*>(currVertex + vertexStride + sizeof(SkPoint))) = grColor;
-            *(reinterpret_cast<GrColor*>(currVertex + 2 * vertexStride + sizeof(SkPoint))) =
-                    grColor;
-            *(reinterpret_cast<GrColor*>(currVertex + 3 * vertexStride + sizeof(SkPoint))) =
-                    grColor;
+        const SkRect& rect = rects[spriteIndex];
+        xforms[spriteIndex].toTriStrip(rect.width(), rect.height(), strip);
+        const auto tint = colors ? SkColor4f::FromColor(colors[spriteIndex]).premul() * color.fA
+                                 : color;
+        const SkPoint uv[] = {{rect.fLeft, rect.fTop}, {rect.fLeft, rect.fBottom},
+                              {rect.fRight, rect.fTop}, {rect.fRight, rect.fBottom}};
+        for (int j = 0; j < 4; ++j) {
+            installedGeo.fVerts[4 * spriteIndex + j] = {strip[j], tint, uv[j]};
+            SkRectPriv::GrowToInclude(&bounds, strip[j]);
         }
-
-        // Copy position and uv to verts
-        *(reinterpret_cast<SkPoint*>(currVertex)) = strip[0];
-        *(reinterpret_cast<SkPoint*>(currVertex + texOffset)) =
-                SkPoint::Make(currRect.fLeft, currRect.fTop);
-        SkRectPriv::GrowToInclude(&bounds, strip[0]);
-        currVertex += vertexStride;
-
-        *(reinterpret_cast<SkPoint*>(currVertex)) = strip[1];
-        *(reinterpret_cast<SkPoint*>(currVertex + texOffset)) =
-                SkPoint::Make(currRect.fLeft, currRect.fBottom);
-        SkRectPriv::GrowToInclude(&bounds, strip[1]);
-        currVertex += vertexStride;
-
-        *(reinterpret_cast<SkPoint*>(currVertex)) = strip[2];
-        *(reinterpret_cast<SkPoint*>(currVertex + texOffset)) =
-                SkPoint::Make(currRect.fRight, currRect.fTop);
-        SkRectPriv::GrowToInclude(&bounds, strip[2]);
-        currVertex += vertexStride;
-
-        *(reinterpret_cast<SkPoint*>(currVertex)) = strip[3];
-        *(reinterpret_cast<SkPoint*>(currVertex + texOffset)) =
-                SkPoint::Make(currRect.fRight, currRect.fBottom);
-        SkRectPriv::GrowToInclude(&bounds, strip[3]);
-        currVertex += vertexStride;
     }
 
     this->setTransformedBounds(bounds, viewMatrix, HasAABloat::kNo, IsHairline::kNo);
@@ -251,7 +205,7 @@ void DrawAtlasOpImpl::onCreateProgramInfo(const GrCaps* caps,
                                           GrLoadOp colorLoadOp) {
     // Setup geometry processor
     GrGeometryProcessor* gp = make_gp(arena,
-                                      this->hasColors(),
+                                      this->hasColors(), fColorType,
                                       this->color(),
                                       this->viewMatrix());
 
@@ -266,7 +220,6 @@ void DrawAtlasOpImpl::onPrepareDraws(GrMeshDrawTarget* target) {
         this->createProgramInfo(target);
     }
 
-    int instanceCount = fGeoData.size();
     size_t vertexStride = fProgramInfo->geomProc().vertexStride();
 
     int numQuads = this->quadCount();
@@ -277,13 +230,15 @@ void DrawAtlasOpImpl::onPrepareDraws(GrMeshDrawTarget* target) {
         return;
     }
 
-    uint8_t* vertPtr = reinterpret_cast<uint8_t*>(verts);
-    for (int i = 0; i < instanceCount; i++) {
-        const Geometry& args = fGeoData[i];
-
-        size_t allocSize = args.fVerts.size();
-        memcpy(vertPtr, args.fVerts.begin(), allocSize);
-        vertPtr += allocSize;
+    skgpu::VertexWriter writer(verts, vertexStride * 4 * numQuads);
+    for (const auto& geometry : fGeoData) {
+        for (const auto& vertex : geometry.fVerts) {
+            writer << vertex.position;
+            if (fHasColors) {
+                writer << skgpu::VertexColor(vertex.color, fColorType);
+            }
+            writer << vertex.uv;
+        }
     }
 
     fMesh = helper.mesh();
@@ -327,6 +282,7 @@ GrOp::CombineResult DrawAtlasOpImpl::onCombineIfPossible(GrOp* t,
         return CombineResult::kCannotCombine;
     }
 
+    fColorType = std::max(fColorType, that->fColorType);
     fGeoData.push_back_n(that->fGeoData.size(), that->fGeoData.begin());
     fQuadCount = newQuadCount;
 
@@ -350,6 +306,14 @@ GrProcessorSet::Analysis DrawAtlasOpImpl::finalize(const GrCaps& caps,
                                              GrProcessorAnalysisCoverage::kNone, &gpColor);
     if (gpColor.isConstant(&fColor)) {
         fHasColors = false;
+    }
+    fColorType = GrVertexColorStorage(fColor, clampType, caps);
+    if (fHasColors) {
+        for (const auto& geometry : fGeoData) {
+            for (const auto& vertex : geometry.fVerts) {
+                fColorType = std::max(fColorType, GrVertexColorStorage(vertex.color, clampType, caps));
+            }
+        }
     }
     return result;
 }

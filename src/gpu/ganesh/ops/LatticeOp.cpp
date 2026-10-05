@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/LatticeOp.h"
 
 #include "include/core/SkAlphaType.h"
@@ -87,9 +88,9 @@ public:
                                      const GrSurfaceProxyView& view,
                                      sk_sp<GrColorSpaceXform> csxf,
                                      GrSamplerState::Filter filter,
-                                     bool wideColor) {
+                                     skgpu::VertexColorType colorType) {
         return arena->make([&](void* ptr) {
-            return new (ptr) LatticeGP(view, std::move(csxf), filter, wideColor);
+            return new (ptr) LatticeGP(view, std::move(csxf), filter, colorType);
         });
     }
 
@@ -152,7 +153,7 @@ public:
 
 private:
     LatticeGP(const GrSurfaceProxyView& view, sk_sp<GrColorSpaceXform> csxf,
-              GrSamplerState::Filter filter, bool wideColor)
+              GrSamplerState::Filter filter, skgpu::VertexColorType colorType)
             : INHERITED(kLatticeGP_ClassID)
             , fColorSpaceXform(std::move(csxf)) {
 
@@ -162,7 +163,7 @@ private:
         fInPosition = {"position", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
         fInTextureCoords = {"textureCoords", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
         fInTextureDomain = {"textureDomain", kFloat4_GrVertexAttribType, SkSLType::kFloat4};
-        fInColor = MakeColorAttribute("color", wideColor);
+        fInColor = MakeColorAttribute("color", colorType);
         this->setVertexAttributesWithImplicitOffsets(&fInPosition, 4);
     }
 
@@ -246,7 +247,7 @@ public:
                                                  GrProcessorAnalysisCoverage::kNone,
                                                  &analysisColor);
         analysisColor.isConstant(&fPatches[0].fColor);
-        fWideColor = !fPatches[0].fColor.fitsInBytes();
+        fColorType = GrVertexColorStorage(fPatches[0].fColor, clampType, caps);
         return result;
     }
 
@@ -262,7 +263,7 @@ private:
                              GrXferBarrierFlags renderPassXferBarriers,
                              GrLoadOp colorLoadOp) override {
 
-        auto gp = LatticeGP::Make(arena, fView, fColorSpaceXform, fFilter, fWideColor);
+        auto gp = LatticeGP::Make(arena, fView, fColorSpaceXform, fFilter, fColorType);
         if (!gp) {
             return;
         }
@@ -312,7 +313,7 @@ private:
         for (int i = 0; i < patchCnt; i++) {
             const Patch& patch = fPatches[i];
 
-            VertexColor patchColor(patch.fColor, fWideColor);
+            VertexColor patchColor(patch.fColor, fColorType);
 
             // Apply the view matrix here if it is scale-translate.  Otherwise, we need to
             // wait until we've created the dst rects.
@@ -407,7 +408,7 @@ private:
         }
 
         fPatches.move_back_n(that->fPatches.size(), that->fPatches.begin());
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -439,7 +440,7 @@ private:
     SkAlphaType fAlphaType;
     sk_sp<GrColorSpaceXform> fColorSpaceXform;
     GrSamplerState::Filter fFilter;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
 
     GrSimpleMesh*  fMesh = nullptr;
     GrProgramInfo* fProgramInfo = nullptr;

@@ -137,6 +137,7 @@
       // API level of tools/canvaskit-build's HDR colour (ColorSpace.MakeRGB, NamedTransferFn/NamedGamut,
       // ColorSpace queries, ColorFilter.MakeColorSpaceXform); stock leaves it undefined.
       CanvasKit.hdrColorApi = 1;
+      CanvasKit.wideVertexColorApi = 1;
 
       // API level of tools/canvaskit-build's shared GL context (GrDirectContext.resetContext,
       // GLBackendState, an honest kAll reset); stock leaves it undefined.

@@ -317,7 +317,7 @@ static bool plus_needs_shader_clamp(SkBlendMode mode, bool unclampedPlus, GrClam
     if (SkBlendMode::kPlus != mode) {
         return false;
     }
-    return unclampedPlus ? GrClampType::kManual == clampType : GrClampType::kAuto != clampType;
+    return unclampedPlus ? GrClampType::kManual == clampType : !GrClampTypeIsAutomatic(clampType);
 }
 
 const GrXPFactory* GrPorterDuffXPFactory::Get(SkBlendMode blendMode) {

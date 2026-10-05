@@ -1194,10 +1194,7 @@ bool SurfaceDrawContext::drawFastShadow(const GrClip* clip,
             ambientRRect = SkRRect::MakeRectXY(outsetRect, outsetRad, outsetRad);
         }
 
-        // The ShadowRRectOp still uses 8888 colors, so it might get clamped if the shadow color
-        // does not fit in bytes after being transformed to the destination color space. This can
-        // happen if the destination color space is smaller than sRGB, which is highly unlikely.
-        GrColor ambientColor = SkColorToPMColor4f(rec.fAmbientColor, colorInfo()).toBytes_RGBA();
+        SkPMColor4f ambientColor = SkColorToPMColor4f(rec.fAmbientColor, colorInfo());
         if (transparent) {
             // set a large inset to force a fill
             devSpaceInsetWidth = ambientRRect.width();
@@ -1306,10 +1303,7 @@ bool SurfaceDrawContext::drawFastShadow(const GrClip* clip,
             spotShadowRRect = SkRRect::MakeRectXY(outsetRect, outsetRad, outsetRad);
         }
 
-        // The ShadowRRectOp still uses 8888 colors, so it might get clamped if the shadow color
-        // does not fit in bytes after being transformed to the destination color space. This can
-        // happen if the destination color space is smaller than sRGB, which is highly unlikely.
-        GrColor spotColor = SkColorToPMColor4f(rec.fSpotColor, colorInfo()).toBytes_RGBA();
+        SkPMColor4f spotColor = SkColorToPMColor4f(rec.fSpotColor, colorInfo());
         GrOp::Owner op = ShadowRRectOp::Make(fContext,
                                              spotColor,
                                              viewMatrix,
@@ -2141,7 +2135,7 @@ bool SurfaceDrawContext::setupDstProxyView(const SkRect& opBounds,
     fContext->priv().stats()->incNumDstCopies(
             int64_t(copyRect.width()) * copyRect.height(),
             cause.pack(),
-            GrColorTypeClampType(colorType) != GrClampType::kAuto,
+            !GrClampTypeIsAutomatic(GrColorTypeClampType(colorType)),
             opRequiresMSAA || this->getOpsTask()->usesMSAASurface());
 
     dstProxyView->setProxyView({std::move(copy), this->origin(), this->readSwizzle()});

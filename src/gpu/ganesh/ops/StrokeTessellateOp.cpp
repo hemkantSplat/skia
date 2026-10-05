@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/StrokeTessellateOp.h"
 
 #include "include/core/SkColor.h"
@@ -38,9 +39,6 @@ StrokeTessellateOp::StrokeTessellateOp(GrAAType aaType, const SkMatrix& viewMatr
         , fPathStrokeList(path, stroke, paint.getColor4f())
         , fTotalCombinedVerbCnt(path.countVerbs())
         , fProcessors(std::move(paint)) {
-    if (!this->headColor().fitsInBytes()) {
-        fPatchAttribs |= PatchAttribs::kWideColorIfEnabled;
-    }
     SkRect devBounds = path.getBounds();
     if (!this->headStroke().isHairlineStyle()) {
         // Non-hairlines inflate in local path space (pre-transform).
@@ -80,6 +78,13 @@ GrProcessorSet::Analysis StrokeTessellateOp::finalize(const GrCaps& caps,
     const GrProcessorSet::Analysis& analysis = fProcessors.finalize(
             this->headColor(), GrProcessorAnalysisCoverage::kNone, clip,
             &GrUserStencilSettings::kUnused, caps, clampType, &this->headColor());
+    auto colorType = GrVertexColorStorage(this->headColor(), clampType, caps);
+    if (colorType != skgpu::VertexColorType::kByte) {
+        fPatchAttribs |= PatchAttribs::kWideColorIfEnabled;
+        if (colorType == skgpu::VertexColorType::kHalf) {
+            fPatchAttribs |= PatchAttribs::kHalfColorIfEnabled;
+        }
+    }
     fNeedsStencil = !analysis.unaffectedByDstValue();
     return analysis;
 }

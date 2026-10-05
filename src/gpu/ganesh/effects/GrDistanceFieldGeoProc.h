@@ -34,9 +34,10 @@ enum GrDistanceFieldEffectFlags {
     kPortrait_DistanceFieldEffectFlag     = 0x020, // lcd display is in portrait mode
     kGammaCorrect_DistanceFieldEffectFlag = 0x040, // assume gamma-correct output (linear blending)
     kAliased_DistanceFieldEffectFlag      = 0x080, // monochrome output
+    kHalfColor_DistanceFieldEffectFlag    = 0x200,
     kWideColor_DistanceFieldEffectFlag    = 0x100, // use wide color (only for path)
 
-    kInvalid_DistanceFieldEffectFlag      = 0x200,   // invalid state (for initialization)
+    kInvalid_DistanceFieldEffectFlag      = 0x400,   // invalid state (for initialization)
 
     kUniformScale_DistanceFieldEffectMask = kSimilarity_DistanceFieldEffectFlag |
                                             kScaleOnly_DistanceFieldEffectFlag,
@@ -45,14 +46,15 @@ enum GrDistanceFieldEffectFlags {
                                             kScaleOnly_DistanceFieldEffectFlag |
                                             kPerspective_DistanceFieldEffectFlag |
                                             kGammaCorrect_DistanceFieldEffectFlag |
-                                            kAliased_DistanceFieldEffectFlag,
+                                            kAliased_DistanceFieldEffectFlag |
+                                            kWideColor_DistanceFieldEffectFlag | kHalfColor_DistanceFieldEffectFlag,
     // The subset of the flags relevant to GrDistanceFieldPathGeoProc
     kPath_DistanceFieldEffectMask         = kSimilarity_DistanceFieldEffectFlag |
                                             kScaleOnly_DistanceFieldEffectFlag |
                                             kPerspective_DistanceFieldEffectFlag |
                                             kGammaCorrect_DistanceFieldEffectFlag |
                                             kAliased_DistanceFieldEffectFlag |
-                                            kWideColor_DistanceFieldEffectFlag,
+                                            kWideColor_DistanceFieldEffectFlag | kHalfColor_DistanceFieldEffectFlag,
     // The subset of the flags relevant to GrDistanceFieldLCDTextGeoProc
     kLCD_DistanceFieldEffectMask          = kSimilarity_DistanceFieldEffectFlag |
                                             kScaleOnly_DistanceFieldEffectFlag |
@@ -60,7 +62,8 @@ enum GrDistanceFieldEffectFlags {
                                             kUseLCD_DistanceFieldEffectFlag |
                                             kBGR_DistanceFieldEffectFlag |
                                             kPortrait_DistanceFieldEffectFlag |
-                                            kGammaCorrect_DistanceFieldEffectFlag,
+                                            kGammaCorrect_DistanceFieldEffectFlag |
+                                            kWideColor_DistanceFieldEffectFlag | kHalfColor_DistanceFieldEffectFlag,
 };
 
 /**

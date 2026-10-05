@@ -225,10 +225,15 @@ static constexpr bool GrAATypeIsHW(GrAAType type) {
  * and some are FP but manually clamped in the XP.
  */
 enum class GrClampType {
-    kAuto,    // Normalized, fixed-point configs
+    kAuto,    // Normalized, fixed-point configs with at most 8 bits per channel
+    kAutoWide, // Normalized, fixed-point configs with more than 8 bits per channel
     kManual,  // Clamped FP configs
     kNone,    // Normal (unclamped) FP configs
 };
+
+static constexpr bool GrClampTypeIsAutomatic(GrClampType type) {
+    return type == GrClampType::kAuto || type == GrClampType::kAutoWide;
+}
 
 /**
  * A number of rectangle/quadrilateral drawing APIs can control anti-aliasing on a per edge basis.
@@ -878,7 +883,9 @@ static constexpr GrColorFormatDesc GrGetColorTypeDesc(GrColorType ct) {
 static constexpr GrClampType GrColorTypeClampType(GrColorType colorType) {
     if (GrGetColorTypeDesc(colorType).encoding() == GrColorTypeEncoding::kUnorm ||
         GrGetColorTypeDesc(colorType).encoding() == GrColorTypeEncoding::kSRGBUnorm) {
-        return GrClampType::kAuto;
+        const auto desc = GrGetColorTypeDesc(colorType);
+        return desc.r() > 8 || desc.g() > 8 || desc.b() > 8 || desc.a() > 8 || desc.gray() > 8
+                       ? GrClampType::kAutoWide : GrClampType::kAuto;
     }
     return GrColorType::kRGBA_F16_Clamped == colorType ? GrClampType::kManual : GrClampType::kNone;
 }

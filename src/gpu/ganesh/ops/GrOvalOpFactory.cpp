@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/GrOvalOpFactory.h"
 
 #include "include/core/SkMatrix.h"
@@ -119,10 +120,10 @@ class CircleGeometryProcessor : public GrGeometryProcessor {
 public:
     static GrGeometryProcessor* Make(SkArenaAlloc* arena, bool stroke, bool clipPlane,
                                      bool isectPlane, bool unionPlane, bool roundCaps,
-                                     bool wideColor, const SkMatrix& localMatrix) {
+                                     skgpu::VertexColorType colorType, const SkMatrix& localMatrix) {
         return arena->make([&](void* ptr) {
             return new (ptr) CircleGeometryProcessor(stroke, clipPlane, isectPlane, unionPlane,
-                                                     roundCaps, wideColor, localMatrix);
+                                                     roundCaps, colorType, localMatrix);
         });
     }
 
@@ -145,12 +146,12 @@ public:
 
 private:
     CircleGeometryProcessor(bool stroke, bool clipPlane, bool isectPlane, bool unionPlane,
-                            bool roundCaps, bool wideColor, const SkMatrix& localMatrix)
+                            bool roundCaps, skgpu::VertexColorType colorType, const SkMatrix& localMatrix)
             : INHERITED(kCircleGeometryProcessor_ClassID)
             , fLocalMatrix(localMatrix)
             , fStroke(stroke) {
         fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
-        fInColor = MakeColorAttribute("inColor", wideColor);
+        fInColor = MakeColorAttribute("inColor", colorType);
         fInCircleEdge = {"inCircleEdge", kFloat4_GrVertexAttribType, SkSLType::kFloat4};
 
         if (clipPlane) {
@@ -307,22 +308,22 @@ GR_DEFINE_GEOMETRY_PROCESSOR_TEST(CircleGeometryProcessor)
 GrGeometryProcessor* CircleGeometryProcessor::TestCreate(GrProcessorTestData* d) {
     bool stroke = d->fRandom->nextBool();
     bool roundCaps = stroke ? d->fRandom->nextBool() : false;
-    bool wideColor = d->fRandom->nextBool();
+    skgpu::VertexColorType colorType = d->fRandom->nextBool() ? skgpu::VertexColorType::kFloat : skgpu::VertexColorType::kByte;
     bool clipPlane = d->fRandom->nextBool();
     bool isectPlane = d->fRandom->nextBool();
     bool unionPlane = d->fRandom->nextBool();
     const SkMatrix& matrix = GrTest::TestMatrix(d->fRandom);
     return CircleGeometryProcessor::Make(d->allocator(), stroke, clipPlane, isectPlane,
-                                         unionPlane, roundCaps, wideColor, matrix);
+                                         unionPlane, roundCaps, colorType, matrix);
 }
 #endif
 
 class ButtCapDashedCircleGeometryProcessor : public GrGeometryProcessor {
 public:
-    static GrGeometryProcessor* Make(SkArenaAlloc* arena, bool wideColor,
+    static GrGeometryProcessor* Make(SkArenaAlloc* arena, skgpu::VertexColorType colorType,
                                      const SkMatrix& localMatrix) {
         return arena->make([&](void* ptr) {
-            return new (ptr) ButtCapDashedCircleGeometryProcessor(wideColor, localMatrix);
+            return new (ptr) ButtCapDashedCircleGeometryProcessor(colorType, localMatrix);
         });
     }
 
@@ -341,11 +342,11 @@ public:
     }
 
 private:
-    ButtCapDashedCircleGeometryProcessor(bool wideColor, const SkMatrix& localMatrix)
+    ButtCapDashedCircleGeometryProcessor(skgpu::VertexColorType colorType, const SkMatrix& localMatrix)
             : INHERITED(kButtCapStrokedCircleGeometryProcessor_ClassID)
             , fLocalMatrix(localMatrix) {
         fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
-        fInColor = MakeColorAttribute("inColor", wideColor);
+        fInColor = MakeColorAttribute("inColor", colorType);
         fInCircleEdge = {"inCircleEdge", kFloat4_GrVertexAttribType, SkSLType::kFloat4};
         fInDashParams = {"inDashParams", kFloat4_GrVertexAttribType, SkSLType::kFloat4};
         this->setVertexAttributesWithImplicitOffsets(&fInPosition, 4);
@@ -558,9 +559,9 @@ private:
 
 #if defined(GPU_TEST_UTILS)
 GrGeometryProcessor* ButtCapDashedCircleGeometryProcessor::TestCreate(GrProcessorTestData* d) {
-    bool wideColor = d->fRandom->nextBool();
+    skgpu::VertexColorType colorType = d->fRandom->nextBool() ? skgpu::VertexColorType::kFloat : skgpu::VertexColorType::kByte;
     const SkMatrix& matrix = GrTest::TestMatrix(d->fRandom);
-    return ButtCapDashedCircleGeometryProcessor::Make(d->allocator(), wideColor, matrix);
+    return ButtCapDashedCircleGeometryProcessor::Make(d->allocator(), colorType, matrix);
 }
 #endif
 
@@ -576,10 +577,10 @@ GrGeometryProcessor* ButtCapDashedCircleGeometryProcessor::TestCreate(GrProcesso
 
 class EllipseGeometryProcessor : public GrGeometryProcessor {
 public:
-    static GrGeometryProcessor* Make(SkArenaAlloc* arena, bool stroke, bool wideColor,
+    static GrGeometryProcessor* Make(SkArenaAlloc* arena, bool stroke, skgpu::VertexColorType colorType,
                                      bool useScale, const SkMatrix& localMatrix) {
         return arena->make([&](void* ptr) {
-            return new (ptr) EllipseGeometryProcessor(stroke, wideColor, useScale, localMatrix);
+            return new (ptr) EllipseGeometryProcessor(stroke, colorType, useScale, localMatrix);
         });
     }
 
@@ -599,14 +600,14 @@ public:
     }
 
 private:
-    EllipseGeometryProcessor(bool stroke, bool wideColor, bool useScale,
+    EllipseGeometryProcessor(bool stroke, skgpu::VertexColorType colorType, bool useScale,
                              const SkMatrix& localMatrix)
             : INHERITED(kEllipseGeometryProcessor_ClassID)
             , fLocalMatrix(localMatrix)
             , fStroke(stroke)
             , fUseScale(useScale) {
         fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
-        fInColor = MakeColorAttribute("inColor", wideColor);
+        fInColor = MakeColorAttribute("inColor", colorType);
         if (useScale) {
             fInEllipseOffset = {"inEllipseOffset", kFloat3_GrVertexAttribType, SkSLType::kFloat3};
         } else {
@@ -751,10 +752,10 @@ GR_DEFINE_GEOMETRY_PROCESSOR_TEST(EllipseGeometryProcessor)
 #if defined(GPU_TEST_UTILS)
 GrGeometryProcessor* EllipseGeometryProcessor::TestCreate(GrProcessorTestData* d) {
     bool stroke = d->fRandom->nextBool();
-    bool wideColor = d->fRandom->nextBool();
+    skgpu::VertexColorType colorType = d->fRandom->nextBool() ? skgpu::VertexColorType::kFloat : skgpu::VertexColorType::kByte;
     bool useScale = d->fRandom->nextBool();
     SkMatrix matrix = GrTest::TestMatrix(d->fRandom);
-    return EllipseGeometryProcessor::Make(d->allocator(), stroke, wideColor, useScale, matrix);
+    return EllipseGeometryProcessor::Make(d->allocator(), stroke, colorType, useScale, matrix);
 }
 #endif
 
@@ -773,10 +774,10 @@ enum class DIEllipseStyle { kStroke = 0, kHairline, kFill };
 
 class DIEllipseGeometryProcessor : public GrGeometryProcessor {
 public:
-    static GrGeometryProcessor* Make(SkArenaAlloc* arena, bool wideColor, bool useScale,
+    static GrGeometryProcessor* Make(SkArenaAlloc* arena, skgpu::VertexColorType colorType, bool useScale,
                                      const SkMatrix& viewMatrix, DIEllipseStyle style) {
         return arena->make([&](void* ptr) {
-            return new (ptr) DIEllipseGeometryProcessor(wideColor, useScale, viewMatrix, style);
+            return new (ptr) DIEllipseGeometryProcessor(colorType, useScale, viewMatrix, style);
         });
     }
 
@@ -796,14 +797,14 @@ public:
     }
 
 private:
-    DIEllipseGeometryProcessor(bool wideColor, bool useScale, const SkMatrix& viewMatrix,
+    DIEllipseGeometryProcessor(skgpu::VertexColorType colorType, bool useScale, const SkMatrix& viewMatrix,
                                DIEllipseStyle style)
             : INHERITED(kDIEllipseGeometryProcessor_ClassID)
             , fViewMatrix(viewMatrix)
             , fUseScale(useScale)
             , fStyle(style) {
         fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
-        fInColor = MakeColorAttribute("inColor", wideColor);
+        fInColor = MakeColorAttribute("inColor", colorType);
         if (useScale) {
             fInEllipseOffsets0 = {"inEllipseOffsets0", kFloat3_GrVertexAttribType,
                                   SkSLType::kFloat3};
@@ -940,11 +941,11 @@ GR_DEFINE_GEOMETRY_PROCESSOR_TEST(DIEllipseGeometryProcessor)
 
 #if defined(GPU_TEST_UTILS)
 GrGeometryProcessor* DIEllipseGeometryProcessor::TestCreate(GrProcessorTestData* d) {
-    bool wideColor = d->fRandom->nextBool();
+    skgpu::VertexColorType colorType = d->fRandom->nextBool() ? skgpu::VertexColorType::kFloat : skgpu::VertexColorType::kByte;
     bool useScale = d->fRandom->nextBool();
     SkMatrix matrix = GrTest::TestMatrix(d->fRandom);
     auto style = (DIEllipseStyle)(d->fRandom->nextRangeU(0, 2));
-    return DIEllipseGeometryProcessor::Make(d->allocator(), wideColor, useScale, matrix, style);
+    return DIEllipseGeometryProcessor::Make(d->allocator(), colorType, useScale, matrix, style);
 }
 #endif
 
@@ -1282,7 +1283,7 @@ public:
         SkPMColor4f* color = &fCircles.front().fColor;
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel, color,
-                                          &fWideColor);
+                                          &fColorType);
     }
 
     FixedFunctionFlags fixedFunctionFlags() const override { return fHelper.fixedFunctionFlags(); }
@@ -1307,7 +1308,7 @@ private:
 
         GrGeometryProcessor* gp = CircleGeometryProcessor::Make(arena, !fAllFill, fClipPlane,
                                                                 fClipPlaneIsect, fClipPlaneUnion,
-                                                                fRoundCaps, fWideColor,
+                                                                fRoundCaps, fColorType,
                                                                 localMatrix);
 
         fProgramInfo = fHelper.createProgramInfo(caps,
@@ -1351,7 +1352,7 @@ private:
         for (const auto& circle : fCircles) {
             SkScalar innerRadius = circle.fInnerRadius;
             SkScalar outerRadius = circle.fOuterRadius;
-            VertexColor color(circle.fColor, fWideColor);
+            VertexColor color(circle.fColor, fColorType);
             const SkRect& bounds = circle.fDevBounds;
 
             // The inner radius in the vertex data must be specified in normalized space.
@@ -1485,7 +1486,7 @@ private:
         fClipPlaneIsect |= that->fClipPlaneIsect;
         fClipPlaneUnion |= that->fClipPlaneUnion;
         fRoundCaps |= that->fRoundCaps;
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
 
         fCircles.push_back_n(that->fCircles.size(), that->fCircles.begin());
         fVertCount += that->fVertCount;
@@ -1533,7 +1534,7 @@ private:
     bool fClipPlaneIsect;
     bool fClipPlaneUnion;
     bool fRoundCaps;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
 
     GrSimpleMesh*  fMesh = nullptr;
     GrProgramInfo* fProgramInfo = nullptr;
@@ -1654,7 +1655,7 @@ public:
         SkPMColor4f* color = &fCircles.front().fColor;
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel, color,
-                                          &fWideColor);
+                                          &fColorType);
     }
 
     FixedFunctionFlags fixedFunctionFlags() const override { return fHelper.fixedFunctionFlags(); }
@@ -1679,7 +1680,7 @@ private:
 
         // Setup geometry processor
         GrGeometryProcessor* gp = ButtCapDashedCircleGeometryProcessor::Make(arena,
-                                                                             fWideColor,
+                                                                             fColorType,
                                                                              localMatrix);
 
         fProgramInfo = fHelper.createProgramInfo(caps,
@@ -1736,7 +1737,7 @@ private:
                 dashParams.startAngle = -dashParams.startAngle;
             }
 
-            VertexColor color(circle.fColor, fWideColor);
+            VertexColor color(circle.fColor, fColorType);
 
             // The bounding geometry for the circle is composed of an outer bounding octagon and
             // an inner bounded octagon.
@@ -1813,7 +1814,7 @@ private:
         fCircles.push_back_n(that->fCircles.size(), that->fCircles.begin());
         fVertCount += that->fVertCount;
         fIndexCount += that->fIndexCount;
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -1852,7 +1853,7 @@ private:
     STArray<1, Circle, true> fCircles;
     int fVertCount;
     int fIndexCount;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
 
     GrSimpleMesh*  fMesh = nullptr;
     GrProgramInfo* fProgramInfo = nullptr;
@@ -1994,7 +1995,7 @@ public:
         SkPMColor4f* color = &fEllipses.front().fColor;
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel, color,
-                                          &fWideColor);
+                                          &fColorType);
     }
 
     FixedFunctionFlags fixedFunctionFlags() const override { return fHelper.fixedFunctionFlags(); }
@@ -2015,7 +2016,7 @@ private:
             return;
         }
 
-        GrGeometryProcessor* gp = EllipseGeometryProcessor::Make(arena, fStroked, fWideColor,
+        GrGeometryProcessor* gp = EllipseGeometryProcessor::Make(arena, fStroked, fColorType,
                                                                  fUseScale, localMatrix);
 
         fProgramInfo = fHelper.createProgramInfo(caps,
@@ -2050,7 +2051,7 @@ private:
         float aaBloat = target->usesMSAASurface() ? SK_ScalarSqrt2 : .5f;
 
         for (const auto& ellipse : fEllipses) {
-            VertexColor color(ellipse.fColor, fWideColor);
+            VertexColor color(ellipse.fColor, fColorType);
             SkScalar xRadius = ellipse.fXRadius;
             SkScalar yRadius = ellipse.fYRadius;
 
@@ -2110,7 +2111,7 @@ private:
         }
 
         fEllipses.push_back_n(that->fEllipses.size(), that->fEllipses.begin());
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -2142,7 +2143,7 @@ private:
     SkMatrix fViewMatrixIfUsingLocalCoords;
     Helper fHelper;
     bool fStroked;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
     bool fUseScale;
     STArray<1, Ellipse, true> fEllipses;
 
@@ -2283,7 +2284,7 @@ public:
         SkPMColor4f* color = &fEllipses.front().fColor;
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel, color,
-                                          &fWideColor);
+                                          &fColorType);
     }
 
     FixedFunctionFlags fixedFunctionFlags() const override { return fHelper.fixedFunctionFlags(); }
@@ -2299,7 +2300,7 @@ private:
                              const GrDstProxyView& dstProxyView,
                              GrXferBarrierFlags renderPassXferBarriers,
                              GrLoadOp colorLoadOp) override {
-        GrGeometryProcessor* gp = DIEllipseGeometryProcessor::Make(arena, fWideColor, fUseScale,
+        GrGeometryProcessor* gp = DIEllipseGeometryProcessor::Make(arena, fColorType, fUseScale,
                                                                    this->viewMatrix(),
                                                                    this->style());
 
@@ -2321,7 +2322,7 @@ private:
         }
 
         for (const auto& ellipse : fEllipses) {
-            VertexColor color(ellipse.fColor, fWideColor);
+            VertexColor color(ellipse.fColor, fColorType);
             SkScalar xRadius = ellipse.fXRadius;
             SkScalar yRadius = ellipse.fYRadius;
 
@@ -2382,7 +2383,7 @@ private:
         }
 
         fEllipses.push_back_n(that->fEllipses.size(), that->fEllipses.begin());
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -2420,7 +2421,7 @@ private:
     };
 
     Helper fHelper;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
     bool fUseScale;
     STArray<1, Ellipse, true> fEllipses;
 
@@ -2640,7 +2641,7 @@ public:
         SkPMColor4f* color = &fRRects.front().fColor;
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel, color,
-                                          &fWideColor);
+                                          &fColorType);
     }
 
     FixedFunctionFlags fixedFunctionFlags() const override { return fHelper.fixedFunctionFlags(); }
@@ -2716,7 +2717,7 @@ private:
 
         GrGeometryProcessor* gp = CircleGeometryProcessor::Make(arena, !fAllFill,
                                                                 false, false, false, false,
-                                                                fWideColor, localMatrix);
+                                                                fColorType, localMatrix);
 
         fProgramInfo = fHelper.createProgramInfo(caps, arena, writeView, usesMSAASurface,
                                                  std::move(appliedClip), dstProxyView, gp,
@@ -2752,7 +2753,7 @@ private:
 
         int currStartVertex = 0;
         for (const auto& rrect : fRRects) {
-            VertexColor color(rrect.fColor, fWideColor);
+            VertexColor color(rrect.fColor, fColorType);
             SkScalar outerRadius = rrect.fOuterRadius;
             const SkRect& bounds = rrect.fDevBounds;
 
@@ -2855,7 +2856,7 @@ private:
         fVertCount += that->fVertCount;
         fIndexCount += that->fIndexCount;
         fAllFill = fAllFill && that->fAllFill;
-        fWideColor = fWideColor || that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -2889,7 +2890,7 @@ private:
     int fVertCount;
     int fIndexCount;
     bool fAllFill;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
     STArray<1, RRect, true> fRRects;
 
     GrSimpleMesh*  fMesh = nullptr;
@@ -3018,7 +3019,7 @@ public:
         SkPMColor4f* color = &fRRects.front().fColor;
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel, color,
-                                          &fWideColor);
+                                          &fColorType);
     }
 
     FixedFunctionFlags fixedFunctionFlags() const override { return fHelper.fixedFunctionFlags(); }
@@ -3039,7 +3040,7 @@ private:
             return;
         }
 
-        GrGeometryProcessor* gp = EllipseGeometryProcessor::Make(arena, fStroked, fWideColor,
+        GrGeometryProcessor* gp = EllipseGeometryProcessor::Make(arena, fStroked, fColorType,
                                                                  fUseScale, localMatrix);
 
         fProgramInfo = fHelper.createProgramInfo(caps, arena, writeView, usesMSAASurface,
@@ -3076,7 +3077,7 @@ private:
         }
 
         for (const auto& rrect : fRRects) {
-            VertexColor color(rrect.fColor, fWideColor);
+            VertexColor color(rrect.fColor, fColorType);
             // Compute the reciprocals of the radii here to save time in the shader
             float reciprocalRadii[4] = {
                 SkScalarInvert(rrect.fXRadius),
@@ -3175,7 +3176,7 @@ private:
         }
 
         fRRects.push_back_n(that->fRRects.size(), that->fRRects.begin());
-        fWideColor = fWideColor || that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -3207,7 +3208,7 @@ private:
     SkMatrix fViewMatrixIfUsingLocalCoords;
     Helper fHelper;
     bool fStroked;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
     bool fUseScale;
     STArray<1, RRect, true> fRRects;
 

@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/AALinearizingConvexPathRenderer.h"
 
 #include "include/core/SkMatrix.h"
@@ -102,17 +103,17 @@ void extract_verts(const GrAAConvexTessellator& tess,
 GrGeometryProcessor* create_lines_only_gp(SkArenaAlloc* arena,
                                           bool tweakAlphaForCoverage,
                                           bool usesLocalCoords,
-                                          bool wideColor) {
+                                          skgpu::VertexColorType colorType) {
     using namespace GrDefaultGeoProcFactory;
 
     Coverage::Type coverageType =
         tweakAlphaForCoverage ? Coverage::kAttributeTweakAlpha_Type : Coverage::kAttribute_Type;
     LocalCoords::Type localCoordsType =
             usesLocalCoords ? LocalCoords::kHasExplicit_Type : LocalCoords::kUnused_Type;
-    Color::Type colorType =
-        wideColor ? Color::kPremulWideColorAttribute_Type : Color::kPremulGrColorAttribute_Type;
+    Color::Type gpColorType =
+        Color::AttributeType(colorType);
 
-    return Make(arena, colorType, coverageType, localCoordsType, SkMatrix::I());
+    return Make(arena, gpColorType, coverageType, localCoordsType, SkMatrix::I());
 }
 
 class AAFlatteningConvexPathOp final : public GrMeshDrawOp {
@@ -182,7 +183,7 @@ public:
                                       GrClampType clampType) override {
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel,
-                                          &fPaths.back().fColor, &fWideColor);
+                                          &fPaths.back().fColor, &fColorType);
     }
 
 private:
@@ -199,7 +200,7 @@ private:
         GrGeometryProcessor* gp = create_lines_only_gp(arena,
                                                        fHelper.compatibleWithCoverageAsAlpha(),
                                                        fHelper.usesLocalCoords(),
-                                                       fWideColor);
+                                                       fColorType);
         if (!gp) {
             SkDebugf("Couldn't create a GrGeometryProcessor\n");
             return;
@@ -305,7 +306,7 @@ private:
             }
 
             extract_verts(tess, localCoordsMatrix, vertices + vertexStride * vertexCount,
-                          VertexColor(args.fColor, fWideColor), vertexCount, indices + indexCount);
+                          VertexColor(args.fColor, fColorType), vertexCount, indices + indexCount);
             vertexCount += currentVertices;
             indexCount += currentIndices;
         }
@@ -335,7 +336,7 @@ private:
         }
 
         fPaths.push_back_n(that->fPaths.size(), that->fPaths.begin());
-        fWideColor |= that->fWideColor;
+        fColorType = std::max(fColorType, that->fColorType);
         return CombineResult::kMerged;
     }
 
@@ -366,7 +367,7 @@ private:
 
     STArray<1, PathData, true> fPaths;
     Helper fHelper;
-    bool fWideColor;
+    skgpu::VertexColorType fColorType;
 
     SkTDArray<GrSimpleMesh*> fMeshes;
     GrProgramInfo*           fProgramInfo = nullptr;

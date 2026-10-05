@@ -8,6 +8,7 @@
 #ifndef skgpu_BufferWriter_DEFINED
 #define skgpu_BufferWriter_DEFINED
 
+#include "src/base/SkHalf.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkRect.h"
 #include "include/private/base/SkAssert.h"
@@ -334,43 +335,51 @@ struct VertexWriter::is_quad<VertexWriter::TriFan<T>> : std::true_type {};
 
 /**
  * VertexColor is a helper for writing colors to a vertex buffer. It outputs either four bytes or
- * or four float32 channels, depending on the wideColor parameter. Note that the GP needs to have
+ * or four float16/float32 channels, depending on the requested storage type. Note that the GP needs to have
  * been constructed with the correct attribute type for colors, to match the usage here.
  */
+enum class VertexColorType { kByte, kHalf, kFloat };
+
 class VertexColor {
 public:
     VertexColor() = default;
 
-    explicit VertexColor(const SkPMColor4f& color, bool wideColor) {
-        this->set(color, wideColor);
+    explicit VertexColor(const SkPMColor4f& color, bool wideColor)
+            : VertexColor(color, wideColor ? VertexColorType::kFloat : VertexColorType::kByte) {}
+
+    explicit VertexColor(const SkPMColor4f& color, VertexColorType type) {
+        this->set(color, type);
     }
 
-    void set(const SkPMColor4f& color, bool wideColor) {
-        if (wideColor) {
+    void set(const SkPMColor4f& color, VertexColorType type) {
+        if (type == VertexColorType::kHalf) {
+            to_half(skvx::float4::Load(color.vec())).store(fColor);
+        } else if (type == VertexColorType::kFloat) {
             memcpy(fColor, color.vec(), sizeof(fColor));
         } else {
             fColor[0] = color.toBytes_RGBA();
         }
-        fWideColor = wideColor;
+        fType = type;
     }
 
-    size_t size() const { return fWideColor ? 16 : 4; }
+    size_t size() const { return fType == VertexColorType::kFloat ? 16 : fType == VertexColorType::kHalf ? 8 : 4; }
 
 private:
     template <typename T>
     friend VertexWriter& operator<<(VertexWriter&, const T&);
 
     uint32_t fColor[4];
-    bool     fWideColor;
+    VertexColorType fType;
 };
 
 template <>
 [[maybe_unused]] inline VertexWriter& operator<<(VertexWriter& w, const VertexColor& color) {
     w << color.fColor[0];
-    if (color.fWideColor) {
-        w << color.fColor[1]
-          << color.fColor[2]
-          << color.fColor[3];
+    if (color.fType != VertexColorType::kByte) {
+        w << color.fColor[1];
+    }
+    if (color.fType == VertexColorType::kFloat) {
+        w << color.fColor[2] << color.fColor[3];
     }
     return w;
 }

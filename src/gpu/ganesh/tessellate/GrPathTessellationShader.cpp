@@ -100,7 +100,8 @@ public:
         }
         if (fAttribs & PatchAttribs::kColor) {
             fInstanceAttribs.emplace_back("colorAttrib",
-                                          (fAttribs & PatchAttribs::kWideColorIfEnabled)
+                                          (fAttribs & PatchAttribs::kHalfColorIfEnabled) ? kHalf4_GrVertexAttribType
+                              : (fAttribs & PatchAttribs::kWideColorIfEnabled)
                                                   ? kFloat4_GrVertexAttribType
                                                   : kUByte4_norm_GrVertexAttribType,
                                           SkSLType::kHalf4);

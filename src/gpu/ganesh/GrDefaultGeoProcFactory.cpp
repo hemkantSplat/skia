@@ -42,6 +42,7 @@ enum GPFlag {
     kCoverageAttribute_GPFlag           = 0x8,
     kCoverageAttributeTweak_GPFlag      = 0x10,
     kCoverageAttributeUnclamped_GPFlag  = 0x20,
+    kColorAttributeIsHalf_GPFlag        = 0x40,
 };
 
 class DefaultGeoProc : public GrGeometryProcessor {
@@ -227,7 +228,9 @@ private:
         fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
         if (fFlags & kColorAttribute_GPFlag) {
             fInColor = MakeColorAttribute("inColor",
-                                          SkToBool(fFlags & kColorAttributeIsWide_GPFlag));
+                                          fFlags & kColorAttributeIsHalf_GPFlag ? skgpu::VertexColorType::kHalf
+                        : fFlags & kColorAttributeIsWide_GPFlag ? skgpu::VertexColorType::kFloat
+                                                              : skgpu::VertexColorType::kByte);
         }
         if (fFlags & kLocalCoordAttribute_GPFlag) {
             fInLocalCoords = {"inLocalCoord", kFloat2_GrVertexAttribType,
@@ -302,6 +305,9 @@ GrGeometryProcessor* GrDefaultGeoProcFactory::Make(SkArenaAlloc* arena,
         flags |= kColorAttribute_GPFlag;
     } else if (Color::kPremulWideColorAttribute_Type == color.fType) {
         flags |= kColorAttribute_GPFlag | kColorAttributeIsWide_GPFlag;
+    }
+    if (Color::kPremulHalfColorAttribute_Type == color.fType) {
+        flags |= kColorAttribute_GPFlag | kColorAttributeIsHalf_GPFlag;
     }
     if (Coverage::kAttribute_Type == coverage.fType) {
         flags |= kCoverageAttribute_GPFlag;

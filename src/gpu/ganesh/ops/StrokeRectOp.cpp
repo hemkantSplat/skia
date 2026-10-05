@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/StrokeRectOp.h"
 
 #include "include/core/SkMatrix.h"
@@ -415,7 +416,7 @@ GrGeometryProcessor* create_aa_stroke_rect_gp(SkArenaAlloc* arena,
                                               bool tweakAlphaForCoverage,
                                               const SkMatrix& viewMatrix,
                                               bool usesLocalCoords,
-                                              bool wideColor) {
+                                              skgpu::VertexColorType colorType) {
     using namespace GrDefaultGeoProcFactory;
 
     // When MSAA is enabled, we have to extend our AA bloats and interpolate coverage values outside
@@ -426,10 +427,10 @@ GrGeometryProcessor* create_aa_stroke_rect_gp(SkArenaAlloc* arena,
                                                   : Coverage::kSolid_Type);
     LocalCoords::Type localCoordsType =
         usesLocalCoords ? LocalCoords::kUsePosition_Type : LocalCoords::kUnused_Type;
-    Color::Type colorType =
-        wideColor ? Color::kPremulWideColorAttribute_Type: Color::kPremulGrColorAttribute_Type;
+    Color::Type gpColorType =
+        Color::AttributeType(colorType);
 
-    return MakeForDeviceSpace(arena, colorType, coverageType, localCoordsType, viewMatrix);
+    return MakeForDeviceSpace(arena, gpColorType, coverageType, localCoordsType, viewMatrix);
 }
 
 class AAStrokeRectOp final : public GrMeshDrawOp {
@@ -548,7 +549,7 @@ public:
                                       GrClampType clampType) override {
         return fHelper.finalizeProcessors(caps, clip, clampType,
                                           GrProcessorAnalysisCoverage::kSingleChannel,
-                                          &fRects.back().fColor, &fWideColor);
+                                          &fRects.back().fColor, &fColorType);
     }
 
 private:
@@ -608,7 +609,7 @@ private:
 
     void generateAAStrokeRectGeometry(VertexWriter& vertices,
                                       const SkPMColor4f& color,
-                                      bool wideColor,
+                                      skgpu::VertexColorType colorType,
                                       const SkRect& devOutside,
                                       const SkRect& devOutsideAssist,
                                       const SkRect& devInside,
@@ -623,7 +624,7 @@ private:
     GrSimpleMesh*  fMesh = nullptr;
     GrProgramInfo* fProgramInfo = nullptr;
     bool           fMiterStroke;
-    bool           fWideColor;
+    skgpu::VertexColorType           fColorType;
 
     using INHERITED = GrMeshDrawOp;
 };
@@ -643,7 +644,7 @@ void AAStrokeRectOp::onCreateProgramInfo(const GrCaps* caps,
             this->compatibleWithCoverageAsAlpha(usesMSAASurface),
             this->viewMatrix(),
             fHelper.usesLocalCoords(),
-            fWideColor);
+            fColorType);
     if (!gp) {
         SkDebugf("Couldn't create GrGeometryProcessor\n");
         return;
@@ -696,7 +697,7 @@ void AAStrokeRectOp::onPrepareDraws(GrMeshDrawTarget* target) {
         const RectInfo& info = fRects[i];
         this->generateAAStrokeRectGeometry(vertices,
                                            info.fColor,
-                                           fWideColor,
+                                           fColorType,
                                            info.fDevOutside,
                                            info.fDevOutsideAssist,
                                            info.fDevInside,
@@ -834,13 +835,13 @@ GrOp::CombineResult AAStrokeRectOp::onCombineIfPossible(GrOp* t, SkArenaAlloc*, 
     }
 
     fRects.push_back_n(that->fRects.size(), that->fRects.begin());
-    fWideColor |= that->fWideColor;
+    fColorType = std::max(fColorType, that->fColorType);
     return CombineResult::kMerged;
 }
 
 void AAStrokeRectOp::generateAAStrokeRectGeometry(VertexWriter& vertices,
                                                   const SkPMColor4f& color,
-                                                  bool wideColor,
+                                                  skgpu::VertexColorType colorType,
                                                   const SkRect& devOutside,
                                                   const SkRect& devOutsideAssist,
                                                   const SkRect& devInside,
@@ -904,8 +905,8 @@ void AAStrokeRectOp::generateAAStrokeRectGeometry(VertexWriter& vertices,
         interiorCoverage -= interiorExtraBloat;
     }
 
-    VertexColor innerColor(tweakAlphaForCoverage ? color * innerCoverage : color, wideColor);
-    VertexColor outerColor(tweakAlphaForCoverage ? SK_PMColor4fTRANSPARENT : color, wideColor);
+    VertexColor innerColor(tweakAlphaForCoverage ? color * innerCoverage : color, colorType);
+    VertexColor outerColor(tweakAlphaForCoverage ? SK_PMColor4fTRANSPARENT : color, colorType);
 
     // Exterior outset rect (away from stroke).
     vertices.writeQuad(inset_fan(devOutside, -outset, -outset),
@@ -959,7 +960,7 @@ void AAStrokeRectOp::generateAAStrokeRectGeometry(VertexWriter& vertices,
                                 innerCoverage * coverageBackset;
         }
         VertexColor interiorColor(tweakAlphaForCoverage ? color * interiorCoverage : color,
-                                  wideColor);
+                                  colorType);
         vertices.writeQuad(VertexWriter::TriFanFromRect(interiorAABoundary),
                            interiorColor,
                            maybe_coverage(interiorCoverage));

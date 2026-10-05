@@ -8,6 +8,7 @@
 #ifndef GrSimpleMeshDrawOpHelperWithStencil_DEFINED
 #define GrSimpleMeshDrawOpHelperWithStencil_DEFINED
 
+#include "src/gpu/ganesh/GrColor.h"
 #include "include/core/SkString.h"
 #include "src/core/SkColorData.h"
 #include "src/gpu/ganesh/GrCaps.h"
@@ -83,7 +84,7 @@ public:
 
     GrProcessorSet::Analysis finalizeProcessors(const GrCaps&, const GrAppliedClip*, GrClampType,
                                                 GrProcessorAnalysisCoverage geometryCoverage,
-                                                SkPMColor4f* geometryColor, bool* wideColor);
+                                                SkPMColor4f* geometryColor, skgpu::VertexColorType* colorType);
 
     using GrSimpleMeshDrawOpHelper::aaType;
     using GrSimpleMeshDrawOpHelper::setAAType;

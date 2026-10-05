@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/PathTessellateOp.h"
 
 #include "include/core/SkColor.h"
@@ -40,6 +41,13 @@ GrProcessorSet::Analysis PathTessellateOp::finalize(const GrCaps& caps,
                                          caps,
                                          clampType,
                                          &this->headDraw().fColor);
+    auto colorType = GrVertexColorStorage(this->headDraw().fColor, clampType, caps);
+    if (colorType != skgpu::VertexColorType::kByte) {
+        fPatchAttribs |= PatchAttribs::kWideColorIfEnabled;
+        if (colorType == skgpu::VertexColorType::kHalf) {
+            fPatchAttribs |= PatchAttribs::kHalfColorIfEnabled;
+        }
+    }
     if (!analysis.usesLocalCoords()) {
         // Since we don't need local coords, we can transform on CPU instead of in the shader. This
         // gives us better batching potential.

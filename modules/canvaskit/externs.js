@@ -49,6 +49,7 @@ var CanvasKit = {
   nativeEffectsApi: 0,
   f16MsaaApi: 0,
   hdrColorApi: 0,
+  wideVertexColorApi: 0,
   sharedGlApi: 0,
   motionBlurApi: 0,
   programShareApi: 0,

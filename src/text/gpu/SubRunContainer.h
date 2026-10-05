@@ -91,7 +91,7 @@ public:
     virtual unsigned short instanceFlags() const = 0;
 
 #if defined(SK_GANESH) || defined(SK_USE_LEGACY_GANESH_TEXT_APIS)
-    virtual size_t vertexStride(const SkMatrix& drawMatrix) const = 0;
+    virtual size_t vertexStride(const SkMatrix& drawMatrix, skgpu::VertexColorType colorType) const = 0;
 
     virtual std::tuple<const GrClip*, GrOp::Owner> makeAtlasTextOp(
             const GrClip*,
@@ -103,7 +103,7 @@ public:
 
     virtual void fillVertexData(
             void* vertexDst, int offset, int count,
-            GrColor color,
+            const SkPMColor4f& color, skgpu::VertexColorType colorType,
             const SkMatrix& drawMatrix,
             SkPoint drawOrigin,
             SkIRect clip) const = 0;

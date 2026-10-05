@@ -59,10 +59,10 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-GrRRectShadowGeoProc::GrRRectShadowGeoProc(const GrSurfaceProxyView& lutView)
+GrRRectShadowGeoProc::GrRRectShadowGeoProc(const GrSurfaceProxyView& lutView, skgpu::VertexColorType colorType)
         : INHERITED(kGrRRectShadowGeoProc_ClassID) {
     fInPosition = {"inPosition", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
-    fInColor = {"inColor", kUByte4_norm_GrVertexAttribType, SkSLType::kHalf4};
+    fInColor = MakeColorAttribute("inColor", colorType);
     fInShadowParams = {"inShadowParams", kFloat3_GrVertexAttribType, SkSLType::kHalf3};
     this->setVertexAttributesWithImplicitOffsets(&fInPosition, 3);
 
@@ -85,6 +85,6 @@ GR_DEFINE_GEOMETRY_PROCESSOR_TEST(GrRRectShadowGeoProc)
 GrGeometryProcessor* GrRRectShadowGeoProc::TestCreate(GrProcessorTestData* d) {
     auto [view, ct, at] = d->randomAlphaOnlyView();
 
-    return GrRRectShadowGeoProc::Make(d->allocator(), view);
+    return GrRRectShadowGeoProc::Make(d->allocator(), view, skgpu::VertexColorType::kByte);
 }
 #endif

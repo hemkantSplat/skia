@@ -760,8 +760,8 @@ public:
     }
 
 #if defined(SK_GANESH) || defined(SK_USE_LEGACY_GANESH_TEXT_APIS)
-    size_t vertexStride(const SkMatrix& drawMatrix) const override {
-        return fVertexFiller.vertexStride(drawMatrix);
+    size_t vertexStride(const SkMatrix& drawMatrix, skgpu::VertexColorType colorType) const override {
+        return fVertexFiller.vertexStride(drawMatrix, colorType);
     }
 
     std::tuple<const GrClip*, GrOp::Owner> makeAtlasTextOp(
@@ -835,13 +835,13 @@ public:
     }
 
     void fillVertexData(void* vertexDst, int offset, int count,
-                        GrColor color,
+                        const SkPMColor4f& color, skgpu::VertexColorType colorType,
                         const SkMatrix& drawMatrix, SkPoint drawOrigin,
                         SkIRect clip) const override {
         const SkMatrix positionMatrix = position_matrix(drawMatrix, drawOrigin);
         fVertexFiller.fillVertexData(offset, count,
                                      fGlyphs.glyphs(),
-                                     color,
+                                     color, colorType,
                                      positionMatrix,
                                      clip,
                                      vertexDst);
@@ -975,8 +975,8 @@ public:
 
 #if defined(SK_GANESH) || defined(SK_USE_LEGACY_GANESH_TEXT_APIS)
 
-    size_t vertexStride(const SkMatrix& drawMatrix) const override {
-        return fVertexFiller.vertexStride(drawMatrix);
+    size_t vertexStride(const SkMatrix& drawMatrix, skgpu::VertexColorType colorType) const override {
+        return fVertexFiller.vertexStride(drawMatrix, colorType);
     }
 
     std::tuple<const GrClip*, GrOp::Owner> makeAtlasTextOp(
@@ -1019,13 +1019,13 @@ public:
 
     void fillVertexData(
             void* vertexDst, int offset, int count,
-            GrColor color,
+            const SkPMColor4f& color, skgpu::VertexColorType colorType,
             const SkMatrix& drawMatrix, SkPoint drawOrigin,
             SkIRect clip) const override {
         const SkMatrix positionMatrix = position_matrix(drawMatrix, drawOrigin);
         fVertexFiller.fillVertexData(offset, count,
                                      fGlyphs.glyphs(),
-                                     color,
+                                     color, colorType,
                                      positionMatrix,
                                      clip,
                                      vertexDst);
@@ -1205,8 +1205,8 @@ public:
     }
 
 #if defined(SK_GANESH) || defined(SK_USE_LEGACY_GANESH_TEXT_APIS)
-    size_t vertexStride(const SkMatrix& drawMatrix) const override {
-        return fVertexFiller.vertexStride(drawMatrix);
+    size_t vertexStride(const SkMatrix& drawMatrix, skgpu::VertexColorType colorType) const override {
+        return fVertexFiller.vertexStride(drawMatrix, colorType);
     }
 
     std::tuple<const GrClip*, GrOp::Owner> makeAtlasTextOp(
@@ -1255,14 +1255,14 @@ public:
 
     void fillVertexData(
             void *vertexDst, int offset, int count,
-            GrColor color,
+            const SkPMColor4f& color, skgpu::VertexColorType colorType,
             const SkMatrix& drawMatrix, SkPoint drawOrigin,
             SkIRect clip) const override {
         const SkMatrix positionMatrix = position_matrix(drawMatrix, drawOrigin);
 
         fVertexFiller.fillVertexData(offset, count,
                                      fGlyphs.glyphs(),
-                                     color,
+                                     color, colorType,
                                      positionMatrix,
                                      clip,
                                      vertexDst);
