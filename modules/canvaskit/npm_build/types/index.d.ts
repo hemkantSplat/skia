@@ -25,6 +25,7 @@ export interface DstCopyCause {
 }
 
 export interface CanvasKit {
+  readonly meshChildrenApi: number;
   readonly MeshSpecification: {
     Make(attributes: readonly MeshAttribute[], stride: number, varyings: readonly MeshVarying[],
       vertexSkSL: string, fragmentSkSL: string, colorSpace?: ColorSpace, alphaType?: AlphaType, instanceStride?: number):
@@ -5433,6 +5434,8 @@ export interface MeshVarying { name: string; type: 'float' | 'float2' | 'float3'
 export interface MeshSpecification extends EmbindObject<'MeshSpecification'> { uniformSize(): number }
 export interface Mesh extends EmbindObject<'Mesh'> {}
 export interface MeshOptions {
+    /** Matches fragment child slots; wrong count/type returns null. Null uses Skia defaults. */
+    children?: (Shader | ColorFilter | Blender | null)[];
   spec: MeshSpecification;
   mode: MeshMode;
   vertices: {buffer: MeshVertexBuffer; count: number; offset?: number};

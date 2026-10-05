@@ -58,11 +58,29 @@
     CanvasKit.MakeMeshIndexBuffer = function(context, data) { return upload(context, data, true); };
     CanvasKit.MeshVertexBuffer.prototype.update = function(offset, data) { return update.call(this, offset, data, false); };
     CanvasKit.MeshIndexBuffer.prototype.update = function(offset, data) { return update.call(this, offset, data, true); };
+    CanvasKit.meshChildrenApi = 1;
+    function childEffects(children) {
+      if (!Array.isArray(children)) return null;
+      var result = [];
+      for (var i = 0; i < children.length; i++) {
+        var child = children[i], type;
+        if (child === null) { result.push({'type':0, 'effect':null}); continue; }
+        if (child instanceof CanvasKit.Shader) type = 1;
+        else if (child instanceof CanvasKit.ColorFilter) type = 2;
+        else if (child instanceof CanvasKit.Blender) type = 3;
+        else return null;
+        if (child['isDeleted']()) return null;
+        result.push({'type':type, 'effect':child});
+      }
+      return result;
+    }
     CanvasKit.MakeMesh = function(options) {
       if (!options || typeof options !== 'object') return null;
       var spec = options['spec'], mode = options['mode'], vertex = options['vertices'];
       var index = options['indices'], instance = options['instances'];
       var uniforms = options['uniforms'], bounds = options['bounds'];
+      var children = childEffects(options['children'] === undefined ? [] : options['children']);
+      if (!children) return null;
       function validBuffer(part, type) {
         return part && part['buffer'] instanceof type && !part['buffer']['isDeleted']() &&
                integer(part['count']) && integer(part['offset'] === undefined ? 0 : part['offset']);
@@ -84,7 +102,7 @@
           index ? index['buffer'] : null, index ? index['count'] : 0, index ? index['offset'] || 0 : 0,
           ptr, uniforms.byteLength, ptr + uniforms.byteLength,
           instance ? instance['buffer'] : null, instance ? instance['offset'] || 0 : 0,
-          instance ? instance['count'] : 0);
+          instance ? instance['count'] : 0, children);
       } finally { CanvasKit._free(ptr); }
     };
     CanvasKit.Canvas.prototype.getMeshContext = function() {
