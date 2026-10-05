@@ -210,7 +210,8 @@ static const char* varying_type_string(Varying::Type type) {
 
 std::tuple<bool, SkString>
 check_vertex_offsets_and_stride(SkSpan<const Attribute> attributes,
-                                size_t                  stride) {
+                                size_t                  stride,
+                                size_t                  instanceStride) {
     // Vulkan 1.0 has a minimum maximum attribute count of 2048.
     static_assert(SkMeshSpecification::kMaxStride       <= 2048);
     // ES 2 has a max of 8.
@@ -237,16 +238,31 @@ check_vertex_offsets_and_stride(SkSpan<const Attribute> attributes,
     if (stride > SkMeshSpecification::kMaxStride) {
         RETURN_ERROR("Stride cannot exceed %zu.", SkMeshSpecification::kMaxStride);
     }
+    if (instanceStride > SkMeshSpecification::kMaxStride ||
+        instanceStride % SkMeshSpecification::kStrideAlignment) {
+        RETURN_ERROR("Instance stride must be aligned and at most %zu.",
+                     SkMeshSpecification::kMaxStride);
+    }
+    bool hasVertex = false, hasInstance = false;
     for (const auto& a : attributes) {
+        if (a.rate != Attribute::Rate::kVertex && a.rate != Attribute::Rate::kInstance) {
+            RETURN_ERROR("Invalid attribute rate.");
+        }
+        hasVertex |= a.rate == Attribute::Rate::kVertex;
+        hasInstance |= a.rate == Attribute::Rate::kInstance;
+        const size_t attributeStride = a.rate == Attribute::Rate::kInstance ? instanceStride : stride;
         if (a.offset & (SkMeshSpecification::kOffsetAlignment - 1)) {
             RETURN_ERROR("Attribute offset must be a multiple of %zu.",
                          SkMeshSpecification::kOffsetAlignment);
         }
         // This equivalent to vertexAttributeAccessBeyondStride==VK_FALSE in
         // VK_KHR_portability_subset. First check is to avoid overflow in second check.
-        if (a.offset >= stride || a.offset + attribute_type_size(a.type) > stride) {
+        if (a.offset >= attributeStride || attribute_type_size(a.type) > attributeStride - a.offset) {
             RETURN_ERROR("Attribute offset plus size cannot exceed stride.");
         }
+    }
+    if (!hasVertex || hasInstance != (instanceStride != 0)) {
+        RETURN_ERROR("Vertex attributes are required; instance stride must match instance attributes.");
     }
     RETURN_SUCCESS;
 }
@@ -415,7 +431,8 @@ SkMeshSpecification::Result SkMeshSpecification::Make(SkSpan<const Attribute> at
                                                       const SkString& vs,
                                                       const SkString& fs,
                                                       sk_sp<SkColorSpace> cs,
-                                                      SkAlphaType at) {
+                                                      SkAlphaType at,
+                                                      size_t instanceStride) {
     SkString attributesStruct("struct Attributes {\n");
     for (const auto& a : attributes) {
         attributesStruct.appendf("  %s %s;\n", attribute_type_string(a.type), a.name.c_str());
@@ -467,7 +484,8 @@ SkMeshSpecification::Result SkMeshSpecification::Make(SkSpan<const Attribute> at
                                      fullVS,
                                      fullFS,
                                      std::move(cs),
-                                     at);
+                                     at,
+                                     instanceStride);
 }
 
 SkMeshSpecification::Result SkMeshSpecification::MakeFromSourceWithStructs(
@@ -477,8 +495,9 @@ SkMeshSpecification::Result SkMeshSpecification::MakeFromSourceWithStructs(
         const SkString&         vs,
         const SkString&         fs,
         sk_sp<SkColorSpace>     cs,
-        SkAlphaType             at) {
-    if (auto [ok, error] = check_vertex_offsets_and_stride(attributes, stride); !ok) {
+        SkAlphaType             at,
+        size_t                  instanceStride) {
+    if (auto [ok, error] = check_vertex_offsets_and_stride(attributes, stride, instanceStride); !ok) {
         return {nullptr, error};
     }
 
@@ -579,6 +598,7 @@ SkMeshSpecification::Result SkMeshSpecification::MakeFromSourceWithStructs(
 
     return {sk_sp<SkMeshSpecification>(new SkMeshSpecification(attributes,
                                                                stride,
+                                                               instanceStride,
                                                                varyings,
                                                                passthroughLocalCoordsVaryingIndex,
                                                                deadVaryingMask,
@@ -597,6 +617,7 @@ SkMeshSpecification::~SkMeshSpecification() = default;
 SkMeshSpecification::SkMeshSpecification(
         SkSpan<const Attribute>              attributes,
         size_t                               stride,
+        size_t                               instanceStride,
         SkSpan<const Varying>                varyings,
         int                                  passthroughLocalCoordsVaryingIndex,
         uint32_t                             deadVaryingMask,
@@ -614,6 +635,7 @@ SkMeshSpecification::SkMeshSpecification(
         , fVS(std::move(vs))
         , fFS(std::move(fs))
         , fStride(stride)
+        , fInstanceStride(instanceStride)
         , fPassthroughLocalCoordsVaryingIndex(passthroughLocalCoordsVaryingIndex)
         , fDeadVaryingMask(deadVaryingMask)
         , fColorType(ct)
@@ -628,9 +650,11 @@ SkMeshSpecification::SkMeshSpecification(
     for (const auto& a : fAttributes) {
         fHash = SkChecksum::Hash32(&a.offset, sizeof(a.offset), fHash);
         fHash = SkChecksum::Hash32(&a.type,   sizeof(a.type),   fHash);
+        if (instanceStride) fHash = SkChecksum::Hash32(&a.rate, sizeof(a.rate), fHash);
     }
 
     fHash = SkChecksum::Hash32(&stride, sizeof(stride), fHash);
+    if (instanceStride) fHash = SkChecksum::Hash32(&instanceStride, sizeof(instanceStride), fHash);
 
     uint64_t csHash = fColorSpace ? fColorSpace->hash() : 0;
     fHash = SkChecksum::Hash32(&csHash, sizeof(csHash), fHash);
@@ -698,7 +722,8 @@ SkMesh::Result SkMesh::Make(sk_sp<SkMeshSpecification> spec,
                             size_t vertexOffset,
                             sk_sp<const SkData> uniforms,
                             SkSpan<ChildPtr> children,
-                            const SkRect& bounds) {
+                            const SkRect& bounds,
+                            const Instances* instances) {
     SkMesh mesh;
     mesh.fSpec     = std::move(spec);
     mesh.fMode     = mode;
@@ -708,6 +733,7 @@ SkMesh::Result SkMesh::Make(sk_sp<SkMeshSpecification> spec,
     mesh.fVCount   = vertexCount;
     mesh.fVOffset  = vertexOffset;
     mesh.fBounds   = bounds;
+    if (instances) mesh.fInstances = *instances;
     auto [valid, msg] = mesh.validate();
     if (!valid) {
         mesh = {};
@@ -725,7 +751,8 @@ SkMesh::Result SkMesh::MakeIndexed(sk_sp<SkMeshSpecification> spec,
                                    size_t indexOffset,
                                    sk_sp<const SkData> uniforms,
                                    SkSpan<ChildPtr> children,
-                                   const SkRect& bounds) {
+                                   const SkRect& bounds,
+                                   const Instances* instances) {
     if (!ib) {
         // We check this before calling validate to disambiguate from a non-indexed mesh where
         // IB is expected to be null.
@@ -743,6 +770,7 @@ SkMesh::Result SkMesh::MakeIndexed(sk_sp<SkMeshSpecification> spec,
     mesh.fICount   = indexCount;
     mesh.fIOffset  = indexOffset;
     mesh.fBounds   = bounds;
+    if (instances) mesh.fInstances = *instances;
     auto [valid, msg] = mesh.validate();
     if (!valid) {
         mesh = {};
@@ -797,6 +825,16 @@ std::tuple<bool, SkString> SkMesh::validate() const {
     auto ib = static_cast<SkMeshPriv::IB*>(fIB.get());
 
     SkSafeMath sm;
+    if (fInstances.buffer) {
+        size_t stride = fSpec->instanceStride();
+        if (!stride || fInstances.offset % stride || fInstances.count > INT32_MAX ||
+            fInstances.offset / stride > INT32_MAX ||
+            sm.add(fInstances.offset, sm.mul(stride, fInstances.count)) > fInstances.buffer->size()) {
+            FAIL_MESH_VALIDATE("Invalid instance buffer range or stride.");
+        }
+    } else if (fSpec->instanceStride() || fInstances.offset || fInstances.count) {
+        FAIL_MESH_VALIDATE("Instance attributes require an instance buffer.");
+    }
     size_t vsize = sm.mul(fSpec->stride(), fVCount);
     if (sm.add(vsize, fVOffset) > vb->size()) {
         FAIL_MESH_VALIDATE("The vertex buffer offset and vertex count reads beyond the end of the"
@@ -812,7 +850,7 @@ std::tuple<bool, SkString> SkMesh::validate() const {
     if (size_t uniformSize = fSpec->uniformSize()) {
         if (!fUniforms || fUniforms->size() < uniformSize) {
             FAIL_MESH_VALIDATE("The uniform data is %zu bytes but must be at least %zu.",
-                               fUniforms->size(),
+                               fUniforms ? fUniforms->size() : 0,
                                uniformSize);
         }
     }

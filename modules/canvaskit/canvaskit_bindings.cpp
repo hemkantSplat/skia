@@ -112,6 +112,8 @@
 #include "src/gpu/ganesh/gl/GrGLDefines.h"
 #include "src/gpu/ganesh/gl/GrGLGpu.h"
 
+#include "modules/canvaskit/mesh_bindings.h"
+
 #include <GLES2/gl2.h>
 #endif // CK_ENABLE_WEBGL
 
@@ -1901,6 +1903,8 @@ EMSCRIPTEN_BINDINGS(Skia) {
         }))
         .function("_drawTextBlob", select_overload<void (const sk_sp<SkTextBlob>&, SkScalar, SkScalar, const SkPaint&)>(&SkCanvas::drawTextBlob))
 #endif
+        .function("_drawMesh", &ck_mesh::draw)
+        .function("_getMeshContext", &ck_mesh::context)
         .function("_drawVertices", select_overload<void (const sk_sp<SkVertices>&, SkBlendMode, const SkPaint&)>(&SkCanvas::drawVertices))
 
         .function("_getDeviceClipBounds", optional_override([](const SkCanvas& self, WASMPointerI32 iPtr) {

@@ -121,6 +121,7 @@ skia_wasm_lib("canvaskit") {
 
   sources = [
     "WasmCommon.h",
+    "mesh_bindings.h",
     "canvaskit_bindings.cpp",
   ]
   if (skia_canvaskit_enable_paragraph) {
@@ -237,6 +238,8 @@ skia_wasm_lib("canvaskit") {
     rebase_path("util.js"),
     "--pre-js",
     rebase_path("interface.js"),
+    "--pre-js",
+    rebase_path("mesh.js"),
   ]
 
   if (skia_canvaskit_enable_matrix_helper) {

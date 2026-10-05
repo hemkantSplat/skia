@@ -25,7 +25,16 @@ export interface DstCopyCause {
 }
 
 export interface CanvasKit {
-    MakeWidthStroke(rows: Float32Array, options: WidthStrokeOptions): WidthStroke | null;
+  readonly MeshSpecification: {
+    Make(attributes: readonly MeshAttribute[], stride: number, varyings: readonly MeshVarying[],
+      vertexSkSL: string, fragmentSkSL: string, colorSpace?: ColorSpace, alphaType?: AlphaType, instanceStride?: number):
+      { specification: MeshSpecification } | { error: string };
+  };
+  MakeMeshVertexBuffer(context: GrDirectContext | null, data: Float32Array | Uint8Array): MeshVertexBuffer | null;
+  MakeMeshIndexBuffer(context: GrDirectContext | null, data: Uint16Array): MeshIndexBuffer | null;
+  /** Meshes draw only on Ganesh; CPU raster surfaces draw nothing at this pin. */
+  MakeMesh(options: MeshOptions): Mesh | null;
+  MakeWidthStroke(rows: Float32Array, options: WidthStrokeOptions): WidthStroke | null;
     // Helpers
     /**
      * Constructs a Color with the same API as CSS's rgba(), that is
@@ -1575,6 +1584,9 @@ export type Blender = EmbindObject<"Blender">;
  * See SkCanvas.h for more information on this class.
  */
 export interface Canvas extends EmbindObject<"Canvas"> {
+  /** Owned context reference; null on CPU raster. Delete after use. */
+  getMeshContext(): GrDirectContext | null;
+  drawMesh(mesh: Mesh, blender: BlendMode, paint: Paint): void;
     /**
      * Fills the current clip with the given color using Src BlendMode.
      * This has the effect of replacing all pixels contained by clip with color.
@@ -5409,4 +5421,34 @@ export interface WidthStroke extends EmbindObject<"WidthStroke"> {
   vertexCount(): number;
   /** Independent diagnostic copies; drawing never calls this method. */
   geometry(): { positions: Float32Array; uv: Float32Array; indices: Uint32Array };
+}
+
+export type MeshMode = 'triangles' | 'triangle-strip';
+export interface MeshAttribute {
+  name: string; type: 'float' | 'float2' | 'float3' | 'float4' | 'ubyte4'; offset: number;
+  /** Defaults to vertex; offsets are relative to that rate's stride. */
+  rate?: 'vertex' | 'instance';
+}
+export interface MeshVarying { name: string; type: 'float' | 'float2' | 'float3' | 'float4' | 'half' | 'half2' | 'half3' | 'half4' }
+export interface MeshSpecification extends EmbindObject<'MeshSpecification'> { uniformSize(): number }
+export interface Mesh extends EmbindObject<'Mesh'> {}
+export interface MeshOptions {
+  spec: MeshSpecification;
+  mode: MeshMode;
+  vertices: {buffer: MeshVertexBuffer; count: number; offset?: number};
+  indices?: {buffer: MeshIndexBuffer; count: number; offset?: number};
+  instances?: {buffer: MeshVertexBuffer; count: number; offset?: number};
+  uniforms: Float32Array;
+  bounds: InputRect;
+}
+export interface MeshVertexBuffer extends EmbindObject<'MeshVertexBuffer'> {
+  /** Offsets and sizes are bytes, aligned to four; an update never changes capacity. */
+  update(offset: number, data: Float32Array | Uint8Array): boolean;
+  size(): number;
+  gpuBacked(): boolean;
+}
+export interface MeshIndexBuffer extends EmbindObject<'MeshIndexBuffer'> {
+  update(offset: number, data: Uint16Array): boolean;
+  size(): number;
+  gpuBacked(): boolean;
 }

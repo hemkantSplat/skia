@@ -1480,3 +1480,24 @@ var LibraryEGL = {
     majorVersion: {}
   }
 }
+
+CanvasKit.MeshSpecification = {Make:function(){}, _Make:function(){}};
+CanvasKit.MakeMeshVertexBuffer = function() {};
+CanvasKit.MakeMeshIndexBuffer = function() {};
+CanvasKit.MakeMesh = function() {};
+CanvasKit._MakeMeshVertexBuffer = function() {};
+CanvasKit._MakeMeshIndexBuffer = function() {};
+CanvasKit._MakeMesh = function() {};
+CanvasKit.MeshSpecification.prototype.uniformSize = function() {};
+CanvasKit.MeshVertexBuffer = function() {};
+CanvasKit.MeshIndexBuffer = function() {};
+CanvasKit.Mesh = function() {};
+CanvasKit.MeshVertexBuffer.prototype.update = function() {};
+CanvasKit.MeshIndexBuffer.prototype.update = function() {};
+CanvasKit.MeshVertexBuffer.prototype._update = function() {};
+CanvasKit.MeshIndexBuffer.prototype._update = function() {};
+CanvasKit.Canvas.prototype._drawMesh = function() {};
+CanvasKit.Canvas.prototype.drawMesh = function() {};
+
+CanvasKit.Canvas.prototype._getMeshContext = function() {};
+CanvasKit.Canvas.prototype.getMeshContext = function() {};
