@@ -1,5 +1,7 @@
 #include "include/core/SkMesh.h"
 #include "include/gpu/ganesh/SkMeshGanesh.h"
+#include "src/gpu/ganesh/GrMeshBuffers.h"
+#include "src/gpu/ganesh/gl/GrGLBuffer.h"
 
 namespace ck_mesh {
 using namespace emscripten;
@@ -14,6 +16,12 @@ template <typename Buffer> struct RetainedBuffer {
     bool gpuBacked() const { return context != nullptr; }
 };
 using VertexBuffer = RetainedBuffer<SkMesh::VertexBuffer>;
+inline unsigned webGLBufferID(const VertexBuffer& self) {
+    if (!self.context || self.context->abandoned() ||
+        self.context->backend() != GrBackendApi::kOpenGL) return 0;
+    auto gpuBuffer = static_cast<SkMeshPriv::GaneshVertexBuffer*>(self.buffer.get())->asGpuBuffer();
+    return static_cast<const GrGLBuffer*>(gpuBuffer.get())->bufferID();
+}
 using IndexBuffer = RetainedBuffer<SkMesh::IndexBuffer>;
 struct Mesh { SkMesh mesh; };
 
@@ -105,6 +113,10 @@ EMSCRIPTEN_BINDINGS(CanvasKitMesh) {
         .function("uniformSize", &SkMeshSpecification::uniformSize);
     class_<ck_mesh::VertexBuffer>("MeshVertexBuffer")
         .smart_ptr<std::shared_ptr<ck_mesh::VertexBuffer>>("shared_ptr<MeshVertexBuffer>")
+        .function("_abandonContext", optional_override([](ck_mesh::VertexBuffer& self) {
+            if (self.context) self.context->abandonContext();
+        }))
+        .function("_webGLBufferID", &ck_mesh::webGLBufferID)
         .function("_update", &ck_mesh::VertexBuffer::update)
         .function("size", &ck_mesh::VertexBuffer::size)
         .function("gpuBacked", &ck_mesh::VertexBuffer::gpuBacked);

@@ -26,6 +26,9 @@ export interface DstCopyCause {
 
 export interface CanvasKit {
   readonly meshChildrenApi: number;
+  readonly meshBufferInteropApi: number;
+  /** Fork-owned WebGL2 allocation; writes flush prior draws and invalidate Ganesh state afterwards. */
+  MakeWebGLMeshVertexBuffer(context: GrDirectContext, byteLength: number): WebGLMeshVertexBuffer | MeshBufferInteropFailure;
   readonly MeshSpecification: {
     Make(attributes: readonly MeshAttribute[], stride: number, varyings: readonly MeshVarying[],
       vertexSkSL: string, fragmentSkSL: string, colorSpace?: ColorSpace, alphaType?: AlphaType, instanceStride?: number):
@@ -5454,4 +5457,18 @@ export interface MeshIndexBuffer extends EmbindObject<'MeshIndexBuffer'> {
   update(offset: number, data: Uint16Array): boolean;
   size(): number;
   gpuBacked(): boolean;
+}
+
+export type MeshBufferInteropError = 'invalid-argument' | 'gpu-unavailable' | 'allocation-failed'
+  | 'context-lost' | 'retired' | 'busy';
+export interface MeshBufferInteropFailure { error: MeshBufferInteropError }
+export type MeshBufferWriteResult = {ok: true} | MeshBufferInteropFailure;
+export interface WebGLMeshVertexBuffer {
+  /** Borrowed mesh reference. Delete the owner, not this reference; meshes retain their buffers. */
+  readonly buffer: MeshVertexBuffer;
+  /** Synchronous TF/subdata/copy; finish/unbind TF and disable rasterizer discard before returning.
+   * No resize, deletion, retained handle, asynchronous work, or Skia calls inside. */
+  write(writer: (gl: WebGL2RenderingContext, buffer: WebGLBuffer) => void): MeshBufferWriteResult;
+  /** Idempotently retires writes and releases ownership; recorded draws and meshes remain valid. */
+  delete(): void;
 }

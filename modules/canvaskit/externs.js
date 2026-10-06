@@ -1503,3 +1503,9 @@ CanvasKit.Canvas.prototype._getMeshContext = function() {};
 CanvasKit.Canvas.prototype.getMeshContext = function() {};
 
 CanvasKit.meshChildrenApi = 1;
+
+CanvasKit.meshBufferInteropApi = 1;
+CanvasKit.MakeWebGLMeshVertexBuffer = function() {};
+CanvasKit.MeshVertexBuffer.prototype._webGLBufferID = function() {};
+
+CanvasKit.MeshVertexBuffer.prototype._abandonContext = function() {};
