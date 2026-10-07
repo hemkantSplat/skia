@@ -196,9 +196,6 @@ void draw_texture(skgpu::ganesh::SurfaceDrawContext* sdc,
 
     SkPMColor4f color = texture_color(paint.getColor4f(), 1.f, srcColorInfo.colorType(), dstInfo);
     if (dstClip) {
-        // Get source coords corresponding to dstClip
-        SkPoint srcQuad[4];
-        GrMapRectPoints(dstRect, srcRect, dstClip, srcQuad, 4);
 
         sdc->drawTextureQuad(clip,
                              std::move(view),
@@ -208,7 +205,7 @@ void draw_texture(skgpu::ganesh::SurfaceDrawContext* sdc,
                              GrSamplerState::MipmapMode::kNone,
                              paint.getBlendMode_or(SkBlendMode::kSrcOver),
                              color,
-                             srcQuad,
+                             SkMatrix::RectToRect(dstRect, srcRect),
                              dstClip,
                              aaFlags,
                              constraint == SkCanvas::kStrict_SrcRectConstraint ? &srcRect : nullptr,
@@ -370,15 +367,10 @@ void Device::drawEdgeAAImage(const SkImage* image,
     if (!mf) {
         // Can draw the image directly (any mask filter on the paint was converted to an FP already)
         if (dstClip) {
-            SkPoint srcClipPoints[4];
-            SkPoint* srcClip = nullptr;
-            if (canUseTextureCoordsAsLocalCoords) {
-                // Calculate texture coordinates that match the dst clip
-                GrMapRectPoints(dst, src, dstClip, srcClipPoints, 4);
-                srcClip = srcClipPoints;
-            }
+            SkMatrix localMatrix = canUseTextureCoordsAsLocalCoords
+                    ? SkMatrix::RectToRect(dst, src) : SkMatrix::I();
             sdc->fillQuadWithEdgeAA(clip, std::move(grPaint), aaFlags, localToDevice,
-                                    dstClip, srcClip);
+                                    dstClip, localMatrix);
         } else {
             // Provide explicit texture coords when possible, otherwise rely on texture matrix
             sdc->fillRectWithEdgeAA(clip, std::move(grPaint), aaFlags, localToDevice, dst,

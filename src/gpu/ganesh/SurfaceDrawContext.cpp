@@ -641,7 +641,7 @@ void SurfaceDrawContext::drawTexture(const GrClip* clip,
 
     const SkRect* subset = constraint == SkCanvas::kStrict_SrcRectConstraint ?
             &srcRect : nullptr;
-    DrawQuad quad{GrQuad::MakeFromRect(dstRect, viewMatrix), GrQuad(srcRect), edgeAA};
+    DrawQuad quad = DrawQuad::MakeFromRect(dstRect, viewMatrix, srcRect, edgeAA);
 
     this->drawTexturedQuad(clip, std::move(view), srcAlphaType, std::move(colorSpaceXform), filter,
                            mm, color, blendMode, &quad, subset);
@@ -756,8 +756,8 @@ void SurfaceDrawContext::fillRectToRect(const GrClip* clip,
                                         const SkMatrix& viewMatrix,
                                         const SkRect& rectToDraw,
                                         const SkRect& localRect) {
-    DrawQuad quad{GrQuad::MakeFromRect(rectToDraw, viewMatrix), GrQuad(localRect),
-                  aa == GrAA::kYes ? GrQuadAAFlags::kAll : GrQuadAAFlags::kNone};
+    DrawQuad quad = DrawQuad::MakeFromRect(rectToDraw, viewMatrix, localRect,
+            aa == GrAA::kYes ? GrQuadAAFlags::kAll : GrQuadAAFlags::kNone);
 
     // If we are using dmsaa then attempt to draw the rect with FillRRectOp, unless its analytic
     // coverage would cost a dst read that MSAA coverage does not (the quad path below uses MSAA).
@@ -1731,7 +1731,7 @@ void SurfaceDrawContext::drawStrokedLine(const GrClip* clip,
     GrQuadAAFlags edgeAA = (aa == GrAA::kYes) ? GrQuadAAFlags::kAll : GrQuadAAFlags::kNone;
 
     assert_alive(paint);
-    this->fillQuadWithEdgeAA(clip, std::move(paint), edgeAA, viewMatrix, corners, nullptr);
+    this->fillQuadWithEdgeAA(clip, std::move(paint), edgeAA, viewMatrix, corners, SkMatrix::I());
 }
 
 bool SurfaceDrawContext::drawSimpleShape(const GrClip* clip,

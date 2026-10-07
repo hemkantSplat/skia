@@ -86,6 +86,7 @@ GrTextureEffect::Sampling::Sampling(const GrSurfaceProxy& proxy,
     auto type   = proxy.asTextureProxy()->textureType();
     auto filter = sampler.filter();
     auto mm     = sampler.mipmapMode();
+    alwaysUseShaderTileMode |= filter == Filter::kNearest && mm == MipmapMode::kNone;
 
     auto canDoWrapInHW = [&](int size, Wrap wrap) {
         if (alwaysUseShaderTileMode) {
@@ -302,6 +303,9 @@ std::unique_ptr<GrFragmentProcessor> GrTextureEffect::MakeCustomLinearFilterInse
 
 SkMatrix GrTextureEffect::coordAdjustmentMatrix() const {
     SkMatrix m;
+    if (this->usesNearestCells()) {
+        return m;
+    }
     GrTexture* texture = this->texture();
     SkISize d = texture->dimensions();
     if (this->matrixEffectShouldNormalize()) {
@@ -375,7 +379,8 @@ void GrTextureEffect::Impl::emitCode(EmitArgs& args) {
     auto& te = args.fFp.cast<GrTextureEffect>();
     auto* fb = args.fFragBuilder;
 
-    if (te.fShaderModes[0] == ShaderMode::kNone &&
+    bool nearest = te.usesNearestCells();
+    if (!nearest && te.fShaderModes[0] == ShaderMode::kNone &&
         te.fShaderModes[1] == ShaderMode::kNone) {
         fb->codeAppendf("return ");
         fb->appendTextureLookup(fSamplerHandle, args.fSampleCoord);
@@ -385,7 +390,7 @@ void GrTextureEffect::Impl::emitCode(EmitArgs& args) {
         // steps. Not all the steps apply to all the modes. We try to emit only the steps
         // that are necessary for the given x/y shader modes.
         //
-        // 0) Start with interpolated coordinates (unnormalize if doing anything
+        // 0) Start with sample coordinates (unnormalize if doing anything
         //    complicated).
         // 1) Map the coordinates into the subset range [Repeat and MirrorRepeat], or pass
         //    through output of 0).
@@ -399,8 +404,9 @@ void GrTextureEffect::Impl::emitCode(EmitArgs& args) {
         //    other side of the subset (up to 3 more reads). Or if ClampToBorder and not
         //    filtering do a hard less than/greater than test with the subset rect.
 
-        // Convert possible projective texture coordinates into non-homogeneous half2.
+        // Obtain non-homogeneous sample coordinates.
         fb->codeAppendf("float2 inCoord = %s;", args.fSampleCoord);
+
 
         const auto& m = te.fShaderModes;
 
@@ -454,7 +460,7 @@ void GrTextureEffect::Impl::emitCode(EmitArgs& args) {
                     &te, kFragment_GrShaderFlag, SkSLType::kFloat4, "clamp", &clampName);
         }
 
-        bool unormCoordsRequiredForShaderMode = ShaderModeRequiresUnormCoord(m[0]) ||
+        bool unormCoordsRequiredForShaderMode = nearest || ShaderModeRequiresUnormCoord(m[0]) ||
                                                 ShaderModeRequiresUnormCoord(m[1]);
         // We should not pre-normalize the input coords with GrMatrixEffect if we're going to
         // operate on unnormalized coords and then normalize after the shader mode.
@@ -470,14 +476,26 @@ void GrTextureEffect::Impl::emitCode(EmitArgs& args) {
                                                          SkSLType::kFloat2, "idims", &idims);
         }
 
-        // Generates a string to read at a coordinate, normalizing coords if necessary.
+        const char* yFlip = nullptr;
+        if (nearest && te.fView.origin() == kBottomLeft_GrSurfaceOrigin) {
+            fYFlipUni = args.fUniformHandler->addUniform(&te, kFragment_GrShaderFlag,
+                                                       SkSLType::kFloat, "yFlip", &yFlip);
+        }
+
+        // Select CPU raster cells after tiling, then normalize and orient the lookup.
         auto read = [&](const char* coord) {
             SkString result;
             SkString normCoord;
+            SkString sampleCoord = nearest ? SkStringPrintf("(ceil(%s) - 0.5)", coord)
+                                           : SkString(coord);
             if (idims) {
-                normCoord.printf("(%s) * %s", coord, idims);
+                normCoord.printf("%s * %s", sampleCoord.c_str(), idims);
             } else {
-                normCoord = coord;
+                normCoord = sampleCoord;
+            }
+            if (yFlip) {
+                normCoord = SkStringPrintf("float2((%s).x, %s - (%s).y)",
+                                          normCoord.c_str(), yFlip, normCoord.c_str());
             }
             fb->appendTextureLookup(&result, fSamplerHandle, normCoord.c_str());
             return result;
@@ -549,6 +567,11 @@ void GrTextureEffect::Impl::emitCode(EmitArgs& args) {
                                     subsetName, subsetStartSwizzle);
                     fb->codeAppendf("subsetCoord.%s = mix(m, w2 - m, step(w, m)) + %s.%s;",
                                     coordSwizzle, subsetName, subsetStartSwizzle);
+                    if (nearest) {
+                        fb->codeAppendf("subsetCoord.%s = mix(ceil(subsetCoord.%s) - 0.5,"
+                                        "floor(subsetCoord.%s) + 0.5, step(w, m));",
+                                        coordSwizzle, coordSwizzle, coordSwizzle);
+                    }
                     fb->codeAppend("}");
                     break;
             }
@@ -711,23 +734,23 @@ void GrTextureEffect::Impl::emitCode(EmitArgs& args) {
             fb->codeAppendf("textureColor = mix(textureColor, %s, min(abs(errY), 1));", borderName);
         }
 
-        // Do hard-edge shader transition to border color for kClampToBorderNearest at the
-        // subset boundaries. Snap the input coordinates to nearest neighbor (with an
-        // epsilon) before comparing to the subset rect to avoid GPU interpolation errors
+        // Test the selected nearest cell against the subset's hard border.
         if (m[0] == ShaderMode::kClampToBorder_Nearest) {
             fb->codeAppendf(
-                    "float snappedX = floor(inCoord.x + 0.001) + 0.5;"
+                    "float snappedX = %s;"
                     "if (snappedX < %s.x || snappedX > %s.z) {"
                     "    textureColor = %s;"
                     "}",
+                    nearest ? "ceil(inCoord.x) - 0.5" : "floor(inCoord.x + 0.001) + 0.5",
                     subsetName, subsetName, borderName);
         }
         if (m[1] == ShaderMode::kClampToBorder_Nearest) {
             fb->codeAppendf(
-                    "float snappedY = floor(inCoord.y + 0.001) + 0.5;"
+                    "float snappedY = %s;"
                     "if (snappedY < %s.y || snappedY > %s.w) {"
                     "    textureColor = %s;"
                     "}",
+                    nearest ? "ceil(inCoord.y) - 0.5" : "floor(inCoord.y + 0.001) + 0.5",
                     subsetName, subsetName, borderName);
         }
         fb->codeAppendf("return textureColor;");
@@ -747,13 +770,16 @@ void GrTextureEffect::Impl::onSetData(const GrGLSLProgramDataManager& pdm,
 
     float idims[2] = {1.f/w, 1.f/h};
 
+    if (fYFlipUni.isValid()) {
+        pdm.set1f(fYFlipUni, type == GrTextureType::kRectangle ? h : 1.f);
+    }
     if (fIDimsUni.isValid()) {
         pdm.set2fv(fIDimsUni, 1, idims);
         SkASSERT(type != GrTextureType::kRectangle);
     }
 
     auto pushRect = [&](float rect[4], UniformHandle uni) {
-        if (te.view().origin() == kBottomLeft_GrSurfaceOrigin) {
+        if (!te.usesNearestCells() && te.view().origin() == kBottomLeft_GrSurfaceOrigin) {
             rect[1] = h - rect[1];
             rect[3] = h - rect[3];
             std::swap(rect[1], rect[3]);
@@ -785,6 +811,11 @@ std::unique_ptr<GrFragmentProcessor::ProgramImpl> GrTextureEffect::onMakeProgram
 }
 
 void GrTextureEffect::onAddToKey(const GrShaderCaps&, skgpu::KeyBuilder* b) const {
+    bool nearest = this->usesNearestCells();
+    b->addBool(nearest, "nearestCells");
+    if (nearest) {
+        b->addBool(fView.origin() == kBottomLeft_GrSurfaceOrigin, "reflectedNearestCells");
+    }
     auto m0 = static_cast<uint32_t>(fShaderModes[0]);
     b->addBits(8, m0, "shaderMode0");
 
@@ -813,7 +844,8 @@ bool GrTextureEffect::onIsEqual(const GrFragmentProcessor& other) const {
 }
 
 bool GrTextureEffect::matrixEffectShouldNormalize() const {
-    return fView.asTextureProxy()->textureType() != GrTextureType::kRectangle &&
+    return !this->usesNearestCells() &&
+           fView.asTextureProxy()->textureType() != GrTextureType::kRectangle &&
            !ShaderModeRequiresUnormCoord(fShaderModes[0])                     &&
            !ShaderModeRequiresUnormCoord(fShaderModes[1]);
 }

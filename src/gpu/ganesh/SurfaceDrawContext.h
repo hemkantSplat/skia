@@ -208,8 +208,7 @@ public:
                                    const SkIRect& bounds,
                                    const SkMatrix& localMatrix) {
         SkRect rect = SkRect::Make(bounds);
-        DrawQuad quad{GrQuad::MakeFromRect(rect, SkMatrix::I()),
-                      GrQuad::MakeFromRect(rect, localMatrix), GrQuadAAFlags::kNone};
+        DrawQuad quad = DrawQuad::MakeFromRect(rect, SkMatrix::I(), localMatrix, GrQuadAAFlags::kNone);
         this->drawFilledQuad(clip, std::move(paint), &quad);
     }
 
@@ -228,7 +227,7 @@ public:
             return;
         }
         const SkRect& localRect = optionalLocalRect ? *optionalLocalRect : rect;
-        DrawQuad quad{GrQuad::MakeFromRect(rect, viewMatrix), GrQuad(localRect), edgeAA};
+        DrawQuad quad = DrawQuad::MakeFromRect(rect, viewMatrix, localRect, edgeAA);
         this->drawFilledQuad(clip, std::move(paint), &quad);
     }
 
@@ -241,15 +240,12 @@ public:
      *  - "bottom" = points[2] and [3]
      *  - "left" = points[3] and [0]
      *
-     * The last argument, 'optionalLocalQuad', can be null if no separate local coordinates are
-     * necessary.
+     * localMatrix maps the unclipped draw coordinates to shader coordinates.
      */
     void fillQuadWithEdgeAA(const GrClip* clip, GrPaint&& paint, GrQuadAAFlags edgeAA,
                             const SkMatrix& viewMatrix, const SkPoint points[4],
-                            const SkPoint optionalLocalPoints[4]) {
-        const SkPoint* localPoints = optionalLocalPoints ? optionalLocalPoints : points;
-        DrawQuad quad{GrQuad::MakeFromSkQuad(points, viewMatrix),
-                      GrQuad::MakeFromSkQuad(localPoints, SkMatrix::I()), edgeAA};
+                            const SkMatrix& localMatrix) {
+        DrawQuad quad = DrawQuad::MakeFromSkQuad(points, viewMatrix, localMatrix, edgeAA);
         this->drawFilledQuad(clip, std::move(paint), &quad);
     }
 
@@ -279,7 +275,7 @@ public:
 
     /**
      * Variant of drawTexture that instead draws the texture applied to 'dstQuad' transformed by
-     * 'viewMatrix', using the 'srcQuad' texture coordinates clamped to the optional 'subset'. If
+     * 'viewMatrix', using 'localMatrix' to obtain texture coordinates, clamped to the optional 'subset'. If
      * 'subset' is null, it's equivalent to using the fast src rect constraint. If 'subset' is
      * provided, the strict src rect constraint is applied using 'subset'.
      */
@@ -291,14 +287,13 @@ public:
                          GrSamplerState::MipmapMode mm,
                          SkBlendMode mode,
                          const SkPMColor4f& color,
-                         const SkPoint srcQuad[4],
+                         const SkMatrix& localMatrix,
                          const SkPoint dstQuad[4],
                          GrQuadAAFlags edgeAA,
                          const SkRect* subset,
                          const SkMatrix& viewMatrix,
                          sk_sp<GrColorSpaceXform> texXform) {
-        DrawQuad quad{GrQuad::MakeFromSkQuad(dstQuad, viewMatrix),
-                      GrQuad::MakeFromSkQuad(srcQuad, SkMatrix::I()), edgeAA};
+        DrawQuad quad = DrawQuad::MakeFromSkQuad(dstQuad, viewMatrix, localMatrix, edgeAA);
         this->drawTexturedQuad(clip, std::move(view), srcAlphaType, std::move(texXform), filter, mm,
                                color, mode, &quad, subset);
     }
@@ -549,9 +544,9 @@ public:
                      const SkMatrix* localMatrix = nullptr) {
         // Since this provides stencil settings to drawFilledQuad, it performs a different AA type
         // resolution compared to regular rect draws, which is the main reason it remains separate.
-        DrawQuad quad{GrQuad::MakeFromRect(rect, viewMatrix),
-                      localMatrix ? GrQuad::MakeFromRect(rect, *localMatrix) : GrQuad(rect),
-                      doStencilMSAA == GrAA::kYes ? GrQuadAAFlags::kAll : GrQuadAAFlags::kNone};
+        DrawQuad quad = DrawQuad::MakeFromRect(rect, viewMatrix,
+                localMatrix ? *localMatrix : SkMatrix::I(),
+                doStencilMSAA == GrAA::kYes ? GrQuadAAFlags::kAll : GrQuadAAFlags::kNone);
         this->drawFilledQuad(clip, std::move(paint), &quad, ss);
     }
 

@@ -8,6 +8,7 @@
 #ifndef GrQuad_DEFINED
 #define GrQuad_DEFINED
 
+#include "include/core/SkMatrix.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkPoint3.h"
 #include "include/core/SkRect.h"
@@ -185,6 +186,36 @@ struct DrawQuad {
     GrQuad        fDevice;
     GrQuad        fLocal;
     GrQuadAAFlags fEdgeFlags;
+    SkMatrix      fDeviceToLocal = SkMatrix::I();
+
+    static SkMatrix DeviceToLocal(const SkMatrix& view, const SkMatrix& local) {
+        SkMatrix inverse;
+        if (!view.invert(&inverse)) {
+            // Singular views cover no fragments and have no local-coordinate inverse.
+            return SkMatrix::Scale(0, 0);
+        }
+        return SkMatrix::Concat(local, inverse);
+    }
+
+    static DrawQuad MakeFromRect(const SkRect& rect, const SkMatrix& view,
+                                const SkRect& localRect, GrQuadAAFlags aa) {
+        SkMatrix local = rect == localRect ? SkMatrix::I() : SkMatrix::RectToRect(rect, localRect);
+        return {GrQuad::MakeFromRect(rect, view), GrQuad(localRect), aa,
+                DeviceToLocal(view, local)};
+    }
+
+    static DrawQuad MakeFromRect(const SkRect& rect, const SkMatrix& view,
+                                const SkMatrix& local, GrQuadAAFlags aa) {
+        return {GrQuad::MakeFromRect(rect, view), GrQuad::MakeFromRect(rect, local), aa,
+                DeviceToLocal(view, local)};
+    }
+
+    static DrawQuad MakeFromSkQuad(const SkPoint points[4], const SkMatrix& view,
+                                  const SkMatrix& local, GrQuadAAFlags aa) {
+        return {GrQuad::MakeFromSkQuad(points, view),
+                GrQuad::MakeFromSkQuad(points, local), aa,
+                DeviceToLocal(view, local)};
+    }
 };
 
 #endif
