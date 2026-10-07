@@ -78,7 +78,6 @@ private:
     bool onIsEqual(const GrFragmentProcessor& other) const override;
 
     GrClipEdgeType                 fEdgeType;
-    int                            fEdgeCount;
     std::array<float, 3*kMaxEdges> fEdges;
 
     GR_DECLARE_FRAGMENT_PROCESSOR_TEST
