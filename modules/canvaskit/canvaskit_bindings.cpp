@@ -1495,7 +1495,8 @@ static JSObject PlanCountersToJS(const cfplan::Counters& c) {
     out.set("picturesDrawn", double(c.picturesDrawn));
     out.set("layers", double(c.layers));
     out.set("clips", double(c.clips));
-    out.set("liveSkipped", double(c.liveSkipped));
+    out.set("livePauses", double(c.livePauses));
+    out.set("liveUnbalanced", double(c.liveUnbalanced));
     return out;
 }
 EMSCRIPTEN_BINDINGS(Skia) {
@@ -3652,9 +3653,19 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .function("releaseImage", optional_override([](cfplan::PlanInstance& self, uint32_t handle, uint32_t gen)->uint32_t {
             return uint32_t(self.releaseImage(handle, gen));
         }))
-        .function("_beginReplay", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas, uint32_t root)->int32_t {
-            return self.beginReplay(canvas, root);
+        .function("_beginReplay", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas, uint32_t root,
+                                                       uint32_t colorType, uint32_t colorSpace, uint32_t sampleCount,
+                                                       uint32_t pathSampleCount, float outputScale)->int32_t {
+            return self.beginReplay(canvas, root, {cfplan::TargetColorType(colorType), colorSpace, sampleCount,
+                                                   pathSampleCount, outputScale});
         }), allow_raw_pointers())
+        .function("_beginReplayChildren", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas,
+                                                               uint32_t live, float alpha)->int32_t {
+            return self.beginReplayChildren(canvas, live, alpha);
+        }), allow_raw_pointers())
+        .function("_liveContexts", optional_override([](cfplan::PlanInstance& self)->WASMPointerU8 {
+            return reinterpret_cast<WASMPointerU8>(self.liveContexts());
+        }))
         .function("_step", optional_override([](cfplan::PlanInstance& self, int32_t token)->int32_t {
             return self.step(token);
         }))

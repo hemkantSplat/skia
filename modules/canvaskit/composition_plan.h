@@ -516,8 +516,37 @@ struct Counters {
     uint32_t lastAllocations = 0;    // pass 1 checked allocations
     uint32_t lastCommitAllocations = 0;  // pass 2 checked allocations: always 0
     uint32_t lastCleanup = 0;        // staged entries freed after the apply
-    uint64_t replays = 0, visited = 0, picturesDrawn = 0, layers = 0, clips = 0, liveSkipped = 0;
+    uint64_t replays = 0, visited = 0, picturesDrawn = 0, layers = 0, clips = 0;
+    uint64_t livePauses = 0, liveUnbalanced = 0;  // live slots handed to JS; of them, left with excess saves
 };
+
+// The target a replay draws for (§4.4 ReplayTarget). colorSpace is the wrapper's tag for the space's name.
+enum class TargetColorType : uint32_t { kN32 = 0, kF16Linear = 1 };
+struct ReplayTarget {
+    TargetColorType colorType = TargetColorType::kN32;
+    uint32_t colorSpace = 0;
+    uint32_t sampleCount = 0;
+    uint32_t pathSampleCount = 0;
+    float outputScale = 1;
+};
+
+// What a live producer reads at a pause (§4.4 LivePaintContext): one slot per open token, read by JS in place.
+// The layout is ABI: 4-byte little-endian words, mirrored by LIVE_CONTEXT in canvaskit-variant.ts.
+struct LiveContext {
+    uint32_t node, producer, inputsRev;
+    float matrix[9];      // local-to-device at the pause, SkMatrix order
+    float deviceClip[4];  // conservative device clip bounds l, t, r, b
+    float foldedAlpha;
+    uint32_t clipBypass;
+    uint32_t containKind;  // ContainKind; 0 = none
+    float containBounds[4];
+    ReplayTarget target;
+    int32_t baseSaveCount;
+};
+static_assert(sizeof(LiveContext) == 29 * 4, "LiveContext is a 29-word ABI view");
+
+// Every legal nesting opens each token below the node its enclosing token is paused at, so plan depth bounds it.
+constexpr uint32_t kMaxOpenTokens = kMaxDepth + 1;
 
 class PlanInstance {
 public:
@@ -540,12 +569,16 @@ public:
     Error releaseImage(uint32_t handle, uint32_t gen);
 
     // Replay of `root`'s subtree onto `canvas`. A token is positive; a failure is the negated Error.
-    int32_t beginReplay(SkCanvas* canvas, uint32_t root);
-    // 0 when the walk is complete (live pauses arrive with K1b); a failure is the negated Error.
+    int32_t beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target);
+    // Replay of a paused live node's children in its local space; only legal while the innermost token is paused there.
+    int32_t beginReplayChildren(SkCanvas* canvas, uint32_t live, float alpha);
+    // 0 when the walk is complete, 1 when paused at a live node (its context in slot openTokens() - 1), else -Error.
     int32_t step(int32_t token);
     // Ends the innermost token and restores its canvas to the save count it began at.
     Error endReplay(int32_t token);
     uint32_t openTokens() const { return uint32_t(fTokens.size()); }
+    // kMaxOpenTokens context slots, indexed by token depth; the address is fixed for the instance's life.
+    const LiveContext* liveContexts() const { return fContexts.data(); }
 
     const Node* find(uint32_t id) const { return fState.nodes.find(id); }
     const PlanState& state() const { return fState; }
@@ -568,22 +601,37 @@ public:
 
 private:
     enum class Stage : uint8_t { kEnter, kBypassChildren, kContent, kChildren, kExit };
+    // What a node's own params leave in force for its content and children: X3 replayGroup's folded alpha and contain.
+    struct Scope {
+        float foldedAlpha = 1;
+        const Node* contain = nullptr;  // nearest node at or above with SetContain
+    };
     struct Frame {
         const Node* node;
+        uint32_t id;
         uint32_t child;
         int saveCount;
         Stage stage;
+        Scope scope;
+        bool softClip;    // bypass children replay before the clip
+        bool clipBypass;  // this node is a bypass child replayed before its parent's soft clip
     };
     struct Token {
         int32_t id;
         SkCanvas* canvas;
         int baseSaveCount;
+        ReplayTarget target;
+        int pauseSaveCount;  // 0 while running; the protected depth while paused at a live node
         std::vector<Frame> frames;
     };
 
     ApplyResult validate(const uint8_t* packet, uint32_t records, uint32_t floats);
     void commit(const uint8_t* packet, uint32_t records, uint32_t floats);
-    void pushFrame(Token& token, uint32_t id);
+    Error canOpenToken(SkCanvas* canvas) const;
+    Token& openToken(SkCanvas* canvas, const ReplayTarget& target);
+    void pushNode(Token& token, uint32_t id, Scope scope, bool clipBypass);
+    int32_t pause(Token& token, const Frame& frame);
+    Error resume(Token& token);
     const SkPath& clipPath(Key key);
 
     const uint32_t fId;
@@ -594,6 +642,9 @@ private:
     StagedState fStaged;
     std::vector<uint8_t> fPacket;
     std::vector<Token> fTokens;
+    std::vector<LiveContext> fContexts = std::vector<LiveContext>(kMaxOpenTokens);
+    // An under-restore damaged canvas state no step can rebuild: every token refuses until all have ended.
+    bool fUnderRestore = false;
     Counters fCounters;
 };
 
