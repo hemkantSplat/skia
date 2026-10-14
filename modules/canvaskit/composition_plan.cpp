@@ -9,6 +9,7 @@
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathTypes.h"
+#include "include/core/SkSamplingOptions.h"
 
 #include <cmath>
 #include <iterator>
@@ -287,6 +288,20 @@ void FreeHeights(HeightList& l) {
 
 // ---- pass 1's copy-on-write overlay over the committed state; every allocation is checked -----------------------
 
+void ClearRaster(PlanState& state, Node& node) {
+    if (node.raster.image == kNoKey) return;
+    state.images.find(node.raster.image)->second.refs--;
+    node.raster = Raster();
+}
+
+// A node's own share of its subtree counts.
+Tally OwnTally(const Params& p) {
+    constexpr uint16_t kLiveDeviceDependent = 1 << 1, kLiveClockBound = 1 << 2;
+    const bool liveDevice = p.live.set && (p.live.flags & kLiveDeviceDependent);
+    return {int32_t(p.picture && p.pictureDeviceDependent) + int32_t(liveDevice),
+            int32_t(p.live.set && (p.live.flags & kLiveClockBound))};
+}
+
 class StagedStore {
 public:
     StagedStore(const PlanState& live, StagedState& staged, Allocator& alloc)
@@ -316,6 +331,8 @@ public:
         e->structure.bypass = bypass;
         e->exists = true;
         e->born = record;
+        e->derived = Derived();
+        e->own = Tally();
         fStaged.nodeCount++;
         return true;
     }
@@ -327,6 +344,34 @@ public:
         e->exists = false;
         fStaged.nodeCount--;
         return true;
+    }
+
+    Tally tally(uint32_t id) const {
+        const uint32_t* at = fStaged.nodeIndex.find(id);
+        const Derived& d = at ? fStaged.nodes[*at].derived : fLive.nodes.find(id)->derived;
+        return {int32_t(d.deviceDependent), int32_t(d.clockBound)};
+    }
+    bool upkeep(uint32_t from, Tally delta = {}) {
+        const uint64_t gen = ++fStaged.generation;
+        for (uint32_t id = from; id != kNone;) {
+            StagedNode* e = touch(id, true);
+            if (!e) return false;
+            e->derived.subtreeGen = gen;
+            e->derived.deviceDependent += delta.deviceDependent;
+            e->derived.clockBound += delta.clockBound;
+            e->derived.boundsDirty = e->upkeep = true;
+            fStaged.upkeepVisits++;
+            id = e->structure.parent;
+        }
+        return true;
+    }
+    bool parameterUpkeep(const Record& r) {
+        StagedNode* e = touch(r.node, true);
+        if (!e) return false;
+        const Tally before = e->own;
+        if (Op(r.op) == Op::kSetPicture) e->own.deviceDependent = bool(r.flags & kPictureDeviceDependent);
+        if (Op(r.op) == Op::kSetLive) e->own = {int32_t(bool(r.flags & 2)), int32_t(bool(r.flags & 4))};
+        return upkeep(r.node, e->own - before);
     }
 
     uint32_t pictureRefs(Key key) const {
@@ -394,6 +439,8 @@ private:
         if (const Node* node = fLive.nodes.find(id)) {
             entry.exists = entry.live = true;
             entry.structure = node->structure;
+            entry.derived = node->derived;
+            entry.own = OwnTally(node->params);
             entry.structure.childHeights = HeightList();
             if (copyHeights && !CopyHeights(fAlloc, node->structure.childHeights, &entry.structure.childHeights)) {
                 return nullptr;
@@ -522,6 +569,12 @@ public:
 
     // kAlloc means an allocation failed.
     Error check(const Record& r, uint32_t index) {
+        const Error result = checkRecord(r, index);
+        if (result != Error::kOk || Op(r.op) <= Op::kMove || Op(r.op) == Op::kDefinePath || Op(r.op) == Op::kReleasePath) return result;
+        return allocated(fStore.parameterUpkeep(r));
+    }
+
+    Error checkRecord(const Record& r, uint32_t index) {
         validated++;
         fRecord = index;
         switch (Op(r.op)) {
@@ -535,7 +588,8 @@ public:
             case Op::kSetPicture: return picture(r);
             case Op::kSetLive: return live(r);
             case Op::kSetOutset:
-                return orFirst(existing(r.node), r.flags || r.b ? Error::kBadPayload : DecodeOutset(fPool, r.a, nullptr));
+                return orFirst(existing(r.node), (r.flags == 1 && r.a == 0 && r.b == 0) ? Error::kOk :
+                               r.flags || r.b ? Error::kBadPayload : DecodeOutset(fPool, r.a, nullptr));
             case Op::kDefinePath: return definePath(r);
             case Op::kReleasePath: return releasePath(r);
             case Op::kSetVisible:
@@ -579,14 +633,16 @@ private:
         if (fStore.find(r.node)) return Error::kDuplicateNode;
         if (Error e = placement(r.a, r.b); e != Error::kOk) return e;
         return allocated(fStore.create(r.node, Kind(kind), r.flags & kInsertBypass, fRecord) &&
-                         fTopology.attach(r.node, r.a, r.b));
+                         fTopology.attach(r.node, r.a, r.b) && fStore.upkeep(r.node));
     }
 
     Error remove(const Record& r) {
         if (Error e = structural(r.node); e != Error::kOk) return e;
         if (r.flags != 0 || r.a != 0 || r.b != 0) return Error::kBadPayload;
         if (!fStore.find(r.node)) return Error::kUnknownNode;
-        return allocated(fTopology.remove(r.node));
+        const uint32_t parent = fStore.find(r.node)->parent;
+        const Tally removed = fStore.tally(r.node);
+        return allocated(fTopology.remove(r.node) && fStore.upkeep(parent, -removed));
     }
 
     Error move(const Record& r) {
@@ -601,7 +657,9 @@ private:
         }
         if (r.b == r.node) return Error::kBadParent;
         if (Error e = placement(r.a, r.b); e != Error::kOk) return e;
-        return allocated(fTopology.detach(r.node) && fTopology.attach(r.node, r.a, r.b));
+        const Tally moved = fStore.tally(r.node);
+        return allocated(fStore.upkeep(fStore.find(r.node)->parent, -moved) &&
+                         fTopology.detach(r.node) && fTopology.attach(r.node, r.a, r.b) && fStore.upkeep(r.a, moved));
     }
 
     Error clip(const Record& r) {
@@ -697,8 +755,8 @@ void ApplyParams(const PlanState& state, Node& node, const Record& r, const Pool
             break;
         case Op::kSetLive: p.live = {true, r.a, r.b, r.flags}; break;
         case Op::kSetOutset:
-            DecodeOutset(pool, r.a, p.outset);
-            p.hasOutset = true;
+            if (!r.flags) DecodeOutset(pool, r.a, p.outset);
+            p.hasOutset = r.flags == 0;
             break;
         case Op::kSetVisible: p.visible = r.a == 1; break;
         case Op::kSetContain: DecodeContain(r, pool, &p.contain, p.containBounds); break;
@@ -712,28 +770,78 @@ void FreePath(PathEntry& entry) {
     entry.path = nullptr;
 }
 
+bool IsLayer(const IsolationParams& iso) { return iso.set && !(iso.flags & kIsolationFold); }
+
+bool HasBoundsHint(const IsolationParams& iso) { return !std::isnan(iso.bounds[0]); }
+
+// Whether a layer changes the destination across its whole extent, not only under its content: a blend that alters
+// the destination where the source is transparent, or a layer initialized with the backdrop.
+bool LayerCoversExtent(const IsolationParams& iso) {
+    if (iso.flags & kIsolationInitWithPrevious) return true;
+    switch (iso.blend) {
+        case SkBlendMode::kClear:
+        case SkBlendMode::kSrc:
+        case SkBlendMode::kSrcIn:
+        case SkBlendMode::kDstIn:
+        case SkBlendMode::kSrcOut:
+        case SkBlendMode::kDstATop:
+        case SkBlendMode::kModulate: return true;
+        default: return false;
+    }
+}
+
+// The clip's bounds in local space; false when it bounds nothing (no clip, or an inverse path).
+bool ClipBounds(const PlanState& state, const ClipParams& clip, Key key, SkRect* out) {
+    const float* f = clip.floats;
+    switch (clip.kind) {
+        case ClipKind::kRect:
+        case ClipKind::kRRect: *out = SkRect::MakeLTRB(f[0], f[1], f[2], f[3]).makeSorted(); return true;
+        case ClipKind::kPath: {
+            const PathData& data = state.paths.find(key)->data;
+            if (data.fillType & 2) return false;
+            const auto* points = static_cast<const SkPoint*>(data.bytes);
+            out->setBounds(points, data.points);
+            return true;
+        }
+        case ClipKind::kNone: break;
+    }
+    return false;
+}
+
+// Local bounds mapped into the parent's space; a perspective that sends a corner to w <= 0 is unbounded.
+Bounds MapToParent(const Params& p, const Bounds& b) {
+    if (!p.hasMatrix || b.unbounded || b.rect.isEmpty()) return b;
+    if (p.matrix.hasPerspective()) {
+        SkPoint corners[4];
+        b.rect.toQuad(corners);
+        for (const SkPoint& c : corners) {
+            const float w = p.matrix[SkMatrix::kMPersp0] * c.fX + p.matrix[SkMatrix::kMPersp1] * c.fY +
+                            p.matrix[SkMatrix::kMPersp2];
+            if (!(w > 0)) return Bounds::Unbounded();
+        }
+    }
+    return {p.matrix.mapRect(b.rect), false};
+}
+
 // ---- replay ------------------------------------------------------------------------------------------------------
 
-void OpenIsolation(SkCanvas* canvas, const IsolationParams& iso, Counters& counters) {
-    if (!iso.set || (iso.flags & kIsolationFold)) return;
+void OpenIsolation(SkCanvas* canvas, const IsolationParams& iso, const SkRect* bounds, Counters& counters) {
     SkPaint paint;
     paint.setAlphaf(iso.alpha);
     paint.setBlendMode(iso.blend);
-    const SkRect bounds = SkRect::MakeLTRB(iso.bounds[0], iso.bounds[1], iso.bounds[2], iso.bounds[3]);
     SkCanvas::SaveLayerFlags flags = 0;
     if (iso.flags & kIsolationInitWithPrevious) flags |= SkCanvas::kInitWithPrevious_SaveLayerFlag;
-    // A linear F16 layer resolves into the destination's space on restore (the fork's linear-light layers).
+    // A linear F16 layer resolves into the destination's space on restore.
     sk_sp<SkColorSpace> linear;
     if (iso.flags & kIsolationLinearF16) {
         flags |= SkCanvas::kF16ColorType;
         linear = SkColorSpace::MakeSRGBLinear();
     }
-    canvas->saveLayer(SkCanvas::SaveLayerRec(std::isnan(iso.bounds[0]) ? nullptr : &bounds, &paint, nullptr,
-                                             linear.get(), flags));
+    canvas->saveLayer(SkCanvas::SaveLayerRec(bounds, &paint, nullptr, linear.get(), flags));
     counters.layers++;
 }
 
-void ApplyClip(SkCanvas* canvas, const ClipParams& clip, const SkPath* path, Counters& counters) {
+void ApplyClip(SkCanvas* canvas, const ClipParams& clip, const SkPath* path, Counters& counters, bool& antialiasedClip) {
     const float* f = clip.floats;
     const SkRect rect = SkRect::MakeLTRB(f[0], f[1], f[2], f[3]);
     switch (clip.kind) {
@@ -748,10 +856,33 @@ void ApplyClip(SkCanvas* canvas, const ClipParams& clip, const SkPath* path, Cou
         }
         case ClipKind::kPath: canvas->clipPath(*path, SkClipOp::kIntersect, clip.antialias); break;
     }
+    antialiasedClip |= clip.antialias;
     counters.clips++;
 }
 
 }  // namespace
+
+void Bounds::join(const Bounds& other) {
+    if (unbounded || other.unbounded) {
+        *this = Unbounded();
+        return;
+    }
+    rect.join(other.rect);
+}
+
+void Bounds::outset(const float reach[4]) {
+    if (unbounded || rect.isEmpty()) return;
+    rect = SkRect::MakeLTRB(rect.fLeft - reach[0], rect.fTop - reach[1], rect.fRight + reach[2],
+                            rect.fBottom + reach[3]);
+}
+
+void Bounds::intersect(const SkRect& clip) {
+    if (unbounded) {
+        *this = {clip, false};
+    } else if (!rect.intersect(clip)) {
+        rect.setEmpty();
+    }
+}
 
 uint32_t StagedState::clear() {
     const uint32_t work = nodes.size() + paths.size();
@@ -764,12 +895,13 @@ uint32_t StagedState::clear() {
     pictureRefs.clear();
     pathHandles.clear();
     stack.clear();
+    clearedRasters.clear();
     return work;
 }
 
 PlanInstance::PlanInstance(uint32_t id) : fId(id) {
     // Construction is not apply: a failure here aborts like embind's own allocation of the instance.
-    const bool reserved = fState.nodes.reserve(fAlloc, 1);
+    const bool reserved = fState.nodes.reserve(fAlloc, 1) && fBoundsWork.reserve(fAlloc, 2);
     SkASSERT_RELEASE(reserved);
     fState.nodes.insert(kRoot).structure.kind = Kind::kGroup;
 }
@@ -830,6 +962,8 @@ ApplyResult PlanInstance::apply(size_t bytes) {
 }
 
 ApplyResult PlanInstance::validate(const uint8_t* packet, uint32_t records, uint32_t floats) {
+    fStaged.generation = fGeneration;
+    fStaged.upkeepVisits = 0;
     fStaged.nodeCount = fState.nodes.size();
     fStaged.pathCount = fState.paths.size();
     const Pool pool(packet + kHeaderBytes + kRecordBytes * records, floats);
@@ -852,15 +986,29 @@ ApplyResult PlanInstance::validate(const uint8_t* packet, uint32_t records, uint
         !fState.pathHandles.reserve(fAlloc, fState.pathHandles.size() + fStaged.pathHandles.size())) {
         return {Error::kAlloc, kNone};
     }
+    for (uint32_t i = 0; i < fStaged.nodes.size(); i++) {
+        const StagedNode& e = fStaged.nodes[i];
+        const Node* node = e.live ? fState.nodes.find(e.id) : nullptr;
+        if (node && (!e.exists || e.upkeep) && node->raster.image != kNoKey) {
+            if (!fStaged.clearedRasters.reserve(fAlloc, fStaged.clearedRasters.size() + 1)) return {Error::kAlloc, kNone};
+            fStaged.clearedRasters.push({e.id, node->raster.image});
+        }
+    }
+    // Two entries per node bound the lazy postorder stack; replay never allocates this storage.
+    if (!fBoundsWork.reserve(fAlloc, fStaged.nodeCount * 2)) return {Error::kAlloc, kNone};
     return {Error::kOk, kNone};
 }
 
 void PlanInstance::commit(const uint8_t* packet, uint32_t records, uint32_t floats) {
     StagedState& staged = fStaged;
+    fClearedRasters.swap(staged.clearedRasters);
+    fGeneration = staged.generation;
+    fCounters.lastUpkeepVisits = staged.upkeepVisits;
     // Removed nodes and released paths first.
     for (uint32_t i = 0; i < staged.nodes.size(); i++) {
         const StagedNode& e = staged.nodes[i];
         if (!e.live || e.exists) continue;
+        ClearRaster(fState, *fState.nodes.find(e.id));
         FreeHeights(fState.nodes.find(e.id)->structure.childHeights);
         fState.nodes.erase(e.id);
     }
@@ -876,6 +1024,8 @@ void PlanInstance::commit(const uint8_t* packet, uint32_t records, uint32_t floa
         if (!e.exists) continue;
         Node& node = e.live ? *fState.nodes.find(e.id) : fState.nodes.insert(e.id);
         if (e.born != kNone) node.params = Params();
+        if (e.upkeep) ClearRaster(fState, node);
+        node.derived = e.derived;
         FreeHeights(node.structure.childHeights);
         node.structure = e.structure;
         e.structure.childHeights = HeightList();  // moved into the node
@@ -919,6 +1069,81 @@ void PlanInstance::commit(const uint8_t* packet, uint32_t records, uint32_t floa
     }
 }
 
+// ---- bounds (§4.4): local, conservative, refreshed lazily from the children's cached bounds -------------------------
+
+const Bounds& PlanInstance::contentBounds(Node& node) {
+    Derived& d = node.derived;
+    if (!d.boundsDirty) return d.content;
+    auto& pending = fBoundsWork;
+    pending.clear();
+    pending.push({&node, false});
+    while (pending.size()) {
+        auto [current, ready] = pending.back();
+        pending.pop();
+        if (!current->derived.boundsDirty) continue;
+        if (!ready) {
+            pending.push({current, true});
+            for (uint32_t c = current->structure.first; c != kNone;) {
+                Node* child = fState.nodes.find(c);
+                if (child->params.visible && child->derived.boundsDirty) pending.push({child, false});
+                c = child->structure.next;
+            }
+            continue;
+        }
+        Node& node = *current;
+        Derived& d = node.derived;
+        const Params& p = node.params;
+        const bool live = node.structure.kind == Kind::kLive;
+        Bounds inner, bypass;
+        // A producer's paint reaches its children's bounds plus its outset; unbounded by SetLive bit 0 or with no outset.
+        if (live && ((p.live.flags & 1) || !p.hasOutset)) inner = Bounds::Unbounded();
+        if (p.picture) inner.join({p.picture->cullRect(), false});
+        for (uint32_t c = node.structure.first; c != kNone;) {
+            Node& child = *fState.nodes.find(c);
+            const Bounds mapped = MapToParent(child.params, ownBounds(child));
+            (child.structure.bypass && p.clip.soft ? bypass : inner).join(mapped);
+            c = child.structure.next;
+        }
+        if (live && !inner.unbounded && inner.rect.isEmpty()) inner = Bounds::Unbounded();
+        // The outset is the reach of what the node draws (stroke, filter, shadow); its own clip still bounds it.
+        if (p.hasOutset) {
+            inner.outset(p.outset);
+            bypass.outset(p.outset);
+        }
+        if (SkRect clip; ClipBounds(fState, p.clip, node.structure.clipPath, &clip)) inner.intersect(clip);
+        inner.join(bypass);
+        d.content = inner;
+        d.boundsDirty = false;
+        fCounters.boundsComputed++;
+    }
+    return node.derived.content;
+}
+
+Bounds PlanInstance::ownBounds(Node& node) {
+    if (!node.params.visible) return Bounds();
+    Bounds b = contentBounds(node);
+    if (node.raster.image != kNoKey) b.join({node.raster.dst, false});
+    const IsolationParams& iso = node.params.isolation;
+    if (!IsLayer(iso)) return b;
+    if (LayerCoversExtent(iso)) b = Bounds::Unbounded();
+    if (HasBoundsHint(iso)) b.intersect(SkRect::MakeLTRB(iso.bounds[0], iso.bounds[1], iso.bounds[2], iso.bounds[3]));
+    return b;
+}
+
+Bounds PlanInstance::bounds(uint32_t id) {
+    auto it = fState.nodes.find(id);
+    return it ? ownBounds(*it) : Bounds();
+}
+
+std::optional<SkRect> PlanInstance::layerBounds(Node& node) {
+    const IsolationParams& iso = node.params.isolation;
+    if (HasBoundsHint(iso)) return SkRect::MakeLTRB(iso.bounds[0], iso.bounds[1], iso.bounds[2], iso.bounds[3]);
+    if (LayerCoversExtent(iso)) return std::nullopt;
+    const Bounds& content = contentBounds(node);
+    if (content.unbounded) return std::nullopt;
+    return content.rect;
+}
+
 // ---- registrations -----------------------------------------------------------------------------------------------
 
 namespace {
@@ -957,12 +1182,73 @@ Error PlanInstance::releasePicture(uint32_t handle, uint32_t gen) {
 
 Error PlanInstance::registerImage(uint32_t handle, uint32_t gen, sk_sp<SkImage> image) {
     if (!image) return Error::kBadPayload;
-    return Register(fState.images, fState.imageHandles, handle, gen, std::move(image));
+    return Register(fState.images, fState.imageHandles, handle, gen, ImageEntry{std::move(image), 0});
 }
 
 Error PlanInstance::releaseImage(uint32_t handle, uint32_t gen) {
     return Release(fState.images, fState.imageHandles, handle, gen, Error::kUnknownPicture,
-                   [](const sk_sp<SkImage>&) { return false; });
+                   [](const ImageEntry& e) { return e.refs != 0; });
+}
+
+// ---- raster substitution -----------------------------------------------------------------------------------------
+
+Error PlanInstance::setRaster(uint32_t id, uint32_t handle, uint32_t gen, const SkRect& dst, double expectedSubtreeGen) {
+    if (!fTokens.empty()) return Error::kReplayActive;
+    auto node = fState.nodes.find(id);
+    if (!node) return Error::kUnknownNode;
+    if (expectedSubtreeGen != -1 && expectedSubtreeGen != double(node->derived.subtreeGen)) return Error::kBadGeneration;
+    auto image = fState.images.find(MakeKey(handle, gen));
+    if (image == fState.images.end()) {
+        return fState.imageHandles.count(handle) ? Error::kBadGeneration : Error::kUnknownPicture;
+    }
+    if (!dst.isFinite() || !dst.isSorted() || dst.isEmpty()) return Error::kBadPayload;
+    // A layer that reaches past its content (backdrop, extent-wide blend) or composites in linear F16 cannot fold
+    // into one image draw.
+    const IsolationParams& iso = node->params.isolation;
+    if (IsLayer(iso) && (LayerCoversExtent(iso) || (iso.flags & kIsolationLinearF16))) return Error::kBadPayload;
+    ClearRaster(fState, *node);
+    image->second.refs++;
+    node->raster = {image->first, dst};
+    dirtyBounds(id);
+    return Error::kOk;
+}
+
+Error PlanInstance::clearRaster(uint32_t id) {
+    if (!fTokens.empty()) return Error::kReplayActive;
+    auto node = fState.nodes.find(id);
+    if (!node) return Error::kUnknownNode;
+    ClearRaster(fState, *node);
+    dirtyBounds(id);
+    return Error::kOk;
+}
+
+void PlanInstance::dirtyBounds(uint32_t id) {
+    while (id != kNone) {
+        Node& node = *fState.nodes.find(id);
+        node.derived.boundsDirty = true;
+        id = node.structure.parent;
+    }
+}
+
+// The substituted subtree in one draw: a layer isolation folds into the image's paint, so no saveLayer opens.
+void PlanInstance::drawRaster(SkCanvas* canvas, const Node& node) {
+    SkPaint paint;
+    const IsolationParams& iso = node.params.isolation;
+    if (IsLayer(iso)) {
+        paint.setAlphaf(iso.alpha);
+        paint.setBlendMode(iso.blend);
+        if (HasBoundsHint(iso)) {
+            const SkMatrix matrix = canvas->getLocalToDeviceAs3x3();
+            SkRect device;
+            matrix.mapRect(&device, SkRect::MakeLTRB(iso.bounds[0], iso.bounds[1], iso.bounds[2], iso.bounds[3]));
+            canvas->resetMatrix();
+            canvas->clipRect(SkRect::Make(device.roundOut()), SkClipOp::kIntersect, false);
+            canvas->setMatrix(matrix);
+        }
+    }
+    const SkImage* image = fState.images.find(node.raster.image)->second.image.get();
+    canvas->drawImageRect(image, node.raster.dst, SkSamplingOptions(SkFilterMode::kLinear), &paint);
+    fCounters.rastersDrawn++;
 }
 
 // ---- replay ------------------------------------------------------------------------------------------------------
@@ -984,7 +1270,7 @@ PlanInstance::Token& PlanInstance::openToken(SkCanvas* canvas, const ReplayTarge
     return fTokens.back();
 }
 
-int32_t PlanInstance::beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target) {
+int32_t PlanInstance::beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target, bool contentOnly) {
     if (Error e = canOpenToken(canvas); e != Error::kOk) return -int32_t(e);
     if (!find(root)) return -int32_t(Error::kUnknownNode);
     if (!fTokens.empty()) {
@@ -999,14 +1285,19 @@ int32_t PlanInstance::beginReplay(SkCanvas* canvas, uint32_t root, const ReplayT
         !std::isfinite(target.outputScale)) {
         return -int32_t(Error::kBadPayload);
     }
+    Scope scope;
+    if (!fTokens.empty() && fTokens.back().canvas == canvas) {
+        scope.antialiasedClip = fTokens.back().frames.back().scope.antialiasedClip;
+    }
     Token& token = openToken(canvas, target);
-    pushNode(token, root, Scope(), false);
+    pushNode(token, root, scope, false);
+    token.frames.back().contentOnly = contentOnly;
     return token.id;
 }
 
 int32_t PlanInstance::beginReplayChildren(SkCanvas* canvas, uint32_t live, float alpha) {
     if (Error e = canOpenToken(canvas); e != Error::kOk) return -int32_t(e);
-    const Node* node = find(live);
+    Node* node = fState.nodes.find(live);
     if (!node) return -int32_t(Error::kUnknownNode);
     if (node->structure.kind != Kind::kLive || !(alpha >= 0 && alpha <= 1)) return -int32_t(Error::kBadPayload);
     // The children belong to the innermost token's current pause, and replay inside it.
@@ -1014,10 +1305,13 @@ int32_t PlanInstance::beginReplayChildren(SkCanvas* canvas, uint32_t live, float
         return -int32_t(Error::kTokenOrder);
     }
     const ReplayTarget target = fTokens.back().target;
+    const bool antialiasedClip = fTokens.back().canvas == canvas &&
+                                fTokens.back().frames.back().scope.antialiasedClip;
     Token& token = openToken(canvas, target);
     // Only the children's own placements apply: the live node's params belong to the producer that called this.
     Scope scope;
     scope.foldedAlpha = alpha;
+    scope.antialiasedClip = antialiasedClip;
     token.frames.push_back({node, live, node->structure.first, canvas->getSaveCount(), Stage::kChildren, scope, false,
                             false});
     return token.id;
@@ -1043,7 +1337,7 @@ int32_t PlanInstance::step(int32_t tokenId) {
     SkCanvas* canvas = token.canvas;
     while (!token.frames.empty()) {
         Frame& f = token.frames.back();
-        const Node& n = *f.node;
+        Node& n = *f.node;
         const Params& params = n.params;
         const bool live = n.structure.kind == Kind::kLive;
         switch (f.stage) {
@@ -1054,8 +1348,20 @@ int32_t PlanInstance::step(int32_t tokenId) {
                     break;
                 }
                 f.saveCount = canvas->save();
-                if (params.hasMatrix) canvas->concat(params.matrix);
-                OpenIsolation(canvas, params.isolation, fCounters);
+                if (params.hasMatrix && !f.contentOnly) canvas->concat(params.matrix);
+                if (n.raster.image != kNoKey && !f.contentOnly) {
+                    if (!f.scope.antialiasedClip) {
+                        drawRaster(canvas, n);
+                        f.stage = Stage::kExit;
+                        break;
+                    }
+                    fCounters.rastersFellBack++;
+                }
+                if (IsLayer(params.isolation) && !f.contentOnly) {
+                    const std::optional<SkRect> bounds = layerBounds(n);
+                    OpenIsolation(canvas, params.isolation, bounds ? &*bounds : nullptr, fCounters);
+                }
+
                 if (params.isolation.set && (params.isolation.flags & kIsolationFold)) {
                     f.scope.foldedAlpha *= params.isolation.alpha;
                 }
@@ -1079,7 +1385,8 @@ int32_t PlanInstance::step(int32_t tokenId) {
             }
             case Stage::kContent:
                 ApplyClip(canvas, params.clip,
-                          params.clip.kind == ClipKind::kPath ? &clipPath(n.structure.clipPath) : nullptr, fCounters);
+                          params.clip.kind == ClipKind::kPath ? &clipPath(n.structure.clipPath) : nullptr, fCounters,
+                          f.scope.antialiasedClip);
                 if (params.picture) {
                     canvas->drawPicture(params.picture);
                     fCounters.picturesDrawn++;

@@ -1497,6 +1497,35 @@ static JSObject PlanCountersToJS(const cfplan::Counters& c) {
     out.set("clips", double(c.clips));
     out.set("livePauses", double(c.livePauses));
     out.set("liveUnbalanced", double(c.liveUnbalanced));
+    out.set("upkeepVisits", c.lastUpkeepVisits);
+    out.set("rastersDrawn", double(c.rastersDrawn));
+    out.set("rastersFellBack", double(c.rastersFellBack));
+    out.set("boundsComputed", double(c.boundsComputed));
+    return out;
+}
+// K1c: a node's incrementally kept validity (§4.4 counts) and its conservative local bounds.
+static JSObject PlanCountsToJS(const cfplan::Derived& d) {
+    JSObject out = emscripten::val::object();
+    out.set("subtreeGen", double(d.subtreeGen));
+    out.set("deviceDependentCount", d.deviceDependent);
+    out.set("clockBoundCount", d.clockBound);
+    return out;
+}
+
+static JSObject PlanBoundsToJS(const cfplan::Bounds& b) {
+    JSObject out = emscripten::val::object();
+    out.set("unbounded", b.unbounded);
+    const float ltrb[4] = {b.rect.fLeft, b.rect.fTop, b.rect.fRight, b.rect.fBottom};
+    const bool none = b.unbounded || b.rect.isEmpty();
+    out.set("rect", none ? emscripten::val::null() : PlanFloatsToJS(ltrb, 4));
+    return out;
+}
+
+static JSObject PlanRasterToJS(const cfplan::Raster& raster) {
+    JSObject out = PlanKeyToJS(raster.image);
+    if (out.isNull()) return out;
+    const float ltrb[4] = {raster.dst.fLeft, raster.dst.fTop, raster.dst.fRight, raster.dst.fBottom};
+    out.set("dst", PlanFloatsToJS(ltrb, 4));
     return out;
 }
 EMSCRIPTEN_BINDINGS(Skia) {
@@ -3653,11 +3682,51 @@ EMSCRIPTEN_BINDINGS(Skia) {
         .function("releaseImage", optional_override([](cfplan::PlanInstance& self, uint32_t handle, uint32_t gen)->uint32_t {
             return uint32_t(self.releaseImage(handle, gen));
         }))
+        .function("_setRaster", optional_override([](cfplan::PlanInstance& self, uint32_t node, uint32_t handle,
+                                                     uint32_t gen, float l, float t, float r, float b, double expectedSubtreeGen)->uint32_t {
+            return uint32_t(self.setRaster(node, handle, gen, SkRect::MakeLTRB(l, t, r, b), expectedSubtreeGen));
+        }))
+        .function("clearRaster", optional_override([](cfplan::PlanInstance& self, uint32_t node)->uint32_t {
+            return uint32_t(self.clearRaster(node));
+        }))
+        .function("takeClearedRasters", optional_override([](cfplan::PlanInstance& self)->JSObject {
+            JSObject out = emscripten::val::array();
+            const auto& cleared = self.clearedRasters();
+            for (uint32_t i = 0; i < cleared.size(); i++) {
+                JSObject item = emscripten::val::object();
+                item.set("node", cleared[i].node);
+                item.set("handle", cfplan::KeyHandle(cleared[i].image));
+                item.set("gen", cfplan::KeyGen(cleared[i].image));
+                out.set(i, item);
+            }
+            self.clearRasterReport();
+            return out;
+        }))
+        .function("_counts", optional_override([](cfplan::PlanInstance& self, uint32_t id)->JSObject {
+            const cfplan::Node* node = self.find(id);
+            if (!node) return emscripten::val::null();
+            JSObject out = PlanCountsToJS(node->derived);
+            out.set("rastersFellBack", double(self.counters().rastersFellBack));
+            return out;
+        }))
+        .function("_bounds", optional_override([](cfplan::PlanInstance& self, uint32_t id)->JSObject {
+            return self.find(id) ? PlanBoundsToJS(self.bounds(id)) : emscripten::val::null();
+        }))
+        .function("_raster", optional_override([](cfplan::PlanInstance& self, uint32_t id)->JSObject {
+            const cfplan::Node* node = self.find(id);
+            return node ? PlanRasterToJS(node->raster) : emscripten::val::null();
+        }))
         .function("_beginReplay", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas, uint32_t root,
                                                        uint32_t colorType, uint32_t colorSpace, uint32_t sampleCount,
                                                        uint32_t pathSampleCount, float outputScale)->int32_t {
             return self.beginReplay(canvas, root, {cfplan::TargetColorType(colorType), colorSpace, sampleCount,
                                                    pathSampleCount, outputScale});
+        }), allow_raw_pointers())
+        .function("_beginReplayContent", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas, uint32_t root,
+                                                       uint32_t colorType, uint32_t colorSpace, uint32_t sampleCount,
+                                                       uint32_t pathSampleCount, float outputScale)->int32_t {
+            return self.beginReplay(canvas, root, {cfplan::TargetColorType(colorType), colorSpace, sampleCount,
+                                                   pathSampleCount, outputScale}, true);
         }), allow_raw_pointers())
         .function("_beginReplayChildren", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas,
                                                                uint32_t live, float alpha)->int32_t {
