@@ -123,6 +123,8 @@ skia_wasm_lib("canvaskit") {
     "WasmCommon.h",
     "mesh_bindings.h",
     "canvaskit_bindings.cpp",
+    "composition_plan.cpp",
+    "composition_plan.h",
   ]
   if (skia_canvaskit_enable_paragraph) {
     sources += [

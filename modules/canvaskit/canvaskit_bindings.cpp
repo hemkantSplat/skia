@@ -113,6 +113,7 @@
 #include "src/gpu/ganesh/gl/GrGLGpu.h"
 
 #include "modules/canvaskit/mesh_bindings.h"
+#include "modules/canvaskit/composition_plan.h"
 
 #include <GLES2/gl2.h>
 #endif // CK_ENABLE_WEBGL
@@ -1408,6 +1409,95 @@ static Uint8Array encodeImage(GrDirectContext* dContext,
     return toBytes(data);
 }
 
+// The composition plan's JS views (K1a): nodes and counters as plain objects, keys as {handle, gen}.
+static JSObject PlanFloatsToJS(const float* floats, int count) {
+    JSObject out = emscripten::val::array();
+    for (int i = 0; i < count; i++) out.call<void>("push", floats[i]);
+    return out;
+}
+
+static JSObject PlanKeyToJS(cfplan::Key key) {
+    if (key == cfplan::kNoKey) return emscripten::val::null();
+    JSObject out = emscripten::val::object();
+    out.set("handle", cfplan::KeyHandle(key));
+    out.set("gen", cfplan::KeyGen(key));
+    return out;
+}
+
+static JSObject PlanNodeToJS(const cfplan::PlanInstance& plan, uint32_t id, const cfplan::Node& node) {
+    const cfplan::Structure& s = node.structure;
+    const cfplan::Params& p = node.params;
+    JSObject out = emscripten::val::object();
+    out.set("id", id);
+    out.set("kind", uint32_t(s.kind));
+    out.set("bypass", s.bypass);
+    out.set("parent", s.parent == cfplan::kNone ? emscripten::val::null() : emscripten::val(s.parent));
+    JSObject children = emscripten::val::array();
+    for (uint32_t c = s.first; c != cfplan::kNone; c = plan.find(c)->structure.next) children.call<void>("push", c);
+    out.set("children", children);
+    out.set("height", s.height);
+    out.set("visible", p.visible);
+    out.set("matrix", p.hasMatrix ? PlanFloatsToJS(p.matrixFloats, 9) : emscripten::val::null());
+    JSObject clip = emscripten::val::null();
+    if (p.clip.kind != cfplan::ClipKind::kNone) {
+        clip = emscripten::val::object();
+        clip.set("kind", uint32_t(p.clip.kind));
+        clip.set("antialias", p.clip.antialias);
+        clip.set("soft", p.clip.soft);
+        const int floats = p.clip.kind == cfplan::ClipKind::kRect ? 4 : p.clip.kind == cfplan::ClipKind::kRRect ? 12 : 0;
+        clip.set("floats", PlanFloatsToJS(p.clip.floats, floats));
+        clip.set("path", PlanKeyToJS(s.clipPath));
+    }
+    out.set("clip", clip);
+    JSObject isolation = emscripten::val::null();
+    if (p.isolation.set) {
+        isolation = emscripten::val::object();
+        isolation.set("alpha", p.isolation.alpha);
+        isolation.set("bounds", PlanFloatsToJS(p.isolation.bounds, 4));
+        isolation.set("blend", uint32_t(p.isolation.blend));
+        isolation.set("flags", uint32_t(p.isolation.flags));
+    }
+    out.set("isolation", isolation);
+    JSObject picture = PlanKeyToJS(s.picture);
+    if (!picture.isNull()) picture.set("deviceDependent", p.pictureDeviceDependent);
+    out.set("picture", picture);
+    JSObject live = emscripten::val::null();
+    if (p.live.set) {
+        live = emscripten::val::object();
+        live.set("producer", p.live.producer);
+        live.set("inputsGen", p.live.inputsGen);
+        live.set("flags", uint32_t(p.live.flags));
+    }
+    out.set("live", live);
+    out.set("outset", p.hasOutset ? PlanFloatsToJS(p.outset, 4) : emscripten::val::null());
+    JSObject contain = emscripten::val::null();
+    if (p.contain != cfplan::ContainKind::kNone) {
+        contain = emscripten::val::object();
+        contain.set("kind", uint32_t(p.contain));
+        contain.set("bounds", PlanFloatsToJS(p.containBounds, 4));
+    }
+    out.set("contain", contain);
+    return out;
+}
+
+static JSObject PlanCountersToJS(const cfplan::Counters& c) {
+    JSObject out = emscripten::val::object();
+    out.set("applied", double(c.applied));
+    out.set("rejected", double(c.rejected));
+    out.set("records", c.lastRecords);
+    out.set("planValidated", c.lastValidated);
+    out.set("heightUpdates", c.lastHeightUpdates);
+    out.set("allocations", c.lastAllocations);
+    out.set("commitAllocations", c.lastCommitAllocations);
+    out.set("cleanup", c.lastCleanup);
+    out.set("replays", double(c.replays));
+    out.set("visited", double(c.visited));
+    out.set("picturesDrawn", double(c.picturesDrawn));
+    out.set("layers", double(c.layers));
+    out.set("clips", double(c.clips));
+    out.set("liveSkipped", double(c.liveSkipped));
+    return out;
+}
 EMSCRIPTEN_BINDINGS(Skia) {
 #ifdef ENABLE_GPU
     constant("gpu", true);
@@ -3534,6 +3624,66 @@ EMSCRIPTEN_BINDINGS(Skia) {
     constant("ShadowGeometricOnly", (int)SkShadowFlags::kGeometricOnly_ShadowFlag);
     constant("ShadowDirectionalLight", (int)SkShadowFlags::kDirectionalLight_ShadowFlag);
 
+    // The composition plan (K1a): JS names native objects by registered (handle, gen) only, never by embind pointers.
+    constant("compositionPlanApi", 1);
+    class_<cfplan::PlanInstance>("CompositionPlan")
+        .constructor<uint32_t>()
+        .function("_packetBuffer", optional_override([](cfplan::PlanInstance& self, uint32_t bytes)->WASMPointerU8 {
+            return reinterpret_cast<WASMPointerU8>(self.packetBuffer(bytes));
+        }))
+        .function("_apply", optional_override([](cfplan::PlanInstance& self, uint32_t bytes)->JSObject {
+            const cfplan::ApplyResult result = self.apply(bytes);
+            JSObject out = emscripten::val::object();
+            out.set("code", uint32_t(result.code));
+            out.set("record", result.record == cfplan::kNone ? -1 : int32_t(result.record));
+            return out;
+        }))
+        .function("registerPicture", optional_override([](cfplan::PlanInstance& self, uint32_t handle, uint32_t gen,
+                                                          sk_sp<SkPicture> picture)->uint32_t {
+            return uint32_t(self.registerPicture(handle, gen, std::move(picture)));
+        }))
+        .function("releasePicture", optional_override([](cfplan::PlanInstance& self, uint32_t handle, uint32_t gen)->uint32_t {
+            return uint32_t(self.releasePicture(handle, gen));
+        }))
+        .function("registerImage", optional_override([](cfplan::PlanInstance& self, uint32_t handle, uint32_t gen,
+                                                        sk_sp<SkImage> image)->uint32_t {
+            return uint32_t(self.registerImage(handle, gen, std::move(image)));
+        }))
+        .function("releaseImage", optional_override([](cfplan::PlanInstance& self, uint32_t handle, uint32_t gen)->uint32_t {
+            return uint32_t(self.releaseImage(handle, gen));
+        }))
+        .function("_beginReplay", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas, uint32_t root)->int32_t {
+            return self.beginReplay(canvas, root);
+        }), allow_raw_pointers())
+        .function("_step", optional_override([](cfplan::PlanInstance& self, int32_t token)->int32_t {
+            return self.step(token);
+        }))
+        .function("_endReplay", optional_override([](cfplan::PlanInstance& self, int32_t token)->uint32_t {
+            return uint32_t(self.endReplay(token));
+        }))
+        .function("_openTokens", optional_override([](cfplan::PlanInstance& self)->uint32_t {
+            return self.openTokens();
+        }))
+        .function("_inspect", optional_override([](cfplan::PlanInstance& self, uint32_t id)->JSObject {
+            const cfplan::Node* node = self.find(id);
+            return node ? PlanNodeToJS(self, id, *node) : emscripten::val::null();
+        }))
+        .function("_counters", optional_override([](cfplan::PlanInstance& self)->JSObject {
+            return PlanCountersToJS(self.counters());
+        }))
+        .function("_setAllocFailureForTesting", optional_override([](cfplan::PlanInstance& self, uint32_t n) {
+            self.setAllocFailureForTesting(n);
+        }))
+        .function("_setSequenceForTesting", optional_override([](cfplan::PlanInstance& self, uint32_t applied) {
+            self.setSequenceForTesting(applied);
+        }))
+        .function("_setStagedEpochForTesting", optional_override([](cfplan::PlanInstance& self, uint32_t epoch) {
+            self.setStagedEpochForTesting(epoch);
+        }))
+        // A double holds the epoch exactly well past 2^32.
+        .function("_stagedEpochForTesting", optional_override([](cfplan::PlanInstance& self)->double {
+            return double(self.stagedEpochForTesting());
+        }));
 #ifdef CK_INCLUDE_PARAGRAPH
     constant("_GlyphRunFlags_isWhiteSpace", (int)skia::textlayout::Paragraph::kWhiteSpace_VisitorFlag);
 #endif
