@@ -1,3 +1,4 @@
+#include "src/base/SkFloatBits.h"
 /*
  * Copyright 2015 Google Inc.
  *
@@ -278,7 +279,8 @@ private:
 
     static void CreateKey(skgpu::UniqueKey* key,
                           const GrStyledShape& shape,
-                          const SkIRect& devClipBounds) {
+                          const SkIRect& devClipBounds,
+                          const SkMatrix& viewMatrix) {
         static const skgpu::UniqueKey::Domain kDomain = skgpu::UniqueKey::GenerateDomain();
 
         bool inverseFill = shape.inverseFilled();
@@ -286,8 +288,12 @@ private:
         static constexpr int kClipBoundsCnt = sizeof(devClipBounds) / sizeof(uint32_t);
         int shapeKeyDataCnt = shape.unstyledKeySize();
         SkASSERT(shapeKeyDataCnt >= 0);
-        skgpu::UniqueKey::Builder builder(key, kDomain, shapeKeyDataCnt + kClipBoundsCnt, "Path");
+        skgpu::UniqueKey::Builder builder(key, kDomain, shapeKeyDataCnt + kClipBoundsCnt + 9, "Path");
         shape.writeUnstyledKey(&builder[0]);
+        // Both the curve tolerance and inverse-fill clip depend on this exact matrix.
+        for (int i = 0; i < 9; ++i) {
+            builder[shapeKeyDataCnt + kClipBoundsCnt + i] = SkFloat2Bits(viewMatrix[i]);
+        }
         // For inverse fills, the tessellation is dependent on clip bounds.
         if (inverseFill) {
             memcpy(&builder[shapeKeyDataCnt], &devClipBounds, sizeof(devClipBounds));
@@ -327,7 +333,7 @@ private:
         auto threadSafeCache = target->threadSafeCache();
 
         skgpu::UniqueKey key;
-        CreateKey(&key, fShape, fDevClipBounds);
+        CreateKey(&key, fShape, fDevClipBounds, fViewMatrix);
 
         SkScalar tol = GrPathUtils::scaleToleranceToSrc(GrPathUtils::kDefaultTolerance,
                                                         fViewMatrix, fShape.bounds());
@@ -486,7 +492,7 @@ private:
         auto threadSafeViewCache = rContext->priv().threadSafeCache();
 
         skgpu::UniqueKey key;
-        CreateKey(&key, fShape, fDevClipBounds);
+        CreateKey(&key, fShape, fDevClipBounds, fViewMatrix);
 
         SkScalar tol = GrPathUtils::scaleToleranceToSrc(GrPathUtils::kDefaultTolerance,
                                                         fViewMatrix, fShape.bounds());

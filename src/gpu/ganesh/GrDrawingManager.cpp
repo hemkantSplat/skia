@@ -422,12 +422,7 @@ bool GrDrawingManager::reorderTasks(GrResourceAllocator* resourceAllocator) {
     if (!resourceAllocator->planAssignment()) {
         return false;
     }
-    if (!resourceAllocator->makeBudgetHeadroom()) {
-        auto dContext = fContext->asDirectContext();
-        SkASSERT(dContext);
-        dContext->priv().getGpu()->stats()->incNumReorderedDAGsOverBudget();
-        return false;
-    }
+    // The recorded DAG determines merging; cache pressure must not change sample preservation.
     reorder_array_by_llist(llist, &fDAG);
 
     int newCount = 0;

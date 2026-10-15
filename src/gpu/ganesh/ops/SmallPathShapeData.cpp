@@ -47,13 +47,16 @@ SmallPathShapeDataKey::SmallPathShapeDataKey(const GrStyledShape& shape, const S
     SkFixed fracX = SkScalarToFixed(tx) & 0x0000FF00;
     SkFixed fracY = SkScalarToFixed(ty) & 0x0000FF00;
     int shapeKeySize = shape.unstyledKeySize();
-    fKey.reset(5 + shapeKeySize);
+    fKey.reset(7 + shapeKeySize);
     fKey[0] = SkFloat2Bits(sx);
     fKey[1] = SkFloat2Bits(sy);
     fKey[2] = SkFloat2Bits(kx);
     fKey[3] = SkFloat2Bits(ky);
     fKey[4] = fracX | (fracY >> 8);
-    shape.writeUnstyledKey(&fKey[5]);
+    // Match the exact matrix used to rasterize the atlas entry.
+    fKey[5] = SkFloat2Bits(ctm.get(SkMatrix::kMTransX));
+    fKey[6] = SkFloat2Bits(ctm.get(SkMatrix::kMTransY));
+    shape.writeUnstyledKey(&fKey[7]);
 }
 
 }  // namespace skgpu::ganesh

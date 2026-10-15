@@ -718,9 +718,11 @@ static void make_blurred_rrect_key(skgpu::UniqueKey* key,
     SkASSERT(!skgpu::BlurIsEffectivelyIdentity(xformedSigma));
     static const skgpu::UniqueKey::Domain kDomain = skgpu::UniqueKey::GenerateDomain();
 
-    skgpu::UniqueKey::Builder builder(key, kDomain, 9, "RoundRect Blur Mask");
+    skgpu::UniqueKey::Builder builder(key, kDomain, 10, "RoundRect Blur Mask");
     builder[0] = SkScalarCeilToInt(xformedSigma - 1 / 6.0f);
 
+    // The kernel uses the exact sigma, not just its integer support radius.
+    builder[9] = SkFloat2Bits(xformedSigma);
     int index = 1;
     // TODO: this is overkill for _simple_ circular rrects
     for (auto c : {SkRRect::kUpperLeft_Corner,
@@ -1178,7 +1180,7 @@ static bool compute_key_and_clip_bounds(skgpu::UniqueKey* maskKey,
 
     if (useCache) {
         static const skgpu::UniqueKey::Domain kDomain = skgpu::UniqueKey::GenerateDomain();
-        skgpu::UniqueKey::Builder builder(maskKey, kDomain, 5 + 2 + shape.unstyledKeySize(),
+        skgpu::UniqueKey::Builder builder(maskKey, kDomain, 9 + shape.unstyledKeySize(),
                                           "Mask Filtered Masks");
 
         // We require the upper left 2x2 of the matrix to match exactly for a cache hit.
@@ -1211,7 +1213,10 @@ static bool compute_key_and_clip_bounds(skgpu::UniqueKey* maskKey,
 
         builder[5] = rec.fStyle;  // TODO: we could put this with the other style bits
         builder[6] = SkFloat2Bits(rec.fSigma);
-        shape.writeUnstyledKey(&builder[7]);
+        // The raster uses exact translations; eight-bit buckets must not alias its masks.
+        builder[7] = SkFloat2Bits(tx);
+        builder[8] = SkFloat2Bits(ty);
+        shape.writeUnstyledKey(&builder[9]);
     }
 #endif
 

@@ -966,14 +966,9 @@ bool Device::drawAsTiledImageRect(SkCanvas* canvas,
     SkCanvas::QuadAAFlags aaFlags = (aa == GrAA::kYes) ? SkCanvas::kAll_QuadAAFlags
                                                        : SkCanvas::kNone_QuadAAFlags;
 
-    // NOTE: if the context is not a direct context, it doesn't have access to the resource
-    // cache, and theoretically, the resource cache's limits could be being changed on
-    // another thread, so even having access to just the limit wouldn't be a reliable
-    // test during recording here.
-    size_t cacheSize = 0;
-    if (auto dCtx = GrAsDirectContext(rCtx)) {
-        cacheSize = dCtx->getResourceCacheLimit();
-    }
+    // Cache capacity must not select a different image sampling path.
+    // Zero disables optional budget tiling; texture-size limits still require tiling.
+    constexpr size_t cacheSize = 0;
     size_t maxTextureSize = rCtx->maxTextureSize();
 #if defined(GPU_TEST_UTILS)
     if (gOverrideMaxTextureSizeGanesh) {

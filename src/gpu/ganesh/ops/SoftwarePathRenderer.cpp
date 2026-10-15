@@ -324,7 +324,7 @@ bool SoftwarePathRenderer::onDrawPath(const DrawPathArgs& args) {
         SkScalar kx = args.fViewMatrix->get(SkMatrix::kMSkewX);
         SkScalar ky = args.fViewMatrix->get(SkMatrix::kMSkewY);
         static const skgpu::UniqueKey::Domain kDomain = skgpu::UniqueKey::GenerateDomain();
-        skgpu::UniqueKey::Builder builder(&maskKey, kDomain, 7 + args.fShape->unstyledKeySize(),
+        skgpu::UniqueKey::Builder builder(&maskKey, kDomain, 9 + args.fShape->unstyledKeySize(),
                                      "SW Path Mask");
         builder[0] = boundsForMask->width();
         builder[1] = boundsForMask->height();
@@ -353,7 +353,10 @@ bool SoftwarePathRenderer::onDrawPath(const DrawPathArgs& args) {
         uint32_t styleBits = args.fShape->style().isSimpleHairline() ?
                              ((args.fShape->style().strokeRec().getCap() << 1) | 1) : 0;
         builder[6] = fracX | (fracY >> 8) | (styleBits << 16);
-        args.fShape->writeUnstyledKey(&builder[7]);
+        // Eight-bit subpixel keys alias distinct mask rasters; retain exact translations too.
+        builder[7] = SkFloat2Bits(args.fViewMatrix->get(SkMatrix::kMTransX));
+        builder[8] = SkFloat2Bits(args.fViewMatrix->get(SkMatrix::kMTransY));
+        args.fShape->writeUnstyledKey(&builder[9]);
     }
 
     GrSurfaceProxyView view;
