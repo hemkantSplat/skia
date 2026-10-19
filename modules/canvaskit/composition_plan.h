@@ -8,6 +8,7 @@
 #include "include/core/SkBlendMode.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkMatrix.h"
+#include "include/core/SkM44.h"
 #include "include/core/SkPath.h"
 #include "include/core/SkPicture.h"
 #include "include/core/SkRRect.h"
@@ -82,6 +83,7 @@ enum class Op : uint16_t {
     kReleasePath = 11,
     kSetVisible = 12,
     kSetContain = 13,
+    kSetSpace = 14,
 };
 
 enum class Kind : uint8_t { kGroup = 1, kPlacement = 2, kClip = 3, kIsolation = 4, kPicture = 5, kLive = 6 };
@@ -430,7 +432,11 @@ struct Params {
     bool visible = true;
     bool hasMatrix = false;
     SkMatrix matrix;
-    float matrixFloats[9] = {};
+    float matrixFloats[16] = {};
+    bool hasM44 = false;
+    SkM44 matrix44;
+    bool hasSpace = false;
+    float space[18] = {};  // flatten, cull backface, row-major child perspective
     ClipParams clip;
     IsolationParams isolation;
     const SkPicture* picture = nullptr;  // owned by its registration, which cannot release while a node names it

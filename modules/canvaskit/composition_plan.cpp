@@ -582,7 +582,7 @@ public:
             case Op::kRemove: return remove(r);
             case Op::kMove: return move(r);
             case Op::kSetMatrix:
-                return orFirst(existing(r.node), r.flags || r.b ? Error::kBadPayload : DecodeFloats(fPool, r.a, 9, nullptr));
+                return orFirst(existing(r.node), (r.flags & ~1) || r.b ? Error::kBadPayload : DecodeFloats(fPool, r.a, r.flags ? 16 : 9, nullptr));
             case Op::kSetClip: return clip(r);
             case Op::kSetIsolation: return orFirst(existing(r.node), DecodeIsolation(r, fPool, nullptr));
             case Op::kSetPicture: return picture(r);
@@ -595,6 +595,12 @@ public:
             case Op::kSetVisible:
                 return orFirst(existing(r.node), r.flags || r.b || r.a > 1 ? Error::kBadPayload : Error::kOk);
             case Op::kSetContain: return orFirst(existing(r.node), DecodeContain(r, fPool, nullptr, nullptr));
+            case Op::kSetSpace: {
+                float s[18];
+                Error e = orFirst(existing(r.node), r.flags || r.b ? Error::kBadPayload : DecodeFloats(fPool, r.a, 18, s));
+                if (e != Error::kOk) return e;
+                return (s[0] == 0 || s[0] == 1) && (s[1] == 0 || s[1] == 1) ? Error::kOk : Error::kBadPayload;
+            }
         }
         return Error::kBadPayload;
     }
@@ -737,9 +743,15 @@ void ApplyParams(const PlanState& state, Node& node, const Record& r, const Pool
     Params& p = node.params;
     switch (Op(r.op)) {
         case Op::kSetMatrix: {
-            DecodeFloats(pool, r.a, 9, p.matrixFloats);
+            DecodeFloats(pool, r.a, r.flags ? 16 : 9, p.matrixFloats);
             const float* m = p.matrixFloats;
-            p.matrix = SkMatrix::MakeAll(m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8]);
+            p.hasM44 = r.flags == 1;
+            if (p.hasM44) {
+                p.matrix44 = SkM44::RowMajor(m);
+                p.matrix = p.matrix44.asM33();
+            } else {
+                p.matrix = SkMatrix::MakeAll(m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8]);
+            }
             p.hasMatrix = true;
             break;
         }
@@ -760,6 +772,10 @@ void ApplyParams(const PlanState& state, Node& node, const Record& r, const Pool
             break;
         case Op::kSetVisible: p.visible = r.a == 1; break;
         case Op::kSetContain: DecodeContain(r, pool, &p.contain, p.containBounds); break;
+        case Op::kSetSpace:
+            DecodeFloats(pool, r.a, 18, p.space);
+            p.hasSpace = true;
+            break;
         default: break;  // structure and paths commit from the staged state
     }
 }
@@ -808,22 +824,76 @@ bool ClipBounds(const PlanState& state, const ClipParams& clip, Key key, SkRect*
     return false;
 }
 
-// Local bounds mapped into the parent's space; a perspective that sends a corner to w <= 0 is unbounded.
-Bounds MapToParent(const Params& p, const Bounds& b) {
-    if (!p.hasMatrix || b.unbounded || b.rect.isEmpty()) return b;
-    if (p.matrix.hasPerspective()) {
+// SkMatrix projects the z=0 quad and clips its homogeneous edges at Skia's positive-w plane.
+Bounds ProjectBounds(const SkMatrix& matrix, const Bounds& b) {
+    if (b.unbounded || b.rect.isEmpty() || matrix.isIdentity()) return b;
+    const SkRect rect = matrix.mapRect(b.rect);
+    return rect.isFinite() ? Bounds{rect, false} : Bounds::Unbounded();
+}
+SkMatrix ProjectionPlane(const Params& p) {
+    return p.hasSpace ? SkM44::RowMajor(p.space + 2).asM33() : SkMatrix::I();
+}
+Bounds BeforeProjection(const Params& p, const Bounds& b) {
+    const SkMatrix projection = ProjectionPlane(p);
+    SkMatrix inverse;
+    if (projection.isIdentity()) return b;
+    return projection.invert(&inverse) ? ProjectBounds(inverse, b) : Bounds::Unbounded();
+}
+// A node's projection belongs to its children, so combine it with the child's full placement before dropping z.
+Bounds MapToParent(const Params& parent, const Params& child, const Bounds& b) {
+    const SkM44 placement = child.hasM44 ? child.matrix44 : SkM44(child.matrix);
+    const SkM44 projection = parent.hasSpace ? SkM44::RowMajor(parent.space + 2) : SkM44();
+    if (!child.hasM44 && !parent.hasSpace && !b.unbounded && !b.rect.isEmpty() && child.matrix.hasPerspective()) {
         SkPoint corners[4];
         b.rect.toQuad(corners);
         for (const SkPoint& c : corners) {
-            const float w = p.matrix[SkMatrix::kMPersp0] * c.fX + p.matrix[SkMatrix::kMPersp1] * c.fY +
-                            p.matrix[SkMatrix::kMPersp2];
+            const float w = child.matrix[SkMatrix::kMPersp0] * c.fX + child.matrix[SkMatrix::kMPersp1] * c.fY + child.matrix[SkMatrix::kMPersp2];
             if (!(w > 0)) return Bounds::Unbounded();
         }
     }
-    return {p.matrix.mapRect(b.rect), false};
+    return ProjectBounds((projection * placement).asM33(), b);
 }
 
 // ---- replay ------------------------------------------------------------------------------------------------------
+
+// Matches enter(): invert with double intermediates, then round the right factor to floats before concat.
+bool PlanIn3D(const SkM44& m) {
+    return m.rc(0, 2) != 0 || m.rc(1, 2) != 0 || m.rc(2, 0) != 0 || m.rc(2, 1) != 0 ||
+           m.rc(2, 2) != 1 || m.rc(2, 3) != 0 || m.rc(3, 0) != 0 || m.rc(3, 1) != 0 || m.rc(3, 2) != 0;
+}
+void PlanFlatten(SkCanvas* canvas) {
+    const SkM44 m = canvas->getLocalToDevice();
+    if (!PlanIn3D(m)) return;
+    double rows[4][8];
+    for (int r = 0; r < 4; r++) for (int c = 0; c < 8; c++) rows[r][c] = c < 4 ? m.rc(r, c) : double(c - 4 == r);
+    bool invertible = true;
+    for (int c = 0; c < 4; c++) {
+        int pivot = c;
+        for (int r = c + 1; r < 4; r++) if (std::abs(rows[r][c]) > std::abs(rows[pivot][c])) pivot = r;
+        if (std::abs(rows[pivot][c]) < 1e-12) { invertible = false; break; }
+        for (int k = 0; k < 8; k++) std::swap(rows[c][k], rows[pivot][k]);
+        const double divisor = rows[c][c];
+        for (int k = 0; k < 8; k++) rows[c][k] /= divisor;
+        for (int r = 0; r < 4; r++) if (r != c) {
+            const double factor = rows[r][c];
+            for (int k = 0; k < 8; k++) rows[r][k] -= factor * rows[c][k];
+        }
+    }
+    float f[16] = {1,0,0,0, 0,1,0,0, 0,0,0,0, 0,0,0,1};
+    if (invertible) for (int r = 0; r < 4; r++) f[r * 4 + 2] = float(rows[r][6]);
+    canvas->concat(SkM44::RowMajor(f));
+}
+bool PlanEnterSpace(SkCanvas* canvas, const Params& p) {
+    if (!p.hasSpace || p.space[0]) PlanFlatten(canvas);
+    if (!p.hasSpace) return true;
+    const SkM44 projection = SkM44::RowMajor(p.space + 2);
+    if (projection != SkM44()) canvas->concat(projection);
+    if (!p.space[1]) return true;
+    const SkM44 m = canvas->getLocalToDevice();
+    const double a=m.rc(0,0), b=m.rc(0,1), c=m.rc(0,3), d=m.rc(1,0), e=m.rc(1,1), f=m.rc(1,3),
+                 g=m.rc(3,0), h=m.rc(3,1), i=m.rc(3,3);
+    return !(a*(e*i-f*h)-b*(d*i-f*g)+c*(d*h-e*g) < 0);
+}
 
 void OpenIsolation(SkCanvas* canvas, const IsolationParams& iso, const SkRect* bounds, Counters& counters) {
     SkPaint paint;
@@ -1097,14 +1167,16 @@ const Bounds& PlanInstance::contentBounds(Node& node) {
         Bounds inner, bypass;
         // A producer's paint reaches its children's bounds plus its outset; unbounded by SetLive bit 0 or with no outset.
         if (live && ((p.live.flags & 1) || !p.hasOutset)) inner = Bounds::Unbounded();
-        if (p.picture) inner.join({p.picture->cullRect(), false});
+        if (p.picture) inner.join(ProjectBounds(ProjectionPlane(p), {p.picture->cullRect(), false}));
         for (uint32_t c = node.structure.first; c != kNone;) {
             Node& child = *fState.nodes.find(c);
-            const Bounds mapped = MapToParent(child.params, ownBounds(child));
+            const Bounds mapped = MapToParent(p, child.params, ownBounds(child));
             (child.structure.bypass && p.clip.soft ? bypass : inner).join(mapped);
             c = child.structure.next;
         }
         if (live && !inner.unbounded && inner.rect.isEmpty()) inner = Bounds::Unbounded();
+        inner = BeforeProjection(p, inner);
+        bypass = BeforeProjection(p, bypass);
         // The outset is the reach of what the node draws (stroke, filter, shadow); its own clip still bounds it.
         if (p.hasOutset) {
             inner.outset(p.outset);
@@ -1112,7 +1184,7 @@ const Bounds& PlanInstance::contentBounds(Node& node) {
         }
         if (SkRect clip; ClipBounds(fState, p.clip, node.structure.clipPath, &clip)) inner.intersect(clip);
         inner.join(bypass);
-        d.content = inner;
+        d.content = ProjectBounds(ProjectionPlane(p), inner);
         d.boundsDirty = false;
         fCounters.boundsComputed++;
     }
@@ -1122,11 +1194,11 @@ const Bounds& PlanInstance::contentBounds(Node& node) {
 Bounds PlanInstance::ownBounds(Node& node) {
     if (!node.params.visible) return Bounds();
     Bounds b = contentBounds(node);
-    if (node.raster.image != kNoKey) b.join({node.raster.dst, false});
+    if (node.raster.image != kNoKey) b.join(ProjectBounds(ProjectionPlane(node.params), {node.raster.dst, false}));
     const IsolationParams& iso = node.params.isolation;
     if (!IsLayer(iso)) return b;
     if (LayerCoversExtent(iso)) b = Bounds::Unbounded();
-    if (HasBoundsHint(iso)) b.intersect(SkRect::MakeLTRB(iso.bounds[0], iso.bounds[1], iso.bounds[2], iso.bounds[3]));
+    if (HasBoundsHint(iso)) b.intersect(ProjectionPlane(node.params).mapRect(SkRect::MakeLTRB(iso.bounds[0], iso.bounds[1], iso.bounds[2], iso.bounds[3])));
     return b;
 }
 
@@ -1139,7 +1211,7 @@ std::optional<SkRect> PlanInstance::layerBounds(Node& node) {
     const IsolationParams& iso = node.params.isolation;
     if (HasBoundsHint(iso)) return SkRect::MakeLTRB(iso.bounds[0], iso.bounds[1], iso.bounds[2], iso.bounds[3]);
     if (LayerCoversExtent(iso)) return std::nullopt;
-    const Bounds& content = contentBounds(node);
+    const Bounds content = BeforeProjection(node.params, contentBounds(node));
     if (content.unbounded) return std::nullopt;
     return content.rect;
 }
@@ -1348,7 +1420,13 @@ int32_t PlanInstance::step(int32_t tokenId) {
                     break;
                 }
                 f.saveCount = canvas->save();
-                if (params.hasMatrix && !f.contentOnly) canvas->concat(params.matrix);
+                if (!f.contentOnly) {
+                    if (params.hasMatrix) {
+                        if (params.hasM44) canvas->concat(params.matrix44);
+                        else canvas->concat(params.matrix);
+                    }
+                    if (!PlanEnterSpace(canvas, params)) { f.stage = Stage::kExit; break; }
+                }
                 if (n.raster.image != kNoKey && !f.contentOnly) {
                     if (!f.scope.antialiasedClip) {
                         drawRaster(canvas, n);

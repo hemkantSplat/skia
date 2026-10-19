@@ -1437,7 +1437,8 @@ static JSObject PlanNodeToJS(const cfplan::PlanInstance& plan, uint32_t id, cons
     out.set("children", children);
     out.set("height", s.height);
     out.set("visible", p.visible);
-    out.set("matrix", p.hasMatrix ? PlanFloatsToJS(p.matrixFloats, 9) : emscripten::val::null());
+    out.set("matrix", p.hasMatrix ? PlanFloatsToJS(p.matrixFloats, p.hasM44 ? 16 : 9) : emscripten::val::null());
+    out.set("space", p.hasSpace ? PlanFloatsToJS(p.space, 18) : emscripten::val::null());
     JSObject clip = emscripten::val::null();
     if (p.clip.kind != cfplan::ClipKind::kNone) {
         clip = emscripten::val::object();
@@ -3656,6 +3657,7 @@ EMSCRIPTEN_BINDINGS(Skia) {
 
     // The composition plan (K1a): JS names native objects by registered (handle, gen) only, never by embind pointers.
     constant("compositionPlanApi", 1);
+    constant("compositionPlanSpatialApi", 1);
     class_<cfplan::PlanInstance>("CompositionPlan")
         .constructor<uint32_t>()
         .function("_packetBuffer", optional_override([](cfplan::PlanInstance& self, uint32_t bytes)->WASMPointerU8 {
