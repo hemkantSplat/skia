@@ -2518,6 +2518,12 @@ HIGHP_STAGE(css_lab_to_xyz, NoCtx) {
     b = xyz[2]*D50[2];
 }
 
+HIGHP_STAGE(clamp_rgb_0, NoCtx) {
+    r = max(r, 0.0f);
+    g = max(g, 0.0f);
+    b = max(b, 0.0f);
+}
+
 HIGHP_STAGE(css_oklab_to_linear_srgb, NoCtx) {
     F l_ = r + 0.3963377774f * g + 0.2158037573f * b,
       m_ = r - 0.1055613458f * g - 0.0638541728f * b,

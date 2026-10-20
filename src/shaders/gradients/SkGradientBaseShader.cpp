@@ -540,6 +540,13 @@ void SkGradientBaseShader::AppendInterpolatedToDstStages(SkRasterPipeline* p,
         default: break;
     }
 
+    // Explicit premultiplied OKLab uses nonnegative linear RGB, with no upper HDR clamp.
+    // Legacy gradient overloads select kDestination and never enter this branch.
+    if (interpolation.fColorSpace == ColorSpace::kOKLab &&
+        interpolation.fInPremul == Interpolation::InPremul::kYes) {
+        p->append(SkRasterPipelineOp::clamp_rgb_0);
+    }
+
     // Now transform from intermediate to destination color space.
     // See comments in GrGradientShader.cpp about the decisions here.
     if (!dstColorSpace) {

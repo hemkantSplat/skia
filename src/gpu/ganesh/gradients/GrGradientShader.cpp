@@ -743,9 +743,12 @@ static std::unique_ptr<GrFragmentProcessor> make_interpolated_to_dst(
     static const SkRuntimeEffect* effect = SkMakeRuntimeEffect(SkRuntimeEffect::MakeForColorFilter,
         "uniform int colorSpace;"    // specialized
         "uniform int do_unpremul;"   // specialized
+        "uniform int clampNegative;" // specialized; explicit premul OKLab only
 
         "half4 main(half4 color) {"
-            "return $interpolated_to_rgb_unpremul(color, colorSpace, do_unpremul);"
+            "color = $interpolated_to_rgb_unpremul(color, colorSpace, do_unpremul);"
+            "if (bool(clampNegative)) { color.rgb = max(color.rgb, half3(0)); }"
+            "return color;"
         "}"
     );
 
@@ -769,7 +772,9 @@ static std::unique_ptr<GrFragmentProcessor> make_interpolated_to_dst(
                                       "colorSpace", GrSkSLFP::Specialize<int>(
                                         static_cast<int>(interpolation.fColorSpace)),
                                       "do_unpremul", GrSkSLFP::Specialize<int>(
-                                        inputPremul && !allOpaque));
+                                        inputPremul && !allOpaque),
+                                      "clampNegative", GrSkSLFP::Specialize<int>(
+                                        inputPremul && interpolation.fColorSpace == ColorSpace::kOKLab));
             // We just forced the colors back to unpremul. Remember that for below
             inputPremul = false;
             break;

@@ -184,7 +184,7 @@
     M(matrix_3x3) M(matrix_3x4) M(matrix_4x5) M(matrix_4x3)                    \
     M(parametric) M(gamma_) M(PQish) M(HLGish) M(HLGinvish)                    \
     M(rgb_to_hsl) M(hsl_to_rgb)                                                \
-    M(css_lab_to_xyz) M(css_oklab_to_linear_srgb)                              \
+    M(clamp_rgb_0) M(css_lab_to_xyz) M(css_oklab_to_linear_srgb)               \
     M(css_oklab_gamut_map_to_linear_srgb)                                      \
     M(css_hcl_to_lab)                                                          \
     M(css_hsl_to_srgb) M(css_hwb_to_srgb)                                      \
