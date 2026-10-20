@@ -975,13 +975,22 @@ std::unique_ptr<GrFragmentProcessor> MakeLinear(const SkLinearGradient& shader,
     // likely. crbug.com/938592
     // If/when we add filtering of the gradient this can be removed.
     static const SkRuntimeEffect* effect = SkMakeRuntimeEffect(SkRuntimeEffect::MakeForShader,
+        "uniform int legacyBias;" // specialized; keep legacy hard-stop routing unchanged
         "half4 main(float2 coord) {"
-            "return half4(half(coord.x) + 0.00001, 1, 0, 0);" // y = 1 for always valid
+            "return half4(half(coord.x) + float(legacyBias) * 0.00001, 1, 0, 0);"
         "}"
     );
+    // The old bias moves repeat/decal boundaries by 1e-5, which can switch an entire
+    // endpoint at a sampled pixel. Explicit premul OKLab follows the unbiased oracle.
+    const auto& interpolation = shader.getInterpolation();
+    const bool legacyBias = !(interpolation.fColorSpace ==
+                                     SkGradientShader::Interpolation::ColorSpace::kOKLab &&
+                             interpolation.fInPremul ==
+                                     SkGradientShader::Interpolation::InPremul::kYes);
     // The linear gradient never rejects a pixel so it doesn't change opacity
     auto fp = GrSkSLFP::Make(effect, "LinearLayout", /*inputFP=*/nullptr,
-                             GrSkSLFP::OptFlags::kPreservesOpaqueInput);
+                             GrSkSLFP::OptFlags::kPreservesOpaqueInput,
+                             "legacyBias", GrSkSLFP::Specialize<int>(legacyBias));
     return MakeGradientFP(shader, args, mRec, std::move(fp));
 }
 
