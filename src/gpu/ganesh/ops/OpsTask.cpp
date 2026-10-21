@@ -574,6 +574,12 @@ bool OpsTask::onExecute(GrOpFlushState* flushState) {
     GrRenderTarget* renderTarget = proxy->peekRenderTarget();
     SkASSERT(renderTarget);
 
+    // A preserved DMSAA mask belongs to the predecessor's stencil attachment.
+    // Loading the other attachment silently rejects stencil-clipped draws.
+    SkASSERT(fInitialStencilContent != StencilContent::kPreserved ||
+             !caps.supportsDynamicMSAA(proxy) ||
+             fUsesMSAASurface == fPreservedStencilUsesMSAA);
+
     GrAttachment* stencil = nullptr;
     if (proxy->needsStencil()) {
         SkASSERT(proxy->canUseStencil(caps));
@@ -742,6 +748,7 @@ int OpsTask::mergeFrom(SkSpan<const sk_sp<GrRenderTask>> tasks) {
             // is also automatic because the contract is for ops to leave the stencil buffer in a
             // cleared state when finished.)
             fInitialStencilContent = toMerge->fInitialStencilContent;
+            SkDEBUGCODE(fPreservedStencilUsesMSAA = toMerge->fPreservedStencilUsesMSAA;)
         }
         fUsesMSAASurface |= toMerge->fUsesMSAASurface;
         SkDEBUGCODE(fNumClips += toMerge->fNumClips);

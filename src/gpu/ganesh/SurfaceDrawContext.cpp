@@ -332,7 +332,8 @@ void SurfaceDrawContext::willReplaceOpsTask(OpsTask* prevTask, OpsTask* nextTask
         // Reload the stencil buffer content at the beginning of newOpsTask.
         // FIXME: Could the topo sort insert a task between these two that modifies the stencil
         // values?
-        nextTask->setInitialStencilContent(OpsTask::StencilContent::kPreserved);
+        nextTask->setInitialStencilContent(OpsTask::StencilContent::kPreserved,
+                                           prevTask->usesMSAASurface());
     }
 #if GR_GPU_STATS && defined(GPU_TEST_UTILS)
     if (fCanUseDynamicMSAA) {
@@ -1958,7 +1959,8 @@ void SurfaceDrawContext::addDrawOp(const GrClip* clip,
 
     // Always trigger DMSAA when there is stencil. This ensures stencil contents get properly
     // preserved between render passes, if needed.
-    const bool drawNeedsMSAA = opUsesMSAA || (fCanUseDynamicMSAA && opUsesStencil);
+    const bool drawNeedsMSAA = opUsesMSAA ||
+            (fCanUseDynamicMSAA && (opUsesStencil || appliedClip.hasStencilClip()));
 
     // Must be called before setDstProxyView so that it sees the final bounds of the op.
     op->setClippedBounds(bounds);

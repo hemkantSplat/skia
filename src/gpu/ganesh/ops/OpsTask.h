@@ -140,8 +140,10 @@ protected:
     // once finished.)
     //
     // NOTE: initialContent must not be kClear if caps.performStencilClearsAsDraws() is true.
-    void setInitialStencilContent(StencilContent initialContent) {
+    void setInitialStencilContent(StencilContent initialContent,
+                                  bool preservedStencilUsesMSAA = false) {
         fInitialStencilContent = initialContent;
+        SkDEBUGCODE(fPreservedStencilUsesMSAA = preservedStencilUsesMSAA;)
     }
 
     void recordOp(GrOp::Owner, bool usesMSAA, GrProcessorSet::Analysis, GrAppliedClip*,
@@ -285,6 +287,7 @@ private:
     GrLoadOp fColorLoadOp = GrLoadOp::kLoad;
     std::array<float, 4> fLoadClearColor = {0, 0, 0, 0};
     StencilContent fInitialStencilContent = StencilContent::kDontCare;
+    SkDEBUGCODE(bool fPreservedStencilUsesMSAA = false;)
     bool fMustPreserveStencil = false;
     bool fCannotMergeBackward = false;
 
