@@ -169,6 +169,7 @@ uniform float gradeContrast;
 uniform float gradeSaturation;
 uniform float gradeVibrance;
 uniform float3x3 gradeHue;
+uniform float gradeSepia;
 uniform shader gradeCurves;
 
 float3 gradeSignedPow(float3 v, float3 p) { return sign(v) * pow(abs(v), p); }
@@ -192,6 +193,9 @@ float3 gradeRgb(float3 c) {
   float chroma = hi > 0.0 ? clamp((hi - min(c.r, min(c.g, c.b))) / hi, 0.0, 1.0) : 0.0;
   c = gradeTowards(c, 1.0 + gradeVibrance * (1.0 - chroma));
   c = gradeHue * c;
+  c = mix(c, float3(dot(c, float3(0.393, 0.769, 0.189)),
+                    dot(c, float3(0.349, 0.686, 0.168)),
+                    dot(c, float3(0.272, 0.534, 0.131))), gradeSepia);
   c = float3(gradeCurveRow(c.r, 0.5).r, gradeCurveRow(c.g, 0.5).g, gradeCurveRow(c.b, 0.5).b);
   return float3(gradeCurveRow(c.r, 1.5).r, gradeCurveRow(c.g, 1.5).r, gradeCurveRow(c.b, 1.5).r);
 }
