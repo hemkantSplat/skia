@@ -621,6 +621,8 @@ var CanvasKit = {
     encodeToBytes: function() {},
     getColorSpace: function() {},
     getImageInfo: function() {},
+    textureSize: function() {},
+    hasMipmaps: function() {},
     makeCopyWithDefaultMipmaps: function() {},
     height: function() {},
     width: function() {},
@@ -927,6 +929,7 @@ var CanvasKit = {
 
     prototype: {
       getCanvas: function() {},
+      makeImageFromImage: function() {},
       makeImageFromTexture: function() {},
       makeImageFromTextureSource: function() {},
       /** @return {CanvasKit.Image} */
@@ -939,6 +942,7 @@ var CanvasKit = {
     _flush: function() {},
     _flushAndSubmit: function() {},
     _getCanvas: function() {},
+    _makeImageFromImage: function() {},
     _makeImageFromTexture: function() {},
     _makeImageSnapshot: function() {},
     _makeSurface: function() {},

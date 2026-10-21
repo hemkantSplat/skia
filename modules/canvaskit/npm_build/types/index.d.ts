@@ -2381,6 +2381,11 @@ export interface Image extends EmbindObject<"Image"> {
      */
     makeCopyWithDefaultMipmaps(): Image;
 
+    /** Returns GPU texture bytes held by this image, or zero for a raster image. */
+    textureSize(): number;
+    /** Whether this image owns mipmap levels. */
+    hasMipmaps(): boolean;
+
     /**
      * Returns this image as a shader with the specified tiling. It will use cubic sampling.
      * @param tx - tile mode in the x direction.
@@ -3307,6 +3312,9 @@ export interface Surface extends EmbindObject<"Surface"> {
      * @param info - describes the content of the texture.
      */
     makeImageFromTexture(tex: WebGLTexture, info: ImageInfo): Image | null;
+
+    /** Promotes an image onto this surface context, retaining Ganesh-generated mipmaps. */
+    makeImageFromImage(image: Image, mipmapped: boolean): Image | null;
 
     /**
      * Returns a texture-backed image based on the content in src. It uses RGBA_8888, unpremul
