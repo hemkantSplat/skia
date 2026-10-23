@@ -811,6 +811,11 @@ bool LayerCoversExtent(const IsolationParams& iso) {
     }
 }
 
+// Shared by substitution installation and replay after a preserved composite edit.
+bool RasterIsolationFoldable(const IsolationParams& iso) {
+    return !IsLayer(iso) || (!LayerCoversExtent(iso) && !(iso.flags & kIsolationLinearF16));
+}
+
 // The clip's bounds in local space; false when it bounds nothing (no clip, or an inverse path).
 bool ClipBounds(const PlanState& state, const ClipParams& clip, Key key, SkRect* out) {
     const float* f = clip.floats;
@@ -1288,7 +1293,7 @@ Error PlanInstance::setRaster(uint32_t id, uint32_t handle, uint32_t gen, const 
     // A layer that reaches past its content (backdrop, extent-wide blend) or composites in linear F16 cannot fold
     // into one image draw.
     const IsolationParams& iso = node->params.isolation;
-    if (IsLayer(iso) && (LayerCoversExtent(iso) || (iso.flags & kIsolationLinearF16))) return Error::kBadPayload;
+    if (!RasterIsolationFoldable(iso)) return Error::kBadPayload;
     ClearRaster(fState, *node);
     image->second.refs++;
     node->raster = {image->first, dst};
@@ -1443,7 +1448,8 @@ int32_t PlanInstance::step(int32_t tokenId) {
                     if (!PlanEnterSpace(canvas, params)) { f.stage = Stage::kExit; break; }
                 }
                 if (n.raster.image != kNoKey && !f.contentOnly) {
-                    if (!f.scope.antialiasedClip) {
+                    // Preserve the image, but use the counted subtree fallback if new isolation cannot fold.
+                    if (!f.scope.antialiasedClip && RasterIsolationFoldable(params.isolation)) {
                         drawRaster(canvas, n);
                         f.stage = Stage::kExit;
                         break;
