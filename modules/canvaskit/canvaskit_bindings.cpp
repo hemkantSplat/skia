@@ -3740,6 +3740,12 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return self.beginReplay(canvas, root, {cfplan::TargetColorType(colorType), colorSpace, sampleCount,
                                                    pathSampleCount, outputScale}, true);
         }), allow_raw_pointers())
+        .function("_beginReplayMaterialize", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas, uint32_t root,
+                                                       uint32_t colorType, uint32_t colorSpace, uint32_t sampleCount,
+                                                       uint32_t pathSampleCount, float outputScale, bool contentOnly)->int32_t {
+            return self.beginReplay(canvas, root, {cfplan::TargetColorType(colorType), colorSpace, sampleCount,
+                                                   pathSampleCount, outputScale}, contentOnly, true);
+        }), allow_raw_pointers())
         .function("_beginReplayChildren", optional_override([](cfplan::PlanInstance& self, SkCanvas* canvas,
                                                                uint32_t live, float alpha)->int32_t {
             return self.beginReplayChildren(canvas, live, alpha);

@@ -1357,12 +1357,14 @@ Error PlanInstance::canOpenToken(SkCanvas* canvas) const {
 PlanInstance::Token& PlanInstance::openToken(SkCanvas* canvas, const ReplayTarget& target) {
     const int32_t id = fNextToken;
     fNextToken = fNextToken == INT32_MAX ? 1 : fNextToken + 1;
+    const bool materialize = !fTokens.empty() && fTokens.back().materialize;
     fTokens.push_back({id, canvas, canvas->getSaveCount(), target, 0, {}});
+    fTokens.back().materialize = materialize;
     fCounters.replays++;
     return fTokens.back();
 }
 
-int32_t PlanInstance::beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target, bool contentOnly) {
+int32_t PlanInstance::beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target, bool contentOnly, bool materialize) {
     if (Error e = canOpenToken(canvas); e != Error::kOk) return -int32_t(e);
     if (!find(root)) return -int32_t(Error::kUnknownNode);
     if (!fTokens.empty()) {
@@ -1384,6 +1386,7 @@ int32_t PlanInstance::beginReplay(SkCanvas* canvas, uint32_t root, const ReplayT
     Token& token = openToken(canvas, target);
     pushNode(token, root, scope, false);
     token.frames.back().contentOnly = contentOnly;
+    token.materialize |= materialize;
     return token.id;
 }
 
@@ -1447,7 +1450,7 @@ int32_t PlanInstance::step(int32_t tokenId) {
                     }
                     if (!PlanEnterSpace(canvas, params)) { f.stage = Stage::kExit; break; }
                 }
-                if (n.raster.image != kNoKey && !f.contentOnly) {
+                if (n.raster.image != kNoKey && !f.contentOnly && !token.materialize) {
                     // Preserve the image, but use the counted subtree fallback if new isolation cannot fold.
                     if (!f.scope.antialiasedClip && RasterIsolationFoldable(params.isolation)) {
                         drawRaster(canvas, n);

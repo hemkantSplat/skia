@@ -640,7 +640,7 @@ public:
     Bounds bounds(uint32_t node);
 
     // Replay of `root`'s subtree onto `canvas`. A token is positive; a failure is the negated Error.
-    int32_t beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target, bool contentOnly = false);
+    int32_t beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target, bool contentOnly = false, bool materialize = false);
     // Replay of a paused live node's children in its local space; only legal while the innermost token is paused there.
     int32_t beginReplayChildren(SkCanvas* canvas, uint32_t live, float alpha);
     // 0 when the walk is complete, 1 when paused at a live node (its context in slot openTokens() - 1), else -Error.
@@ -696,7 +696,8 @@ private:
         ReplayTarget target;
         int pauseSaveCount;  // 0 while running; the protected depth while paused at a live node
         std::vector<Frame> frames;
-    };
+        bool materialize = false;  // Sources consume descendant content, never retained images.
+};
 
     ApplyResult validate(const uint8_t* packet, uint32_t records, uint32_t floats);
     void commit(const uint8_t* packet, uint32_t records, uint32_t floats);
