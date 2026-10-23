@@ -351,7 +351,7 @@ public:
         const Derived& d = at ? fStaged.nodes[*at].derived : fLive.nodes.find(id)->derived;
         return {int32_t(d.deviceDependent), int32_t(d.clockBound)};
     }
-    bool upkeep(uint32_t from, Tally delta = {}) {
+    bool upkeep(uint32_t from, Tally delta = {}, bool clearRaster = true) {
         const uint64_t gen = ++fStaged.generation;
         for (uint32_t id = from; id != kNone;) {
             StagedNode* e = touch(id, true);
@@ -359,7 +359,8 @@ public:
             e->derived.subtreeGen = gen;
             e->derived.deviceDependent += delta.deviceDependent;
             e->derived.clockBound += delta.clockBound;
-            e->derived.boundsDirty = e->upkeep = true;
+            e->derived.boundsDirty = true;
+            e->rasterDirty |= clearRaster;
             fStaged.upkeepVisits++;
             id = e->structure.parent;
         }
@@ -371,7 +372,11 @@ public:
         const Tally before = e->own;
         if (Op(r.op) == Op::kSetPicture) e->own.deviceDependent = bool(r.flags & kPictureDeviceDependent);
         if (Op(r.op) == Op::kSetLive) e->own = {int32_t(bool(r.flags & 2)), int32_t(bool(r.flags & 4))};
-        return upkeep(r.node, e->own - before);
+        // Only composite parameters preserve local pixels. Unknown/new operations remain content edits.
+        const Op op = Op(r.op);
+        const bool composite = op == Op::kSetMatrix || op == Op::kSetIsolation ||
+                               op == Op::kSetSpace || op == Op::kSetVisible;
+        return upkeep(r.node, e->own - before, !composite);
     }
 
     uint32_t pictureRefs(Key key) const {
@@ -1059,10 +1064,14 @@ ApplyResult PlanInstance::validate(const uint8_t* packet, uint32_t records, uint
     for (uint32_t i = 0; i < fStaged.nodes.size(); i++) {
         const StagedNode& e = fStaged.nodes[i];
         const Node* node = e.live ? fState.nodes.find(e.id) : nullptr;
-        if (node && (!e.exists || e.upkeep) && node->raster.image != kNoKey) {
+        if (node && (!e.exists || e.rasterDirty) && node->raster.image != kNoKey) {
             if (!fStaged.clearedRasters.reserve(fAlloc, fStaged.clearedRasters.size() + 1)) return {Error::kAlloc, kNone};
             fStaged.clearedRasters.push({e.id, node->raster.image});
         }
+    }
+    // Reserve reports before commit, retaining unconsumed reports across successful packets.
+    if (!fClearedRasters.reserve(fAlloc, fClearedRasters.size() + fStaged.clearedRasters.size())) {
+        return {Error::kAlloc, kNone};
     }
     // Two entries per node bound the lazy postorder stack; replay never allocates this storage.
     if (!fBoundsWork.reserve(fAlloc, fStaged.nodeCount * 2)) return {Error::kAlloc, kNone};
@@ -1071,7 +1080,9 @@ ApplyResult PlanInstance::validate(const uint8_t* packet, uint32_t records, uint
 
 void PlanInstance::commit(const uint8_t* packet, uint32_t records, uint32_t floats) {
     StagedState& staged = fStaged;
-    fClearedRasters.swap(staged.clearedRasters);
+    for (uint32_t i = 0; i < staged.clearedRasters.size(); i++) {
+        fClearedRasters.push(staged.clearedRasters[i]);
+    }
     fGeneration = staged.generation;
     fCounters.lastUpkeepVisits = staged.upkeepVisits;
     // Removed nodes and released paths first.
@@ -1094,7 +1105,7 @@ void PlanInstance::commit(const uint8_t* packet, uint32_t records, uint32_t floa
         if (!e.exists) continue;
         Node& node = e.live ? *fState.nodes.find(e.id) : fState.nodes.insert(e.id);
         if (e.born != kNone) node.params = Params();
-        if (e.upkeep) ClearRaster(fState, node);
+        if (e.rasterDirty) ClearRaster(fState, node);
         node.derived = e.derived;
         FreeHeights(node.structure.childHeights);
         node.structure = e.structure;
@@ -1289,7 +1300,11 @@ Error PlanInstance::clearRaster(uint32_t id) {
     if (!fTokens.empty()) return Error::kReplayActive;
     auto node = fState.nodes.find(id);
     if (!node) return Error::kUnknownNode;
-    ClearRaster(fState, *node);
+    if (node->raster.image != kNoKey) {
+        if (!fClearedRasters.reserve(fAlloc, fClearedRasters.size() + 1)) return Error::kAlloc;
+        fClearedRasters.push({id, node->raster.image});
+        ClearRaster(fState, *node);
+    }
     dirtyBounds(id);
     return Error::kOk;
 }
