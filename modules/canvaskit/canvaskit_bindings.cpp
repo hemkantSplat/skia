@@ -374,12 +374,19 @@ sk_sp<SkSurface> MakeRenderTarget(sk_sp<GrDirectContext> dContext, int width, in
 }
 
 // Explicit surface settings; sampleCount <= 0 keeps the parent's (makeSurface) or 1 (MakeRenderTarget).
+// dynamicMSAA: -1 keeps the base props' flag, 0 clears it, 1 sets it.
 struct SimpleSurfaceOptions {
     int sampleCount;
+    int dynamicMSAA;
 };
 
-SkSurfaceProps toSurfaceProps(const SkSurfaceProps& base, const SimpleSurfaceOptions&) {
-    return base;
+SkSurfaceProps toSurfaceProps(const SkSurfaceProps& base, const SimpleSurfaceOptions& options) {
+    uint32_t flags = base.flags();
+    if (options.dynamicMSAA >= 0) {
+        flags = options.dynamicMSAA ? flags | SkSurfaceProps::kDynamicMSAA_Flag
+                                    : flags & ~SkSurfaceProps::kDynamicMSAA_Flag;
+    }
+    return SkSurfaceProps(flags, base.pixelGeometry(), base.textContrast(), base.textGamma());
 }
 
 // SkSurface::makeSurface (parent origin and props, unbudgeted), with an explicit sample count.
@@ -1200,7 +1207,8 @@ EMSCRIPTEN_BINDINGS(Skia) {
                      &MakeRenderTarget));
     function("_MakeRenderTargetWithOptions", &MakeRenderTargetWithOptions);
     value_object<SimpleSurfaceOptions>("SurfaceOptions")
-        .field("sampleCount", &SimpleSurfaceOptions::sampleCount);
+        .field("sampleCount", &SimpleSurfaceOptions::sampleCount)
+        .field("dynamicMSAA", &SimpleSurfaceOptions::dynamicMSAA);
 #endif  // CK_ENABLE_WEBGL
 
 #ifdef CK_ENABLE_WEBGPU
