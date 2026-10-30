@@ -153,6 +153,10 @@
       // dstCopyCauses); stock leaves it undefined.
       CanvasKit.dstAttributionApi = 1;
 
+      // API level of tools/canvaskit-build's min blend (Blender.MakeMin on the fixed-function
+      // min equation); stock leaves it undefined.
+      CanvasKit.minBlendApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
