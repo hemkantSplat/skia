@@ -30,6 +30,8 @@ EFFECTS_FILES = [
     "GrDistanceFieldGeoProc.h",
     "GrLightAddXP.cpp",
     "GrLightAddXP.h",
+    "GrMinXP.cpp",
+    "GrMinXP.h",
     "GrMatrixEffect.cpp",
     "GrMatrixEffect.h",
     "GrModulateAtlasCoverageEffect.cpp",

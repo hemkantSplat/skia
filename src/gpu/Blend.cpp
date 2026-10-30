@@ -134,6 +134,7 @@ const char *equation_string(skgpu::BlendEquation eq) {
         case skgpu::BlendEquation::kAdd:             return "add";
         case skgpu::BlendEquation::kSubtract:        return "subtract";
         case skgpu::BlendEquation::kReverseSubtract: return "reverse_subtract";
+        case skgpu::BlendEquation::kMin:             return "min";
         case skgpu::BlendEquation::kScreen:          return "screen";
         case skgpu::BlendEquation::kOverlay:         return "overlay";
         case skgpu::BlendEquation::kDarken:          return "darken";

@@ -32,7 +32,8 @@ struct GrDstReadCause {
     static constexpr uint8_t kAddBlend = (uint8_t)SkBlendMode::kLastMode + 1;  // SkBlenders::Add
     static constexpr uint8_t kBlenderBlend = kAddBlend + 1;   // A non-mode SkBlender.
     static constexpr uint8_t kLightAddBlend = kAddBlend + 2;  // SkBlenders::LightResolve's add.
-    static constexpr uint8_t kUnknownBlend = kAddBlend + 3;
+    static constexpr uint8_t kMinBlend = kAddBlend + 3;       // SkBlenders::Min
+    static constexpr uint8_t kUnknownBlend = kAddBlend + 4;
     static_assert(kUnknownBlend < 64);
 
     GrDstReadReason fReason = GrDstReadReason::kNone;

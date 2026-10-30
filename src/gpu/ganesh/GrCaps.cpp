@@ -75,6 +75,7 @@ GrCaps::GrCaps(const GrContextOptions& options) {
 
     fBlendEquationSupport = kBasic_BlendEquationSupport;
     fAdvBlendEqDisableFlags = 0;
+    fMinBlendEquationSupport = false;
 
     fMapBufferFlags = kNone_MapFlags;
 
@@ -273,6 +274,7 @@ void GrCaps::dumpJSON(SkJSONWriter* writer) const {
     writer->appendBool("Avoid Dithering [workaround]", fAvoidDithering);
     writer->appendBool("Disable perspective SDF Text [workaround]", fDisablePerspectiveSDFText);
 
+    writer->appendBool("Min Blend Equation Support", fMinBlendEquationSupport);
     if (this->advancedBlendEquationSupport()) {
         writer->appendHexU32("Advanced Blend Equation Disable Flags", fAdvBlendEqDisableFlags);
     }

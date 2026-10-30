@@ -28,6 +28,7 @@ enum class BlendEquation : uint8_t {
     kAdd,             //<! Cs*S + Cd*D
     kSubtract,        //<! Cs*S - Cd*D
     kReverseSubtract, //<! Cd*D - Cs*S
+    kMin,             //<! min(Cs, Cd); coefficients are ignored
 
     // Advanced blend equations. These are described in the SVG and PDF specs.
     kScreen,

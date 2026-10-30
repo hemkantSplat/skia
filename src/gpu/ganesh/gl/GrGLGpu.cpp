@@ -113,7 +113,9 @@ static constexpr auto gXfermodeEquation2Blend = std::to_array<GrGLenum>({
         GR_GL_FUNC_SUBTRACT,
         GR_GL_FUNC_REVERSE_SUBTRACT,
 
-        // GL_KHR_blend_equation_advanced.
+        GR_GL_MIN,
+
+    // GL_KHR_blend_equation_advanced.
         GR_GL_SCREEN,
         GR_GL_OVERLAY,
         GR_GL_DARKEN,
@@ -136,21 +138,22 @@ static constexpr auto gXfermodeEquation2Blend = std::to_array<GrGLenum>({
 static_assert(0 == (int)skgpu::BlendEquation::kAdd);
 static_assert(1 == (int)skgpu::BlendEquation::kSubtract);
 static_assert(2 == (int)skgpu::BlendEquation::kReverseSubtract);
-static_assert(3 == (int)skgpu::BlendEquation::kScreen);
-static_assert(4 == (int)skgpu::BlendEquation::kOverlay);
-static_assert(5 == (int)skgpu::BlendEquation::kDarken);
-static_assert(6 == (int)skgpu::BlendEquation::kLighten);
-static_assert(7 == (int)skgpu::BlendEquation::kColorDodge);
-static_assert(8 == (int)skgpu::BlendEquation::kColorBurn);
-static_assert(9 == (int)skgpu::BlendEquation::kHardLight);
-static_assert(10 == (int)skgpu::BlendEquation::kSoftLight);
-static_assert(11 == (int)skgpu::BlendEquation::kDifference);
-static_assert(12 == (int)skgpu::BlendEquation::kExclusion);
-static_assert(13 == (int)skgpu::BlendEquation::kMultiply);
-static_assert(14 == (int)skgpu::BlendEquation::kHSLHue);
-static_assert(15 == (int)skgpu::BlendEquation::kHSLSaturation);
-static_assert(16 == (int)skgpu::BlendEquation::kHSLColor);
-static_assert(17 == (int)skgpu::BlendEquation::kHSLLuminosity);
+static_assert(3 == (int)skgpu::BlendEquation::kMin);
+static_assert(4 == (int)skgpu::BlendEquation::kScreen);
+static_assert(5 == (int)skgpu::BlendEquation::kOverlay);
+static_assert(6 == (int)skgpu::BlendEquation::kDarken);
+static_assert(7 == (int)skgpu::BlendEquation::kLighten);
+static_assert(8 == (int)skgpu::BlendEquation::kColorDodge);
+static_assert(9 == (int)skgpu::BlendEquation::kColorBurn);
+static_assert(10 == (int)skgpu::BlendEquation::kHardLight);
+static_assert(11 == (int)skgpu::BlendEquation::kSoftLight);
+static_assert(12 == (int)skgpu::BlendEquation::kDifference);
+static_assert(13 == (int)skgpu::BlendEquation::kExclusion);
+static_assert(14 == (int)skgpu::BlendEquation::kMultiply);
+static_assert(15 == (int)skgpu::BlendEquation::kHSLHue);
+static_assert(16 == (int)skgpu::BlendEquation::kHSLSaturation);
+static_assert(17 == (int)skgpu::BlendEquation::kHSLColor);
+static_assert(18 == (int)skgpu::BlendEquation::kHSLLuminosity);
 static_assert(std::size(gXfermodeEquation2Blend) == skgpu::kBlendEquationCnt);
 
 static constexpr auto gXfermodeCoeff2Blend = std::to_array<GrGLenum>({

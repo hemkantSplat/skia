@@ -48,6 +48,7 @@
 
 /* Basic OpenGL blend equations */
 #define GR_GL_FUNC_ADD                       0x8006
+#define GR_GL_MIN                            0x8007
 #define GR_GL_FUNC_SUBTRACT                  0x800A
 #define GR_GL_FUNC_REVERSE_SUBTRACT          0x800B
 
