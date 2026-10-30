@@ -1091,6 +1091,31 @@ struct StrokeOpts {
     float precision;
 };
 
+// Decode explicit interpolation once; omitted options keep the legacy gradient flags.
+bool ReadGradientInterpolation(val value, uint32_t flags, SkGradient::Interpolation* info) {
+    using I = SkGradient::Interpolation;
+    if (value.isNull() || value.isUndefined()) {
+        *info = I::FromFlags(flags);
+        return true;
+    }
+    static constexpr const char* spaces[] = {
+        "destination", "srgbLinear", "lab", "oklab", "oklabGamutMap", "lch", "oklch",
+        "oklchGamutMap", "srgb", "hsl", "hwb", "displayP3", "rec2020", "prophotoRGB", "a98RGB"};
+    static constexpr const char* hues[] = {"shorter", "longer", "increasing", "decreasing"};
+    static_assert(std::size(spaces) == I::kColorSpaceCount);
+    static_assert(std::size(hues) == I::kHueMethodCount);
+    const auto space = value["colorSpace"].as<std::string>();
+    const auto hue = value["hueMethod"].as<std::string>();
+    int si = 0, hi = 0;
+    while (si < I::kColorSpaceCount && space != spaces[si]) { ++si; }
+    while (hi < I::kHueMethodCount && hue != hues[hi]) { ++hi; }
+    if (si == I::kColorSpaceCount || hi == I::kHueMethodCount) { return false; }
+    info->fInPremul = value["inPremul"].as<bool>() ? I::InPremul::kYes : I::InPremul::kNo;
+    info->fColorSpace = static_cast<I::ColorSpace>(si);
+    info->fHueMethod = static_cast<I::HueMethod>(hi);
+    return true;
+}
+
 SkPathOrNull MakeStroked(const SkPath& self, StrokeOpts opts) {
     SkPaint p;
     p.setStyle(SkPaint::kStroke_Style);
@@ -1404,9 +1429,13 @@ struct GradientBuilder {
                     SkTileMode mode,
                     uint32_t legacyGradFlags,
                     WASMPointerF32 mPtr,
-                    sk_sp<SkColorSpace> colorSpace) : fLocalMatrix(mPtr)
+                    sk_sp<SkColorSpace> colorSpace, val interpolation) : fLocalMatrix(mPtr)
     {
         SkASSERT(supported_for_gradients(colorType));
+        SkGradient::Interpolation info;
+        if (!ReadGradientInterpolation(interpolation, legacyGradFlags, &info)) {
+            return;
+        }
 
         const float* positions = reinterpret_cast<const float*>(pPtr);
         const SkColor4f* colors;
@@ -1427,13 +1456,16 @@ struct GradientBuilder {
             pos = {positions, count};
         }
 
-        auto premul = (legacyGradFlags & 1) ? SkGradient::Interpolation::InPremul::kYes
-                                            : SkGradient::Interpolation::InPremul::kNo;
-
+        if (!interpolation.isNull() && !interpolation.isUndefined() &&
+            colorType == SkColorType::kRGBA_8888_SkColorType) {
+            colorSpace = nullptr;  // Explicit packed stops are sRGB, as before the rebase.
+        }
         fLM = mPtr ? &fLocalMatrix : nullptr;
-        fGrad = {{{colors, count}, pos, mode, std::move(colorSpace)}, {premul}};
+        fGrad = {{{colors, count}, pos, mode, std::move(colorSpace)}, info};
+        fValid = true;
     }
 
+    bool valid() const { return fValid; }
     const SkGradient& grad() const { return fGrad; }
     const SkMatrix* lm() const { return fLM; }
 
@@ -1441,7 +1473,8 @@ private:
     std::vector<SkColor4f> fC4Storage;
     OptionalMatrix         fLocalMatrix;
     SkGradient             fGrad;
-    const SkMatrix*        fLM;
+    const SkMatrix*        fLM = nullptr;
+    bool                   fValid = false;
 };
 
 EMSCRIPTEN_BINDINGS(Skia) {
@@ -3155,14 +3188,15 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                                          SkTileMode mode,
                                          uint32_t flags,
                                          WASMPointerF32 mPtr,
-                                         sk_sp<SkColorSpace> colorSpace) -> sk_sp<SkShader> {
+                                         sk_sp<SkColorSpace> colorSpace, val interpolation) -> sk_sp<SkShader> {
                         if (!supported_for_gradients(colorType)) {
                             SkDebugf("%d is not an accepted colorType\n", colorType);
                             return nullptr;
                         }
                         const SkPoint* points = reinterpret_cast<const SkPoint*>(fourFloatsPtr);
                         GradientBuilder bu(cPtr, colorType, pPtr, count, mode,
-                                           flags, mPtr, std::move(colorSpace));
+                                           flags, mPtr, std::move(colorSpace), interpolation);
+                        if (!bu.valid()) { return nullptr; }
                         return SkShaders::LinearGradient(points, bu.grad(), bu.lm());
                     }),
                     allow_raw_pointers())
@@ -3178,13 +3212,14 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                                          SkTileMode mode,
                                          uint32_t flags,
                                          WASMPointerF32 mPtr,
-                                         sk_sp<SkColorSpace> colorSpace) -> sk_sp<SkShader> {
+                                         sk_sp<SkColorSpace> colorSpace, val interpolation) -> sk_sp<SkShader> {
                         if (!supported_for_gradients(colorType)) {
                             SkDebugf("%d is not an accepted colorType\n", colorType);
                             return nullptr;
                         }
                         GradientBuilder bu(cPtr, colorType, pPtr, count, mode,
-                                           flags, mPtr, std::move(colorSpace));
+                                           flags, mPtr, std::move(colorSpace), interpolation);
+                        if (!bu.valid()) { return nullptr; }
 
                         return SkShaders::RadialGradient({cx, cy}, radius, bu.grad(), bu.lm());
                     }),
@@ -3202,13 +3237,14 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                                          float endAngle,
                                          uint32_t flags,
                                          WASMPointerF32 mPtr,
-                                         sk_sp<SkColorSpace> colorSpace) -> sk_sp<SkShader> {
+                                         sk_sp<SkColorSpace> colorSpace, val interpolation) -> sk_sp<SkShader> {
                         if (!supported_for_gradients(colorType)) {
                             SkDebugf("%d is not an accepted colorType\n", colorType);
                             return nullptr;
                         }
                         GradientBuilder bu(cPtr, colorType, pPtr, count, mode,
-                                           flags, mPtr, std::move(colorSpace));
+                                           flags, mPtr, std::move(colorSpace), interpolation);
+                        if (!bu.valid()) { return nullptr; }
                         return SkShaders::SweepGradient({cx, cy}, startAngle, endAngle,
                                                         bu.grad(), bu.lm());
                     }),
@@ -3255,7 +3291,7 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                                          SkTileMode mode,
                                          uint32_t flags,
                                          WASMPointerF32 mPtr,
-                                         sk_sp<SkColorSpace> colorSpace) -> sk_sp<SkShader> {
+                                         sk_sp<SkColorSpace> colorSpace, val interpolation) -> sk_sp<SkShader> {
                         if (!supported_for_gradients(colorType)) {
                             SkDebugf("%d is not an accepted colorType\n", colorType);
                             return nullptr;
@@ -3263,7 +3299,8 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                         const SkPoint* startAndEnd =
                                 reinterpret_cast<const SkPoint*>(fourFloatsPtr);
                         GradientBuilder bu(cPtr, colorType, pPtr, count, mode,
-                                           flags, mPtr, std::move(colorSpace));
+                                           flags, mPtr, std::move(colorSpace), interpolation);
+                        if (!bu.valid()) { return nullptr; }
                         return SkShaders::TwoPointConicalGradient(
                                 startAndEnd[0], startRadius,
                                 startAndEnd[1], endRadius,
