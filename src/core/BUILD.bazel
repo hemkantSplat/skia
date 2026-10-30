@@ -619,6 +619,7 @@ skia_cc_library(
         "//src/partition_alloc:raw_ptr",
         "//src/sksl:generated_sksl",
         "@skia_user_config//:user_config",
+        "//third_party/clipper2",
     ] + select({
         ":load_sksl_from_disk_true": ["//src/utils:get_executable_path"],
         ":load_sksl_from_disk_false": [],

@@ -26,6 +26,7 @@
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPath.h"
+#include "include/utils/SkPathOffset.h"
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPathMeasure.h"
 #include "include/core/SkPathUtils.h"
@@ -2955,6 +2956,14 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
 
             .function("makeDashed", &MakeDashed)
             .function("_makeTrimmed", &MakeTrimmed)
+            .function("_makeOffset", optional_override([](const SkPath& self, float distance,
+                                                     int join, float miterLimit,
+                                                     float tolerance) -> SkPathOrNull {
+                SkPath path;
+                return SkPathOffset(self, distance, static_cast<SkPathOffsetJoin>(join),
+                                    miterLimit, tolerance, &path) ? emscripten::val(path)
+                                                                 : emscripten::val::null();
+            }))
             .function("_makeWithEffect", optional_override([](const SkPath& self,
                                                          sk_sp<SkPathEffect> effect,
                                                          bool stroke,

@@ -19,6 +19,7 @@ PUBLIC_HEADERS = [
     "SkPaintFilterCanvas.h",
     "SkParse.h",
     "SkParsePath.h",
+    "SkPathOffset.h",
     "SkShadowUtils.h",
     "SkTextUtils.h",
     "SkTraceEventPhase.h",

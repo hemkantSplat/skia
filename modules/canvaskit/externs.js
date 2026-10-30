@@ -779,6 +779,7 @@ var CanvasKit = {
     toSVGString: function() {},
 
     prototype: {
+      makeOffset: function() {},
       makeWithEffect: function() {},
       computeTightBounds: function() {},
       getBounds: function() {},
@@ -797,6 +798,7 @@ var CanvasKit = {
     _getPoint: function() {},
     _makeCombined: function() {},
     _makeSimplified: function() {},
+    _makeOffset: function() {},
     _makeWithEffect: function() {},
     _makeStroked: function() {},
     _makeTrimmed: function() {},
