@@ -352,6 +352,7 @@ void SkRegisterMorphologyImageFilterFlattenables();
 void SkRegisterPictureImageFilterFlattenable();
 void SkRegisterRuntimeImageFilterFlattenable();
 void SkRegisterShaderImageFilterFlattenable();
+void SkRegisterTransformBlurImageFilterFlattenable();
 
 // TODO(michaelludwig): These filters no longer have dedicated implementations, so their
 // SkFlattenable create procs only need to remain to support old SkPictures.

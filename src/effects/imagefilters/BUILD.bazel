@@ -25,6 +25,8 @@ IMAGEFILTERS_FILES = [
     "SkPictureImageFilter.cpp",
     "SkRuntimeImageFilter.cpp",
     "SkShaderImageFilter.cpp",
+    "SkTransformBlurImageFilter.cpp",
+    "SkTransformBlurImageFilter.h",
 ]
 
 skia_filegroup(

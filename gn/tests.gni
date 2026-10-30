@@ -540,6 +540,7 @@ ganesh_tests_sources = [
   "$_tests/TextureOpTest.cpp",
   "$_tests/TextureProxyTest.cpp",
   "$_tests/TextureStripAtlasManagerTest.cpp",
+  "$_tests/TransformBlurImageFilterTest.cpp",
   "$_tests/TransferPixelsTest.cpp",
   "$_tests/TriangulatingPathRendererTests.cpp",
   "$_tests/VkBackendSurfaceTest.cpp",
