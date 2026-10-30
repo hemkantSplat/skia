@@ -19,11 +19,14 @@
 static inline void append_index_uv_varyings(GrGeometryProcessor::ProgramImpl::EmitArgs& args,
                                             int numTextureSamplers,
                                             const char* inTexCoordsName,
+                                            const char* inAtlasRectName, int inset,
                                             const char* atlasDimensionsInvName,
                                             GrGLSLVarying* uv,
                                             GrGLSLVarying* texIdx,
                                             GrGLSLVarying* st) {
     using Interpolation = GrGLSLVaryingHandler::Interpolation;
+    const auto integerInterpolation = args.fShaderCaps->fFlatInterpolationSupport
+            ? Interpolation::kMustBeFlat : Interpolation::kInterpolated;
     // This extracts the texture index and texel coordinates from the same variable
     // Packing structure: texel coordinates have the 2-bit texture page encoded in bits 13 & 14 of
     // the x coordinate. It would be nice to use bits 14 and 15, but iphone6 has problem with those
@@ -56,24 +59,33 @@ static inline void append_index_uv_varyings(GrGeometryProcessor::ProgramImpl::Em
         }
     }
 
-    // Multiply by 1/atlasDimensions to get normalized texture coordinates
+    // Interpolate only mask-local texels; packing remains flat per primitive.
     uv->reset(SkSLType::kFloat2);
-    args.fVaryingHandler->addVarying("TextureCoords", uv);
+    args.fVaryingHandler->addVarying("LocalTextureCoords", uv);
     args.fVertBuilder->codeAppendf(
-            "%s = unormTexCoords * %s;", uv->vsOut(), atlasDimensionsInvName);
+            "%s = float2(%s) - float2(%s.xy);", uv->vsOut(), inTexCoordsName, inAtlasRectName);
+    GrGLSLVarying origin(SkSLType::kFloat4);
+    args.fVaryingHandler->addVarying("AtlasOrigin", &origin, integerInterpolation);
+    args.fVertBuilder->codeAppendf(
+            "%s = float4(unormTexCoords - %s, %s.zw);",
+            origin.vsOut(), uv->vsOut(), inAtlasRectName);
+    // Recover integer attributes exactly on backends without flat interpolation.
+    args.fFragBuilder->codeAppendf("float4 atlasRect = floor(%s + 0.5);"
+                                  "float2 atlasOrigin = atlasRect.xy; float2 atlasInv = %s;"
+                                  "float4 atlasBounds = float4(atlasOrigin - %d + 0.5,"
+                                  "atlasOrigin + atlasRect.zw + %d - 0.5);",
+                                  origin.fsIn(), atlasDimensionsInvName, inset, inset);
 
     // On ANGLE there is a significant cost to using an int varying. We don't know of any case where
     // it is worse to use a float so for now we always do.
     texIdx->reset(SkSLType::kFloat);
     // If we computed the local var "texIdx" as an int we will need to cast it to float
     const char* cast = args.fShaderCaps->fIntegerSupport ? "float" : "";
-    args.fVaryingHandler->addVarying("TexIndex", texIdx, Interpolation::kCanBeFlat);
+    args.fVaryingHandler->addVarying("TexIndex", texIdx, integerInterpolation);
     args.fVertBuilder->codeAppendf("%s = %s(texIdx);", texIdx->vsOut(), cast);
 
     if (st) {
-        st->reset(SkSLType::kFloat2);
-        args.fVaryingHandler->addVarying("IntTextureCoords", st);
-        args.fVertBuilder->codeAppendf("%s = unormTexCoords;", st->vsOut());
+        *st = *uv;
     }
 }
 
@@ -89,17 +101,44 @@ static inline void append_multitexture_lookup(GrGeometryProcessor::ProgramImpl::
         return;
     }
 
-    // conditionally load from the indexed texture sampler
-    for (int i = 0; i < numTextureSamplers-1; ++i) {
-        args.fFragBuilder->codeAppendf("if (%s == %d) { %s = ", texIdx.fsIn(), i, colorName);
-        args.fFragBuilder->appendTextureLookup(args.fTexSamplers[i],
-                                               coordName);
-        args.fFragBuilder->codeAppend("; } else ");
+    auto* frag = args.fFragBuilder;
+    const bool linear = args.fGeomProc.textureSampler(0).samplerState().filter() ==
+                        GrSamplerState::Filter::kLinear;
+    frag->codeAppend("{");
+    if (linear) {
+        frag->codeAppendf("float2 p = %s - 0.5; float2 base = floor(p);"
+                          "float2 weight = p - base;", coordName);
+    } else {
+        frag->codeAppendf("float2 base = floor(%s);", coordName);
     }
-    args.fFragBuilder->codeAppendf("{ %s = ", colorName);
-    args.fFragBuilder->appendTextureLookup(args.fTexSamplers[numTextureSamplers - 1],
-                                           coordName);
-    args.fFragBuilder->codeAppend("; }");
+    // Integer texel centres and power-of-two normalization are exact at every atlas origin.
+    frag->codeAppend("float2 centre = atlasOrigin + base + 0.5;");
+    for (int i = 0; i < numTextureSamplers; ++i) {
+        if (i < numTextureSamplers - 1) {
+            frag->codeAppendf("if (floor(%s + 0.5) == %d) {", texIdx.fsIn(), i);
+        } else {
+            frag->codeAppend("{");
+        }
+        if (linear) {
+            const char* offsets[] = {"float2(0,0)", "float2(1,0)",
+                                     "float2(0,1)", "float2(1,1)"};
+            for (int tap = 0; tap < 4; ++tap) {
+                frag->codeAppendf("float2 tap%d = clamp(centre + %s, atlasBounds.xy, atlasBounds.zw) * atlasInv;"
+                                  "float4 c%d = float4(", tap, offsets[tap], tap);
+                SkString coord = SkStringPrintf("tap%d", tap);
+                frag->appendTextureLookup(args.fTexSamplers[i], coord.c_str());
+                frag->codeAppend(");");
+            }
+            frag->codeAppendf("%s = half4(mix(mix(c0, c1, weight.x),"
+                              "mix(c2, c3, weight.x), weight.y));", colorName);
+        } else {
+            frag->codeAppendf("float2 tap = clamp(centre, atlasBounds.xy, atlasBounds.zw) * atlasInv; %s = ", colorName);
+            frag->appendTextureLookup(args.fTexSamplers[i], "tap");
+            frag->codeAppend(";");
+        }
+        frag->codeAppend(i < numTextureSamplers - 1 ? "} else " : "}");
+    }
+    frag->codeAppend("}");
 }
 
 // Special lookup function for sdf lcd -- avoids duplicating conditional logic three times
@@ -116,34 +155,16 @@ static inline void append_multitexture_lookup_lcd(GrGeometryProcessor::ProgramIm
         return;
     }
 
-    // conditionally load from the indexed texture sampler
-    for (int i = 0; i < numTextureSamplers; ++i) {
-        args.fFragBuilder->codeAppendf("if (%s == %d) {", texIdx.fsIn(), i);
-
-        // green is distance to uv center
-        args.fFragBuilder->codeAppendf("%s.y = ", distanceName);
-        args.fFragBuilder->appendTextureLookup(args.fTexSamplers[i], coordName);
-        args.fFragBuilder->codeAppend(".r;");
-
-        // red is distance to left offset
-        args.fFragBuilder->codeAppendf("half2 uv_adjusted = half2(%s) - %s;",
-                                       coordName, offsetName);
-        args.fFragBuilder->codeAppendf("%s.x = ", distanceName);
-        args.fFragBuilder->appendTextureLookup(args.fTexSamplers[i], "uv_adjusted");
-        args.fFragBuilder->codeAppend(".r;");
-
-        // blue is distance to right offset
-        args.fFragBuilder->codeAppendf("uv_adjusted = half2(%s) + %s;", coordName, offsetName);
-        args.fFragBuilder->codeAppendf("%s.z = ", distanceName);
-        args.fFragBuilder->appendTextureLookup(args.fTexSamplers[i], "uv_adjusted");
-        args.fFragBuilder->codeAppend(".r;");
-
-        if (i < numTextureSamplers-1) {
-            args.fFragBuilder->codeAppend("} else ");
-        } else {
-            args.fFragBuilder->codeAppend("}");
-        }
-    }
+    args.fFragBuilder->codeAppend("{ half4 sampleColor;");
+    append_multitexture_lookup(args, numTextureSamplers, texIdx, coordName, "sampleColor");
+    args.fFragBuilder->codeAppendf("%s.y = sampleColor.r;"
+                                  "float2 adjusted = %s - %s;",
+                                  distanceName, coordName, offsetName);
+    append_multitexture_lookup(args, numTextureSamplers, texIdx, "adjusted", "sampleColor");
+    args.fFragBuilder->codeAppendf("%s.x = sampleColor.r; adjusted = %s + %s;",
+                                  distanceName, coordName, offsetName);
+    append_multitexture_lookup(args, numTextureSamplers, texIdx, "adjusted", "sampleColor");
+    args.fFragBuilder->codeAppendf("%s.z = sampleColor.r; }", distanceName);
 }
 
 #endif

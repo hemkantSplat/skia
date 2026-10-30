@@ -28,6 +28,8 @@
 #include "include/gpu/ganesh/GrDirectContext.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 #include "src/core/SkDevice.h"
+#include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/text/GrAtlasManager.h"
 #include "src/core/SkScalerContext.h"
 #include "src/text/GlyphRun.h"
 #include "src/text/gpu/SubRunAllocator.h"
@@ -383,4 +385,52 @@ DEF_TEST(KeyEqualityOnPerspective, r) {
             TextBlob::Key::Make(glyphRunList, paint, matrix2, strikeDevice));
     REPORTER_ASSERT(r, key1 == key2);
     REPORTER_ASSERT(r, key1 == key3);
+}
+
+DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(GrTextAtlasPlacementInvariant,
+                                     reporter, ctxInfo, CtsEnforcement::kNever) {
+    auto* context = ctxInfo.directContext();
+    SkFont font(ToolUtils::CreatePortableTypeface("Serif", SkFontStyle()), 38);
+    font.setEdging(SkFont::Edging::kAntiAlias);
+    const SkSurfaceProps props(SkSurfaceProps::kUseDeviceIndependentFonts_Flag,
+                               kUnknown_SkPixelGeometry);
+    const SkMatrix transforms[] = {
+        SkMatrix::MakeAll(1.14f, .17f, 31.123f, -.12f, .81f, 72.739f, .0007f, .0017f, 1),
+        SkMatrix::Scale(1.37f, 1.37f),
+        SkMatrix::RotateDeg(19),
+    };
+    for (const SkMatrix& matrix : transforms) {
+        SkBitmap reference;
+        for (int history : {0, 1, 4, 12}) {
+            // Start independent atlas histories after all preceding reads have completed.
+            context->priv().getAtlasManager()->freeAll();
+            auto surface = SkSurfaces::RenderTarget(context, skgpu::Budgeted::kNo,
+                    SkImageInfo::MakeN32Premul(640, 360), 0, &props);
+            REPORTER_ASSERT(reporter, surface);
+            if (!surface) { return; }
+            auto* canvas = surface->getCanvas();
+            canvas->concat(matrix);
+            SkPaint paint(SkColor4f{.2f, .45f, .7f, 1});
+            for (int h = 0; h < history; ++h) {
+                char text[45];
+                for (int i = 0; i < 45; ++i) { text[i] = 33 + (i * 13 + h * 7) % 90; }
+                canvas->drawSimpleText(text, sizeof(text), SkTextEncoding::kUTF8,
+                                       0, 55, font, paint);
+                context->flushAndSubmit();
+            }
+            canvas->clear(SK_ColorWHITE);
+            constexpr char text[] = "0123456789 AVWagjQ &@% ffi";
+            canvas->drawSimpleText(text, sizeof(text) - 1, SkTextEncoding::kUTF8,
+                                   0, 55, font, paint);
+            SkBitmap actual;
+            actual.allocN32Pixels(640, 360);
+            REPORTER_ASSERT(reporter, surface->readPixels(actual, 0, 0));
+            if (!history) {
+                reference = actual;
+            } else {
+                REPORTER_ASSERT(reporter, !memcmp(reference.getPixels(), actual.getPixels(),
+                                                 actual.computeByteSize()));
+            }
+        }
+    }
 }

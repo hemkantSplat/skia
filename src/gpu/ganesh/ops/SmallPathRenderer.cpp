@@ -574,14 +574,20 @@ private:
             SkPoint3 out[4];
             ctm.mapPointsToHomogeneous(out, translatedBounds.toQuad());
 
-            vertices << out[0] << color << texCoords.l << texCoords.t;
-            vertices << out[3] << color << texCoords.l << texCoords.b;
-            vertices << out[1] << color << texCoords.r << texCoords.t;
-            vertices << out[2] << color << texCoords.r << texCoords.b;
+            vertices << out[0] << color << texCoords.l << texCoords.t << texCoords.l << texCoords.t
+                     << uint16_t(texCoords.r - texCoords.l) << uint16_t(texCoords.b - texCoords.t);
+            vertices << out[3] << color << texCoords.l << texCoords.b << texCoords.l << texCoords.t
+                     << uint16_t(texCoords.r - texCoords.l) << uint16_t(texCoords.b - texCoords.t);
+            vertices << out[1] << color << texCoords.r << texCoords.t << texCoords.l << texCoords.t
+                     << uint16_t(texCoords.r - texCoords.l) << uint16_t(texCoords.b - texCoords.t);
+            vertices << out[2] << color << texCoords.r << texCoords.b << texCoords.l << texCoords.t
+                     << uint16_t(texCoords.r - texCoords.l) << uint16_t(texCoords.b - texCoords.t);
         } else {
             vertices.writeQuad(VertexWriter::TriStripFromRect(translatedBounds),
                                color,
-                               texCoords);
+                               texCoords, texCoords.l, texCoords.t,
+                               uint16_t(texCoords.r - texCoords.l),
+                               uint16_t(texCoords.b - texCoords.t));
         }
     }
 

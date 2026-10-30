@@ -33,13 +33,18 @@ struct Mask2DVertex {
     SkPoint devicePos;
     GrColor color;
     AtlasPt atlasPos;
+    AtlasPt atlasOrigin;
+    AtlasPt atlasSize;
 };
 
 struct ARGB2DVertex {
-    ARGB2DVertex(SkPoint d, GrColor, AtlasPt a) : devicePos{d}, atlasPos{a} {}
+    ARGB2DVertex(SkPoint d, GrColor, AtlasPt a, AtlasPt o, AtlasPt size)
+            : devicePos{d}, atlasPos{a}, atlasOrigin{o}, atlasSize{size} {}
 
     SkPoint devicePos;
     AtlasPt atlasPos;
+    AtlasPt atlasOrigin;
+    AtlasPt atlasSize;
 };
 
 // Perspective SDFT or SDFT forced to 3D or perspective color.
@@ -47,13 +52,18 @@ struct Mask3DVertex {
     SkPoint3 devicePos;
     GrColor color;
     AtlasPt atlasPos;
+    AtlasPt atlasOrigin;
+    AtlasPt atlasSize;
 };
 
 struct ARGB3DVertex {
-    ARGB3DVertex(SkPoint3 d, GrColor, AtlasPt a) : devicePos{d}, atlasPos{a} {}
+    ARGB3DVertex(SkPoint3 d, GrColor, AtlasPt a, AtlasPt o, AtlasPt size)
+            : devicePos{d}, atlasPos{a}, atlasOrigin{o}, atlasSize{size} {}
 
     SkPoint3 devicePos;
     AtlasPt atlasPos;
+    AtlasPt atlasOrigin;
+    AtlasPt atlasSize;
 };
 
 // The 99% case. Direct Mask, No clip, No RGB.
@@ -67,10 +77,10 @@ void fillDirectNoClipping(SkZip<Mask2DVertex[4], const Glyph, const SkPoint> qua
                  dr = dl + (ar - al),
                  db = dt + (ab - at);
 
-        quad[0] = {{dl, dt}, color, {al, at}};  // L,T
-        quad[1] = {{dl, db}, color, {al, ab}};  // L,B
-        quad[2] = {{dr, dt}, color, {ar, at}};  // R,T
-        quad[3] = {{dr, db}, color, {ar, ab}};  // R,B
+        quad[0] = {{dl, dt}, color, {al, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,T
+        quad[1] = {{dl, db}, color, {al, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,B
+        quad[2] = {{dr, dt}, color, {ar, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,T
+        quad[3] = {{dr, db}, color, {ar, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,B
     }
 }
 
@@ -93,10 +103,10 @@ void fillDirectClipped(SkZip<Quad, const Glyph, const VertexData> quadData,
                  t = leftTop.y() + originOffset.y();
         if (clip == nullptr) {
             auto [dl, dt, dr, db] = SkRect::MakeLTRB(l, t, l + w, t + h);
-            quad[0] = {{dl, dt}, color, {al, at}};  // L,T
-            quad[1] = {{dl, db}, color, {al, ab}};  // L,B
-            quad[2] = {{dr, dt}, color, {ar, at}};  // R,T
-            quad[3] = {{dr, db}, color, {ar, ab}};  // R,B
+            quad[0] = {{dl, dt}, color, {al, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,T
+            quad[1] = {{dl, db}, color, {al, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,B
+            quad[2] = {{dr, dt}, color, {ar, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,T
+            quad[3] = {{dr, db}, color, {ar, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,B
         } else {
             SkIRect devIRect = SkIRect::MakeLTRB(l, t, l + w, t + h);
             SkScalar dl, dt, dr, db;
@@ -115,10 +125,10 @@ void fillDirectClipped(SkZip<Quad, const Glyph, const VertexData> quadData,
             } else {
                 std::tie(dl, dt, dr, db) = LTBR(devIRect);
             }
-            quad[0] = {{dl, dt}, color, {al, at}};  // L,T
-            quad[1] = {{dl, db}, color, {al, ab}};  // L,B
-            quad[2] = {{dr, dt}, color, {ar, at}};  // R,T
-            quad[3] = {{dr, db}, color, {ar, ab}};  // R,B
+            quad[0] = {{dl, dt}, color, {al, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,T
+            quad[1] = {{dl, db}, color, {al, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,B
+            quad[2] = {{dr, dt}, color, {ar, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,T
+            quad[3] = {{dr, db}, color, {ar, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,B
         }
     }
 }
@@ -135,10 +145,10 @@ void fill2D(SkZip<Quad, const Glyph, const VertexData> quadData,
                 rt = viewDifference.mapPoint({r, t}),
                 rb = viewDifference.mapPoint({r, b});
         auto [al, at, ar, ab] = glyph.entry().fAtlasLocator.getUVs();
-        quad[0] = {lt, color, {al, at}};  // L,T
-        quad[1] = {lb, color, {al, ab}};  // L,B
-        quad[2] = {rt, color, {ar, at}};  // R,T
-        quad[3] = {rb, color, {ar, ab}};  // R,B
+        quad[0] = {lt, color, {al, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,T
+        quad[1] = {lb, color, {al, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,B
+        quad[2] = {rt, color, {ar, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,T
+        quad[3] = {rb, color, {ar, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,B
     }
 }
 
@@ -157,10 +167,10 @@ void fill3D(SkZip<Quad, const Glyph, const VertexData> quadData,
                 rt = mapXYZ(r, t),
                 rb = mapXYZ(r, b);
         auto [al, at, ar, ab] = glyph.entry().fAtlasLocator.getUVs();
-        quad[0] = {lt, color, {al, at}};  // L,T
-        quad[1] = {lb, color, {al, ab}};  // L,B
-        quad[2] = {rt, color, {ar, at}};  // R,T
-        quad[3] = {rb, color, {ar, ab}};  // R,B
+        quad[0] = {lt, color, {al, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,T
+        quad[1] = {lb, color, {al, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // L,B
+        quad[2] = {rt, color, {ar, at}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,T
+        quad[3] = {rb, color, {ar, ab}, {al, at}, {uint16_t(ar - al), uint16_t(ab - at)}};  // R,B
     }
 }
 }  // anonymous namespace
