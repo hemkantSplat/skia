@@ -67,12 +67,24 @@
         },
       });
 
-      CanvasKit.MakeWebGLContext = function(ctx) {
+      // Skia's GrContextOptions defaults for the fields a caller leaves out.
+      function grContextOptions(options) {
+        var samples = options['internalMultisampleCount'];
+        return {
+          'internalMultisampleCount': samples === undefined ? 4 : samples,
+          'allowPathMaskCaching': options['allowPathMaskCaching'] !== false,
+          'allowDynamicMSAA': !!options['allowDynamicMSAA'],
+          'allowFloatMSAA': !!options['allowFloatMSAA'],
+        };
+      }
+
+      CanvasKit.MakeWebGLContext = function(ctx, options) {
         // Make sure we are pointing at the right WebGL context.
         if (!this.setCurrentContext(ctx)) {
           return null;
         }
-        var grCtx = this._MakeGrContext();
+        var grCtx = options ? this._MakeGrContextWithOptions(grContextOptions(options))
+                            : this._MakeGrContext();
         if (!grCtx) {
           return null;
         }
