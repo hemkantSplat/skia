@@ -535,7 +535,7 @@ struct StagedNode {
     Structure structure;
     Derived derived;
     Tally own;
-    bool upkeep = false;
+    bool rasterDirty = false;  // content damage only; composite upkeep still advances Derived
 };
 
 struct StagedPath {
