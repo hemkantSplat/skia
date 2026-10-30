@@ -258,6 +258,33 @@ SkColor4f ptrToSkColor4f(WASMPointerF32 cPtr) {
     return color;
 }
 
+// JS passes transfer functions and gamuts as flat floats in the structs' field order.
+static_assert(sizeof(skcms_TransferFunction) == 7 * sizeof(float));
+static_assert(sizeof(skcms_Matrix3x3) == 9 * sizeof(float));
+
+// The fork's transfer ABI uses normalized PQ (1 = 10000 nits) and scene HLG.
+// Current Skia named HDR constants instead carry absolute-luminance parameters.
+constexpr skcms_TransferFunction kForkPQ =
+        {-2.0f, -107/128.0f, 1.0f, 32/2523.0f, 2413/128.0f, -2392/128.0f, 8192/1305.0f};
+constexpr skcms_TransferFunction kForkHLG =
+        {-3.0f, 2.0f, 2.0f, 1/0.17883277f, 0.28466892f, 0.55991073f, 0.0f};
+constexpr skcms_TransferFunction kNamedTransferFns[] = {
+        SkNamedTransferFn::kSRGB,    SkNamedTransferFn::k2Dot2, SkNamedTransferFn::kLinear,
+        SkNamedTransferFn::kRec2020, kForkPQ, kForkHLG};
+constexpr skcms_Matrix3x3 kNamedGamuts[] = {
+        SkNamedGamut::kSRGB,     SkNamedGamut::kDisplayP3, SkNamedGamut::kRec2020,
+        SkNamedGamut::kAdobeRGB, SkNamedGamut::kXYZ};
+
+// Copies table[id] (a struct of floats) to out; false for an unknown id.
+template <typename T, size_t N>
+bool CopyNamed(const T (&table)[N], int id, WASMPointerF32 out) {
+    if (id < 0 || id >= static_cast<int>(N)) {
+        return false;
+    }
+    memcpy(reinterpret_cast<float*>(out), &table[id], sizeof(T));
+    return true;
+}
+
 SkRRect ptrToSkRRect(WASMPointerF32 fPtr) {
     // In order, these floats should be 4 floats for the rectangle
     // (left, top, right, bottom) and then 8 floats for the radii
@@ -2690,7 +2717,49 @@ EMSCRIPTEN_BINDINGS(Skia) {
             .class_function("_MakeAdobeRGB", optional_override([]() -> sk_sp<SkColorSpace> {
                                 return SkColorSpace::MakeRGB(SkNamedTransferFn::k2Dot2,
                                                              SkNamedGamut::kAdobeRGB);
-                            }));
+                            }))// 7 transfer-function floats (g, a..f) and a row-major 3x3 to XYZ D50; null if invalid.
+        .class_function("_MakeRGB", optional_override([](WASMPointerF32 tfPtr,
+                                                         WASMPointerF32 gamutPtr)->sk_sp<SkColorSpace> {
+            skcms_TransferFunction tf;
+            skcms_Matrix3x3 toXYZD50;
+            memcpy(&tf, reinterpret_cast<const float*>(tfPtr), sizeof(tf));
+            memcpy(&toXYZD50, reinterpret_cast<const float*>(gamutPtr), sizeof(toXYZD50));
+            return SkColorSpace::MakeRGB(tf, toXYZD50);
+        }))
+        .class_function("_NamedTransferFn", optional_override([](int id, WASMPointerF32 out)->bool {
+            return CopyNamed(kNamedTransferFns, id, out);
+        }))
+        .class_function("_NamedGamut", optional_override([](int id, WASMPointerF32 out)->bool {
+            return CopyNamed(kNamedGamuts, id, out);
+        }))
+        // BT.2100 HLG with its linear range scaled by k: 1 gives [0, 12], 1/12 gives [0, 1].
+        .class_function("_ScaledHLG", optional_override([](float k, WASMPointerF32 out)->bool {
+            const skcms_TransferFunction& hlg = kForkHLG;
+            return skcms_TransferFunction_makeScaledHLGish(
+                    reinterpret_cast<skcms_TransferFunction*>(out), k, hlg.a, hlg.b, hlg.c, hlg.d,
+                    hlg.e);
+        }))
+        .function("makeLinearGamma", optional_override([](SkColorSpace& self)->sk_sp<SkColorSpace> {
+            return self.makeLinearGamma();
+        }))
+        .function("makeSRGBGamma", optional_override([](SkColorSpace& self)->sk_sp<SkColorSpace> {
+            return self.makeSRGBGamma();
+        }))
+        .function("isSRGB", optional_override([](SkColorSpace& self)->bool {
+            return self.isSRGB();
+        }))
+        .function("_transferFn", optional_override([](SkColorSpace& self, WASMPointerF32 out)->void {
+            self.transferFn(reinterpret_cast<skcms_TransferFunction*>(out));
+        }))
+        .function("_gamutTransformTo", optional_override([](SkColorSpace& self,
+                                                            sk_sp<SkColorSpace> dst,
+                                                            WASMPointerF32 out)->bool {
+            if (!dst) {
+                return false;
+            }
+            self.gamutTransformTo(dst.get(), reinterpret_cast<skcms_Matrix3x3*>(out));
+            return true;
+        }));
 
     class_<SkPathEffect>("PathEffect")
             .smart_ptr<sk_sp<SkPathEffect>>("sk_sp<PathEffect>")

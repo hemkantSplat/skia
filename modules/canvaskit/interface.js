@@ -45,6 +45,63 @@ CanvasKit.onRuntimeInitialized = function() {
   CanvasKit.ColorSpace.DISPLAY_P3 = CanvasKit.ColorSpace._MakeDisplayP3();
   CanvasKit.ColorSpace.ADOBE_RGB = CanvasKit.ColorSpace._MakeAdobeRGB();
 
+  // n floats that write(ptr) fills, as a new Float32Array; null when write returns false.
+  function readFloats(n, write) {
+    var buf = CanvasKit.Malloc(Float32Array, n);
+    var ok = write(buf['byteOffset']);
+    var out = ok === false ? null : buf['toTypedArray']().slice();
+    CanvasKit.Free(buf);
+    return out;
+  }
+
+  // Copies of SkNamedTransferFn / SkNamedGamut, in the C++ tables' order.
+  CanvasKit.NamedTransferFn = {};
+  ['SRGB', 'TwoDotTwo', 'Linear', 'Rec2020', 'PQ', 'HLG'].forEach(function(name, id) {
+    CanvasKit.NamedTransferFn[name] = readFloats(7, function(ptr) {
+      return CanvasKit.ColorSpace._NamedTransferFn(id, ptr);
+    });
+  });
+  CanvasKit.NamedTransferFn.ScaledHLG = function(k) {
+    return readFloats(7, function(ptr) { return CanvasKit.ColorSpace._ScaledHLG(k, ptr); });
+  };
+  CanvasKit.NamedGamut = {};
+  ['SRGB', 'DisplayP3', 'Rec2020', 'AdobeRGB', 'XYZ'].forEach(function(name, id) {
+    CanvasKit.NamedGamut[name] = readFloats(9, function(ptr) {
+      return CanvasKit.ColorSpace._NamedGamut(id, ptr);
+    });
+  });
+
+  // The caller owns (deletes) the result; null when Skia refuses the pair.
+  CanvasKit.ColorSpace.MakeRGB = function(transferFn, gamut) {
+    if (transferFn.length !== 7 || gamut.length !== 9) {
+      throw 'ColorSpace.MakeRGB: a transfer function is 7 floats and a gamut 9';
+    }
+    var tPtr = copy1dArray(transferFn, 'HEAPF32');
+    var gPtr = copy1dArray(gamut, 'HEAPF32');
+    var colorSpace = CanvasKit.ColorSpace._MakeRGB(tPtr, gPtr);
+    freeArraysThatAreNotMallocedByUsers(tPtr, transferFn);
+    freeArraysThatAreNotMallocedByUsers(gPtr, gamut);
+    return colorSpace;
+  };
+
+  CanvasKit.ColorSpace.DISPLAY_P3_LINEAR = CanvasKit.ColorSpace.MakeRGB(
+      CanvasKit.NamedTransferFn.Linear, CanvasKit.NamedGamut.DisplayP3);
+  CanvasKit.ColorSpace.REC2020_PQ = CanvasKit.ColorSpace.MakeRGB(
+      CanvasKit.NamedTransferFn.PQ, CanvasKit.NamedGamut.Rec2020);
+  CanvasKit.ColorSpace.REC2020_HLG = CanvasKit.ColorSpace.MakeRGB(
+      CanvasKit.NamedTransferFn.HLG, CanvasKit.NamedGamut.Rec2020);
+
+  CanvasKit.ColorSpace.prototype.transferFn = function() {
+    var self = this;
+    return readFloats(7, function(ptr) { self._transferFn(ptr); });
+  };
+
+  // Row-major 3x3 taking linear RGB in this gamut to linear RGB in dst's.
+  CanvasKit.ColorSpace.prototype.gamutTransformTo = function(dst) {
+    var self = this;
+    return readFloats(9, function(ptr) { return self._gamutTransformTo(dst, ptr); });
+  };
+
   // Use quotes to tell closure compiler not to minify the names
   CanvasKit['GlyphRunFlags'] = {
     'IsWhiteSpace': CanvasKit['_GlyphRunFlags_isWhiteSpace'],
