@@ -129,6 +129,10 @@
       // Blender.MakeLightResolve, output-transform color filters); stock leaves it undefined.
       CanvasKit.nativeEffectsApi = 1;
 
+      // API level of tools/canvaskit-build's F16 MSAA (float sample counts queried from WebGL 2,
+      // GrDirectContext.maxSurfaceSampleCount); stock leaves it undefined.
+      CanvasKit.f16MsaaApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
