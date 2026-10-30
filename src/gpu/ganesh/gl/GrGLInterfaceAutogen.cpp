@@ -661,7 +661,9 @@ bool GrGLInterface::validate() const {
           (glVer >= GR_GL_VER(4,2)) ||
           fExtensions.has("GL_ARB_internalformat_query"))) ||
        (GR_IS_GR_GL_ES(fStandard) && (
-          (glVer >= GR_GL_VER(3,0))))) {
+          (glVer >= GR_GL_VER(3,0)))) ||
+       (GR_IS_GR_WEBGL(fStandard) && (
+          (glVer >= GR_GL_VER(2,0))))) {
         if (!fFunctions.fGetInternalformativ) {
             RETURN_FALSE_INTERFACE;
         }
