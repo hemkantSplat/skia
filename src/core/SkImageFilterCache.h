@@ -8,6 +8,8 @@
 #ifndef SkImageFilterCache_DEFINED
 #define SkImageFilterCache_DEFINED
 
+#include "include/core/SkColorSpace.h"
+#include "include/core/SkColorType.h"
 #include "include/core/SkMatrix.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkRefCnt.h"
@@ -22,16 +24,20 @@ namespace skif { class FilterResult; }
 
 struct SkImageFilterCacheKey {
     SkImageFilterCacheKey(const uint64_t uniqueID, const SkMatrix& matrix,
-        const SkIRect& clipBounds, uint32_t srcGenID, const SkIRect& srcSubset)
+        const SkIRect& clipBounds, uint32_t srcGenID, const SkIRect& srcSubset,
+        SkColorType colorType = kN32_SkColorType, const SkColorSpace* colorSpace = nullptr)
         : fUniqueID(uniqueID)
         , fMatrix(matrix)
         , fClipBounds(clipBounds)
         , fSrcGenID(srcGenID)
-        , fSrcSubset(srcSubset) {
+        , fSrcSubset(srcSubset)
+        , fColorType(colorType)
+        , fTransferFnHash(colorSpace ? colorSpace->transferFnHash() : 0)
+        , fGamutHash(colorSpace ? colorSpace->toXYZD50Hash() : 0) {
         // Assert that Key is tightly-packed, since it is hashed.
         static_assert(sizeof(SkImageFilterCacheKey) == sizeof(uint64_t) + sizeof(SkMatrix) +
                                      sizeof(SkIRect) + sizeof(uint32_t) + 4 * sizeof(int32_t) +
-                                     sizeof(uint32_t),
+                                     sizeof(SkColorType) + 2 * sizeof(uint32_t),
                                      "image_filter_key_tight_packing");
         fMatrix.getType();  // force initialization of type, so hashes match
         SkASSERT(fMatrix.isFinite());   // otherwise we can't rely on == self when comparing keys
@@ -42,14 +48,19 @@ struct SkImageFilterCacheKey {
     SkIRect fClipBounds;
     uint32_t fSrcGenID;
     SkIRect fSrcSubset;
-    uint32_t fPad = 0;
+    SkColorType fColorType;
+    uint32_t fTransferFnHash;
+    uint32_t fGamutHash;
 
     bool operator==(const SkImageFilterCacheKey& other) const {
         return fUniqueID == other.fUniqueID &&
                fMatrix == other.fMatrix &&
                fClipBounds == other.fClipBounds &&
                fSrcGenID == other.fSrcGenID &&
-               fSrcSubset == other.fSrcSubset;
+               fSrcSubset == other.fSrcSubset &&
+               fColorType == other.fColorType &&
+               fTransferFnHash == other.fTransferFnHash &&
+               fGamutHash == other.fGamutHash;
     }
 };
 

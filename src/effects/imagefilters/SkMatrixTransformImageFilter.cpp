@@ -48,6 +48,8 @@ protected:
     void flatten(SkWriteBuffer&) const override;
 
 private:
+    bool onSupportsRasterF16() const override { return true; }
+
     friend void ::SkRegisterMatrixTransformImageFilterFlattenable();
     SK_FLATTENABLE_HOOKS(SkMatrixTransformImageFilter)
     static sk_sp<SkFlattenable> LegacyOffsetCreateProc(SkReadBuffer& buffer);

@@ -324,6 +324,15 @@ sk_sp<skif::Backend> SkDevice::createImageFilteringBackend(const SkSurfaceProps&
     return skif::MakeRasterBackend(surfaceProps, colorType);
 }
 
+sk_sp<skif::Backend> SkDevice::createImageFilteringBackend(const SkSurfaceProps& surfaceProps,
+                                                           SkColorType colorType,
+                                                           bool supportsRasterF16) const {
+    if (!this->recordingContext() && !this->recorder()) {
+        return skif::MakeRasterBackend(surfaceProps, colorType, supportsRasterF16);
+    }
+    return this->createImageFilteringBackend(surfaceProps, colorType);
+}
+
 void SkDevice::drawDevice(SkDevice* device,
                           const SkSamplingOptions& sampling,
                           const SkPaint& paint) {
@@ -354,12 +363,16 @@ void SkDevice::drawFilteredImage(const skif::Mapping& mapping,
             skif::DeviceSpace<SkIRect>(this->devClipBounds()));
 
     if (colorType == kUnknown_SkColorType) {
-        colorType = kRGBA_8888_SkColorType;
+        colorType = src ? src->colorType() : this->imageInfo().colorType();
+        if (colorType == kUnknown_SkColorType) {
+            colorType = kRGBA_8888_SkColorType;
+        }
     }
 
     skif::Stats stats;
     skif::Context ctx{this->createImageFilteringBackend(src ? src->props() : this->surfaceProps(),
-                                                        colorType),
+                                                        colorType,
+                                                        as_IFB(filter)->supportsRasterF16()),
                       mapping,
                       targetOutput,
                       skif::FilterResult(sk_ref_sp(src)),

@@ -222,7 +222,12 @@ Backend::Backend(sk_sp<SkImageFilterCache> cache,
 
 Backend::~Backend() = default;
 
-sk_sp<Backend> MakeRasterBackend(const SkSurfaceProps& surfaceProps, SkColorType colorType) {
+sk_sp<Backend> MakeRasterBackend(const SkSurfaceProps& surfaceProps, SkColorType colorType,
+                                 bool supportsRasterF16) {
+    // Preserve upstream working formats and the fork's supported-graph policy for signed F16.
+    if (colorType == kRGBA_F16_SkColorType && !supportsRasterF16) {
+        colorType = kN32_SkColorType;
+    }
     return sk_make_sp<RasterBackend>(surfaceProps, colorType);
 }
 

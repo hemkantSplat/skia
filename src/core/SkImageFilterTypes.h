@@ -1134,7 +1134,8 @@ private:
     SkColorType fColorType;
 };
 
-sk_sp<Backend> MakeRasterBackend(const SkSurfaceProps& surfaceProps, SkColorType colorType);
+sk_sp<Backend> MakeRasterBackend(const SkSurfaceProps& surfaceProps, SkColorType colorType,
+                                 bool supportsRasterF16 = false);
 
 // Stats for a single image filter evaluation
 struct Stats {
