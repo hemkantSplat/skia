@@ -105,7 +105,7 @@ GrConvexPolyEffect::~GrConvexPolyEffect() {}
 
 void GrConvexPolyEffect::onAddToKey(const GrShaderCaps& caps, skgpu::KeyBuilder* b) const {
     static_assert(kGrClipEdgeTypeCnt <= 8);
-    uint32_t key = (fEdgeCount << 3) | static_cast<int>(fEdgeType);
+    uint32_t key = static_cast<int>(fEdgeType);
     b->add32(key);
 }
 
@@ -120,12 +120,12 @@ std::unique_ptr<GrFragmentProcessor::ProgramImpl> GrConvexPolyEffect::onMakeProg
                                                                  kFragment_GrShaderFlag,
                                                                  SkSLType::kHalf3,
                                                                  "edgeArray",
-                                                                 cpe.fEdgeCount,
+                                                                 kMaxEdges,
                                                                  &edgeArrayName);
             GrGLSLFPFragmentBuilder* fragBuilder = args.fFragBuilder;
             fragBuilder->codeAppend("float alpha = 1.0;\n"
                                     "float edge;\n");
-            for (int i = 0; i < cpe.fEdgeCount; ++i) {
+            for (int i = 0; i < kMaxEdges; ++i) {
                 fragBuilder->codeAppendf("edge = dot(float3(%s[%d]), sk_FragCoord.xy1);\n",
                                          edgeArrayName, i);
                 if (GrClipEdgeTypeIsAA(cpe.fEdgeType)) {
@@ -148,10 +148,9 @@ std::unique_ptr<GrFragmentProcessor::ProgramImpl> GrConvexPolyEffect::onMakeProg
         void onSetData(const GrGLSLProgramDataManager& pdman,
                        const GrFragmentProcessor& fp) override {
             const GrConvexPolyEffect& cpe = fp.cast<GrConvexPolyEffect>();
-            size_t n = 3*cpe.fEdgeCount;
-            if (!std::equal(fPrevEdges.begin(), fPrevEdges.begin() + n, cpe.fEdges.begin())) {
-                pdman.set3fv(fEdgeUniform, cpe.fEdgeCount, cpe.fEdges.data());
-                std::copy_n(cpe.fEdges.begin(), n, fPrevEdges.begin());
+            if (fPrevEdges != cpe.fEdges) {
+                pdman.set3fv(fEdgeUniform, kMaxEdges, cpe.fEdges.data());
+                fPrevEdges = cpe.fEdges;
             }
         }
 
@@ -169,8 +168,7 @@ GrConvexPolyEffect::GrConvexPolyEffect(std::unique_ptr<GrFragmentProcessor> inpu
         : INHERITED(kGrConvexPolyEffect_ClassID,
                     ProcessorOptimizationFlags(inputFP.get()) &
                             kCompatibleWithCoverageAsAlpha_OptimizationFlag)
-        , fEdgeType(edgeType)
-        , fEdgeCount(n) {
+        , fEdgeType(edgeType) {
     // Factory function should have already ensured this.
     SkASSERT(n <= kMaxEdges);
     std::copy_n(edges, 3*n, fEdges.begin());
@@ -180,14 +178,20 @@ GrConvexPolyEffect::GrConvexPolyEffect(std::unique_ptr<GrFragmentProcessor> inpu
         fEdges[3 * i + 2] += SK_ScalarHalf;
     }
 
+    // Inactive half-planes contribute unit coverage before any fill inversion.
+    for (int i = n; i < kMaxEdges; ++i) {
+        fEdges[3 * i] = 0;
+        fEdges[3 * i + 1] = 0;
+        fEdges[3 * i + 2] = 1;
+    }
+
     this->registerChild(std::move(inputFP));
 }
 
 GrConvexPolyEffect::GrConvexPolyEffect(const GrConvexPolyEffect& that)
         : INHERITED(that)
         , fEdgeType(that.fEdgeType)
-        , fEdgeCount(that.fEdgeCount) {
-    std::copy_n(that.fEdges.begin(), 3*that.fEdgeCount, fEdges.begin());
+        , fEdges(that.fEdges) {
 }
 
 std::unique_ptr<GrFragmentProcessor> GrConvexPolyEffect::clone() const {
@@ -196,10 +200,7 @@ std::unique_ptr<GrFragmentProcessor> GrConvexPolyEffect::clone() const {
 
 bool GrConvexPolyEffect::onIsEqual(const GrFragmentProcessor& other) const {
     const GrConvexPolyEffect& cpe = other.cast<GrConvexPolyEffect>();
-    int n = 3*cpe.fEdgeCount;
-    return cpe.fEdgeType == fEdgeType   &&
-           cpe.fEdgeCount == fEdgeCount &&
-           std::equal(cpe.fEdges.begin(), cpe.fEdges.begin() + n, fEdges.begin());
+    return cpe.fEdgeType == fEdgeType && cpe.fEdges == fEdges;
 }
 
 //////////////////////////////////////////////////////////////////////////////
