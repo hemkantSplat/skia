@@ -339,6 +339,7 @@ struct SimpleGpuStats {
     int renderPasses = 0;
     int reorderedDAGsOverBudget = 0;
     int shaderCompilations = 0;
+    int skslTranslations = 0;
     int programCacheHits = 0;
     int programCacheMisses = 0;
     int softwarePathMasks = 0;
@@ -376,6 +377,7 @@ SimpleGpuStats ReadGpuStats(GrDirectContext& dContext) {
         using Result = GrThreadSafePipelineBuilder::Stats::ProgramCacheResult;
         const GrThreadSafePipelineBuilder::Stats& p = *builder->stats();
         out.shaderCompilations = p.shaderCompilations();
+        out.skslTranslations = p.skslTranslations();
         out.programCacheHits = p.numInlineProgramCacheResult(Result::kHit);
         out.programCacheMisses = p.numInlineProgramCacheResult(Result::kMiss);
     }
@@ -504,11 +506,11 @@ sk_sp<GrDirectContext> MakeGrContextWithOptions(SimpleGrContextOptions simple,
     options.fAllowDynamicMSAAOnWebGL = simple.allowDynamicMSAA;
     options.fAllowFloatMSAAOnWebGL2 = simple.allowFloatMSAA;
     if (!programCache.isNull() && !programCache.isUndefined()) {
-        // WebGL has no program binaries: SkSL blobs are what precompileShader accepts. The context
-        // owns the cache and frees it from its delete callback.
+        // WebGL has no program binaries: entries are SkSL plus their caps-keyed GLSL, which
+        // precompileShader reuses. The context owns the cache and frees it from its delete callback.
         auto cache = new JSProgramCache(std::move(programCache));
         options.fPersistentCache = cache;
-        options.fShaderCacheStrategy = GrContextOptions::ShaderCacheStrategy::kSkSL;
+        options.fShaderCacheStrategy = GrContextOptions::ShaderCacheStrategy::kSkSLAndBackendSource;
         options.fContextDeleteContext = cache;
         options.fContextDeleteProc = [](GrDirectContextDestroyedContext cache) {
             delete static_cast<JSProgramCache*>(cache);
@@ -1594,6 +1596,7 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
         .field("renderPasses", &SimpleGpuStats::renderPasses)
         .field("reorderedDAGsOverBudget", &SimpleGpuStats::reorderedDAGsOverBudget)
         .field("shaderCompilations", &SimpleGpuStats::shaderCompilations)
+        .field("skslTranslations", &SimpleGpuStats::skslTranslations)
         .field("programCacheHits", &SimpleGpuStats::programCacheHits)
         .field("programCacheMisses", &SimpleGpuStats::programCacheMisses)
         .field("softwarePathMasks", &SimpleGpuStats::softwarePathMasks)
