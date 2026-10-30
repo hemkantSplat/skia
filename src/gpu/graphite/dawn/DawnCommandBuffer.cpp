@@ -25,28 +25,7 @@
 #include "src/gpu/graphite/dawn/DawnSharedContext.h"
 #include "src/gpu/graphite/dawn/DawnTexture.h"
 
-#if defined(__EMSCRIPTEN__)
-#include <emscripten/version.h>
-
-namespace wgpu {
-using TexelCopyBufferInfo = ImageCopyBuffer;
-using TexelCopyTextureInfo = ImageCopyTexture;
-}  // namespace wgpu
-#endif
-
 namespace skgpu::graphite {
-
-// On emsdk before 3.1.48 the API for RenderPass and ComputePass timestamps was different
-// and does not map to current webgpu. We check this in DawnCaps but we also must avoid
-// naming the types from the new API because they aren't defined.
-#if defined(__EMSCRIPTEN__)                                                                  \
-        && ((__EMSCRIPTEN_major__ < 3)                                                       \
-         || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ < 1)                          \
-         || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ == 1 && __EMSCRIPTEN_tiny__ < 48))
-    #define WGPU_TIMESTAMP_WRITES_DEFINED 0
-#else
-    #define WGPU_TIMESTAMP_WRITES_DEFINED 1
-#endif
 
 // DawnCommandBuffer
 // ----------------------------------------------------------------------------
@@ -101,7 +80,12 @@ bool DawnCommandBuffer::startStatsQuery(GpuStatsFlags) {
     }
     if (!querySet) {
         wgpu::QuerySetDescriptor descriptor;
+        // emdawn forwards both pass indices. A scratch start preserves the first-start/last-end pair.
+#if defined(__EMSCRIPTEN__)
+        descriptor.count = 3;
+#else
         descriptor.count = 2;
+#endif
         descriptor.label = "Command Buffer Timer Query";
         descriptor.type = wgpu::QueryType::Timestamp;
         descriptor.nextInChain = nullptr;
@@ -364,25 +348,21 @@ bool DawnCommandBuffer::beginRenderPass(const RenderPassDesc& renderPassDesc,
     }
 #endif
 
-#if WGPU_TIMESTAMP_WRITES_DEFINED
-#if defined(__EMSCRIPTEN__)
-    wgpu::RenderPassTimestampWrites wgpuTimestampWrites;
-#else
     wgpu::PassTimestampWrites wgpuTimestampWrites;
-#endif
     if (!fSharedContext->dawnCaps()->supportsCommandBufferTimestamps() && fTimestampQueryBuffer) {
         SkASSERT(fTimestampQuerySet);
         wgpuTimestampWrites.querySet = fTimestampQuerySet;
         if (!fWroteFirstPassTimestamps) {
             wgpuTimestampWrites.beginningOfPassWriteIndex = 0;
             fWroteFirstPassTimestamps = true;
+#if defined(__EMSCRIPTEN__)
+        } else {
+            wgpuTimestampWrites.beginningOfPassWriteIndex = 2;
+#endif
         }
         wgpuTimestampWrites.endOfPassWriteIndex = 1;
         wgpuRenderPass.timestampWrites = &wgpuTimestampWrites;
     }
-#else
-    SkASSERT(!fTimestampQueryBuffer);
-#endif
 
     // Validate attachment descs and textures
     const auto& colorInfo = renderPassDesc.fColorAttachment;
@@ -1142,25 +1122,21 @@ void DawnCommandBuffer::beginComputePass() {
     SkASSERT(!fActiveRenderPassEncoder);
     SkASSERT(!fActiveComputePassEncoder);
     wgpu::ComputePassDescriptor wgpuComputePassDescriptor = {};
-#if WGPU_TIMESTAMP_WRITES_DEFINED
-#if defined(__EMSCRIPTEN__)
-    wgpu::ComputePassTimestampWrites wgpuTimestampWrites;
-#else
     wgpu::PassTimestampWrites wgpuTimestampWrites;
-#endif
     if (!fSharedContext->dawnCaps()->supportsCommandBufferTimestamps() && fTimestampQueryBuffer) {
         SkASSERT(fTimestampQuerySet);
         wgpuTimestampWrites.querySet = fTimestampQuerySet;
         if (!fWroteFirstPassTimestamps) {
             wgpuTimestampWrites.beginningOfPassWriteIndex = 0;
             fWroteFirstPassTimestamps = true;
+#if defined(__EMSCRIPTEN__)
+        } else {
+            wgpuTimestampWrites.beginningOfPassWriteIndex = 2;
+#endif
         }
         wgpuTimestampWrites.endOfPassWriteIndex = 1;
         wgpuComputePassDescriptor.timestampWrites = &wgpuTimestampWrites;
     }
-#else
-    SkASSERT(!fTimestampQueryBuffer);
-#endif
     fActiveComputePassEncoder = fCommandEncoder.BeginComputePass(&wgpuComputePassDescriptor);
 }
 

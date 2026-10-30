@@ -17,6 +17,7 @@
 #include "src/gpu/graphite/TextureFormat.h"
 #include "src/gpu/graphite/dawn/DawnQueueManager.h"
 #include "src/gpu/graphite/dawn/DawnSharedContext.h"
+#include "src/gpu/graphite/dawn/DawnAsyncWait.h"
 
 using namespace skia_private;
 
@@ -424,13 +425,29 @@ static bool check_shader_module([[maybe_unused]] const DawnSharedContext* shared
                                 wgpu::ShaderModule* module,
                                 const char* shaderText,
                                 ShaderErrorHandler* errorHandler) {
-    // Prior to emsdk 3.1.51 wgpu::ShaderModule::GetCompilationInfo is unimplemented.
-#if defined(__EMSCRIPTEN__)                                      &&  \
-        ((__EMSCRIPTEN_major__ <  3                               || \
-         (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ <  1) || \
-         (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ == 1 && __EMSCRIPTEN_tiny__ < 51)))
-    return true;
-#else
+#if defined(__EMSCRIPTEN__)
+    // Non-yielding browser contexts own diagnostic text until the spontaneous callback completes.
+    if (!sharedContext->hasTick()) {
+        module->GetCompilationInfo(
+                wgpu::CallbackMode::AllowSpontaneous,
+                [source = std::string(shaderText)](wgpu::CompilationInfoRequestStatus status,
+                                                  const wgpu::CompilationInfo* info) {
+                    if (status != wgpu::CompilationInfoRequestStatus::Success) {
+                        SKIA_LOG_E("Shader compilation diagnostics unavailable.");
+                        return;
+                    }
+                    for (size_t index = 0; index < info->messageCount; ++index) {
+                        const auto& message = SK_UNSAFE_TODO(info->messages[index]);
+                        if (message.type == wgpu::CompilationMessageType::Error) {
+                            SKIA_LOG_E("WGSL compilation failed: %.*s\n%s",
+                                       static_cast<int>(message.message.length),
+                                       message.message.data, source.c_str());
+                        }
+                    }
+                });
+        return static_cast<bool>(*module);
+    }
+#endif
     struct Handler {
         static void Fn(WGPUCompilationInfoRequestStatus status,
                        const WGPUCompilationInfo* info,
@@ -471,8 +488,16 @@ static bool check_shader_module([[maybe_unused]] const DawnSharedContext* shared
     handler.fShaderText = shaderText;
     handler.fErrorHandler = errorHandler;
 #if defined(__EMSCRIPTEN__)
-    // Deprecated function.
-    module->GetCompilationInfo(&Handler::Fn, &handler);
+    DawnAsyncWait wait(sharedContext);
+    module->GetCompilationInfo(
+            wgpu::CallbackMode::AllowSpontaneous,
+            [&handler, &wait](wgpu::CompilationInfoRequestStatus status,
+                              const wgpu::CompilationInfo* info) {
+                Handler::Fn(static_cast<WGPUCompilationInfoRequestStatus>(status),
+                            reinterpret_cast<const WGPUCompilationInfo*>(info), &handler);
+                wait.signal();
+            });
+    wait.busyWait();
 #else
     // New API.
     wgpu::FutureWaitInfo waitInfo{};
@@ -492,7 +517,6 @@ static bool check_shader_module([[maybe_unused]] const DawnSharedContext* shared
 #endif  // defined(__EMSCRIPTEN__)
 
     return handler.fSuccess;
-#endif
 }
 
 bool DawnCompileWGSLShaderModule(const DawnSharedContext* sharedContext,
@@ -500,11 +524,7 @@ bool DawnCompileWGSLShaderModule(const DawnSharedContext* sharedContext,
                                  const SkSL::NativeShader& wgsl,
                                  wgpu::ShaderModule* module,
                                  ShaderErrorHandler* errorHandler) {
-#if defined(__EMSCRIPTEN__)
-    wgpu::ShaderModuleWGSLDescriptor wgslDesc;
-#else
     wgpu::ShaderSourceWGSL wgslDesc;
-#endif
     wgslDesc.code = wgsl.fText.c_str();
 
     wgpu::ShaderModuleDescriptor desc;

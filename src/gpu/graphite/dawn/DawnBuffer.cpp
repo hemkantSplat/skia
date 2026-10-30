@@ -15,51 +15,6 @@
 
 namespace skgpu::graphite {
 namespace {
-#if defined(__EMSCRIPTEN__)
-bool is_map_succeeded(WGPUBufferMapAsyncStatus status) {
-    return status == WGPUBufferMapAsyncStatus_Success;
-}
-
-[[maybe_unused]]
-void log_map_error(WGPUBufferMapAsyncStatus status, const char*) {
-    const char* statusStr;
-    SkLogPriority priority = SkLogPriority::kError;
-    switch (status) {
-        case WGPUBufferMapAsyncStatus_ValidationError:
-            statusStr = "ValidationError";
-            break;
-        case WGPUBufferMapAsyncStatus_Unknown:
-            statusStr = "Unknown";
-            break;
-        case WGPUBufferMapAsyncStatus_DeviceLost:
-            statusStr = "DeviceLost";
-            break;
-        case WGPUBufferMapAsyncStatus_DestroyedBeforeCallback:
-            statusStr = "DestroyedBeforeCallback";
-            priority = SkLogPriority::kDebug;
-            break;
-        case WGPUBufferMapAsyncStatus_UnmappedBeforeCallback:
-            statusStr = "UnmappedBeforeCallback";
-            priority = SkLogPriority::kDebug;
-            break;
-        case WGPUBufferMapAsyncStatus_MappingAlreadyPending:
-            statusStr = "MappingAlreadyPending";
-            break;
-        case WGPUBufferMapAsyncStatus_OffsetOutOfRange:
-            statusStr = "OffsetOutOfRange";
-            break;
-        case WGPUBufferMapAsyncStatus_SizeOutOfRange:
-            statusStr = "SizeOutOfRange";
-            break;
-        default:
-            statusStr = "<other>";
-            break;
-    }
-    SKIA_LOG(priority, "Buffer async map failed with status %s.", statusStr);
-}
-
-#else
-
 bool is_map_succeeded(wgpu::MapAsyncStatus status) {
     return status == wgpu::MapAsyncStatus::Success;
 }
@@ -86,7 +41,6 @@ void log_map_error(wgpu::MapAsyncStatus status, wgpu::StringView message) {
               static_cast<int>(message.length),
               message.data);
 }
-#endif  // defined(__EMSCRIPTEN__)
 }  // namespace
 
 sk_sp<DawnBuffer> DawnBuffer::Make(const DawnSharedContext* sharedContext,
@@ -241,17 +195,6 @@ void DawnBuffer::onAsyncMap(GpuFinishedProc proc, GpuFinishedContext ctx) {
     bool isWrite = fBuffer.GetUsage() & wgpu::BufferUsage::MapWrite;
     auto buffer = sk_ref_sp(this);
 
-#if defined(__EMSCRIPTEN__)
-    fBuffer.MapAsync(
-            isWrite ? wgpu::MapMode::Write : wgpu::MapMode::Read,
-            0,
-            fBuffer.GetSize(),
-            [](WGPUBufferMapAsyncStatus s, void* userData) {
-                sk_sp<DawnBuffer> buffer(static_cast<DawnBuffer*>(userData));
-                buffer->mapCallback(s, /*message=*/nullptr);
-            },
-            buffer.release());
-#else
     // Map with AllowSpontaneous so that if Dawn can trigger the callback immediately
     // if possible,
     fBuffer.MapAsync(
@@ -262,7 +205,6 @@ void DawnBuffer::onAsyncMap(GpuFinishedProc proc, GpuFinishedContext ctx) {
             [buffer](wgpu::MapAsyncStatus s, wgpu::StringView m) {
                 buffer->mapCallback(s, m);
             });
-#endif
 }
 
 void DawnBuffer::onMap() {

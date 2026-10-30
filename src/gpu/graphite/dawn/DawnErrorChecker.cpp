@@ -54,13 +54,16 @@ SkEnumBitMask<DawnErrorType> DawnErrorChecker::popErrorScopes() {
                 , fWait(sharedContext) {}
     } errorState(fSharedContext);
 
-    wgpu::ErrorCallback errorCallback = [](WGPUErrorType status, const char* msg, void* userData) {
-        ErrorState* errorState = static_cast<ErrorState*>(userData);
-        if (status != WGPUErrorType_NoError) {
+    auto errorCallback = [](wgpu::PopErrorScopeStatus status,
+                            wgpu::ErrorType type,
+                            wgpu::StringView msg,
+                            ErrorState* errorState) {
+        if (status != wgpu::PopErrorScopeStatus::Success || type != wgpu::ErrorType::NoError) {
             SkASSERT(errorState->fScopeIdx >= 0);
-            const char* errorScopeName = kErrorScopeNames[errorState->fScopeIdx];
-            SKIA_LOG_E("Failed in error scope (%s): %s", errorScopeName, msg);
-            errorState->fError |= kErrorScopeTypes[errorState->fScopeIdx];
+            const char* errorScopeName = SK_UNSAFE_TODO(kErrorScopeNames[errorState->fScopeIdx]);
+            SKIA_LOG_E("Failed in error scope (%s): %.*s", errorScopeName,
+                       static_cast<int>(msg.length), msg.data);
+            errorState->fError |= SK_UNSAFE_TODO(kErrorScopeTypes[errorState->fScopeIdx]);
         }
         errorState->fScopeIdx--;
         errorState->fWait.signal();
@@ -68,17 +71,20 @@ SkEnumBitMask<DawnErrorType> DawnErrorChecker::popErrorScopes() {
 
     // Pop all three error scopes:
     // Internal
-    fSharedContext->device().PopErrorScope(errorCallback, &errorState);
+    fSharedContext->device().PopErrorScope(
+            wgpu::CallbackMode::AllowSpontaneous, errorCallback, &errorState);
     errorState.fWait.busyWait();
     errorState.fWait.reset();
 
     // OutOfMemory
-    fSharedContext->device().PopErrorScope(errorCallback, &errorState);
+    fSharedContext->device().PopErrorScope(
+            wgpu::CallbackMode::AllowSpontaneous, errorCallback, &errorState);
     errorState.fWait.busyWait();
     errorState.fWait.reset();
 
     // Validation
-    fSharedContext->device().PopErrorScope(errorCallback, &errorState);
+    fSharedContext->device().PopErrorScope(
+            wgpu::CallbackMode::AllowSpontaneous, errorCallback, &errorState);
     errorState.fWait.busyWait();
 #else
     struct ErrorState {

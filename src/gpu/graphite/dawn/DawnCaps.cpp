@@ -295,10 +295,9 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
 #endif // defined(__EMSCRIPTEN__)
 
 #if defined(__EMSCRIPTEN__)
-    wgpu::SupportedLimits supportedLimits;
-    [[maybe_unused]] wgpu::Status status = backendContext.fDevice.GetLimits(&supportedLimits);
+    wgpu::Limits limits;
+    [[maybe_unused]] wgpu::Status status = backendContext.fDevice.GetLimits(&limits);
     SkASSERT(status == wgpu::Status::Success);
-    wgpu::Limits& limits = supportedLimits.limits;
 #else
     wgpu::CompatibilityModeLimits compatLimits;
     wgpu::Limits limits{.nextInChain = &compatLimits};

@@ -630,11 +630,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
             layout.attributes = staticDataAttributes.data();
         } else {
             layout.arrayStride = 0;
-#if defined(__EMSCRIPTEN__)
-            layout.stepMode = wgpu::VertexStepMode::VertexBufferNotUsed;
-#else
             layout.stepMode = wgpu::VertexStepMode::Undefined;
-#endif
             layout.attributeCount = 0;
             layout.attributes = nullptr;
         }
@@ -656,11 +652,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
             layout.attributes = appendDataAttributes.data();
         } else {
             layout.arrayStride = 0;
-#if defined(__EMSCRIPTEN__)
-            layout.stepMode = wgpu::VertexStepMode::VertexBufferNotUsed;
-#else
             layout.stepMode = wgpu::VertexStepMode::Undefined;
-#endif
             layout.attributeCount = 0;
             layout.attributes = nullptr;
         }
