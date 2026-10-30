@@ -117,6 +117,10 @@
       // colorSpace, ColorSpace.SRGB_LINEAR, WebGL advanced blend); stock builds leave it undefined.
       CanvasKit.compositingApi = 1;
 
+      // API level of tools/canvaskit-build's program cache (the programCache context option,
+      // precompileShader, pendingProgramLinks); stock builds leave it undefined.
+      CanvasKit.programCacheApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
