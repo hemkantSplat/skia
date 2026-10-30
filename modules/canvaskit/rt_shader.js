@@ -23,6 +23,23 @@ CanvasKit._extraInitializations.push(function() {
     return copy1dArray(barePointers, 'HEAPU32');
   }
 
+  CanvasKit.RuntimeEffect.prototype.makeBuilder = function(uniforms) {
+    var ptr = copy1dArray(uniforms, 'HEAPF32');
+    try { return this._makeBuilder(ptr, uniforms.length * 4); }
+    finally { freeArraysThatAreNotMallocedByUsers(ptr, uniforms); }
+  };
+
+  CanvasKit.RuntimeEffectBuilder.prototype.setUniforms = function(uniforms) {
+    var ptr = copy1dArray(uniforms, 'HEAPF32');
+    try { return this._setUniforms(ptr, uniforms.length * 4); }
+    finally { freeArraysThatAreNotMallocedByUsers(ptr, uniforms); }
+  };
+
+  CanvasKit.ImageFilter.MakeRuntimeShader = function(builder, childNames, inputs, sampleRadius) {
+    return CanvasKit.ImageFilter._MakeRuntimeShader(builder, childNames, inputs,
+                                                    sampleRadius === undefined ? 0 : sampleRadius);
+  };
+
   // sksl is the shader code.
   CanvasKit.RuntimeEffect.Make = function(sksl, errorCallback) {
     return makeEffect(CanvasKit.RuntimeEffect._Make, sksl, errorCallback);
