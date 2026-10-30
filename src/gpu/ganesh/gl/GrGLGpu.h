@@ -227,6 +227,9 @@ public:
         return fProgramCache->precompileShader(this->getContext(), key, data);
     }
 
+    // Precompiled programs whose parallel link has not completed yet; polls without blocking.
+    int pendingProgramLinks() const { return fProgramCache->pendingLinks(this->glInterface()); }
+
 #if defined(GPU_TEST_UTILS)
     bool isTestingOnlyBackendTexture(const GrBackendTexture&) const override;
 
@@ -495,6 +498,7 @@ private:
                                                const GrProgramInfo&,
                                                Stats::ProgramCacheResult*);
         bool precompileShader(GrDirectContext*, const SkData& key, const SkData& data);
+        int pendingLinks(const GrGLInterface*);
 
     private:
         struct Entry;

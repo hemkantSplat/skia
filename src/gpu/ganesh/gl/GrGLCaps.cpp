@@ -97,6 +97,7 @@ GrGLCaps::GrGLCaps(const GrContextOptions& contextOptions,
     fPadRG88TransferAlignment = false;
     fProgramBinarySupport = false;
     fProgramParameterSupport = false;
+    fParallelShaderCompileSupport = false;
     fSamplerObjectSupport = false;
     fUseSamplerObjects = false;
     fTextureSwizzleSupport = false;
@@ -866,6 +867,7 @@ void GrGLCaps::init(const GrContextOptions& contextOptions,
             fProgramBinarySupport = false;
         }
     }
+    fParallelShaderCompileSupport = ctxInfo.hasExtension("GL_KHR_parallel_shader_compile");
     if (GR_IS_GR_GL(standard)) {
         fSamplerObjectSupport =
                 version >= GR_GL_VER(3,3) || ctxInfo.hasExtension("GL_ARB_sampler_objects");
