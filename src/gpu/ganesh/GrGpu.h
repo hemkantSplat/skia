@@ -517,6 +517,12 @@ public:
         int renderPasses() const { return fRenderPasses; }
         void incRenderPasses() { fRenderPasses++; }
 
+        int msaaResolves() const { return fMSAAResolves; }
+        void incMSAAResolves() { fMSAAResolves++; }
+
+        int dynamicMSAALoads() const { return fDynamicMSAALoads; }
+        void incDynamicMSAALoads() { fDynamicMSAALoads++; }
+
         int numReorderedDAGsOverBudget() const { return fNumReorderedDAGsOverBudget; }
         void incNumReorderedDAGsOverBudget() { fNumReorderedDAGsOverBudget++; }
 
@@ -539,6 +545,8 @@ public:
         int fNumScratchTexturesReused = 0;
         int fNumScratchMSAAAttachmentsReused = 0;
         int fRenderPasses = 0;
+        int fMSAAResolves = 0;
+        int fDynamicMSAALoads = 0;
         int fNumReorderedDAGsOverBudget = 0;
 
 #else  // !GR_GPU_STATS
@@ -560,6 +568,8 @@ public:
         void incNumScratchTexturesReused() {}
         void incNumScratchMSAAAttachmentsReused() {}
         void incRenderPasses() {}
+        void incMSAAResolves() {}
+        void incDynamicMSAALoads() {}
         void incNumReorderedDAGsOverBudget() {}
 #endif
     };

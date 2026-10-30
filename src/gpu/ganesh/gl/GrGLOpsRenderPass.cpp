@@ -65,6 +65,7 @@ void GrGLOpsRenderPass::onBegin() {
         fColorLoadAndStoreInfo.fLoadOp == GrLoadOp::kLoad &&
         glRT->hasDynamicMSAAAttachment()) {
         // Load the single sample fbo into the dmsaa attachment.
+        fGpu->stats()->incDynamicMSAALoads();
         if (fGpu->glCaps().canResolveSingleToMSAA()) {
             fGpu->resolveRenderFBOs(glRT, this->dmsaaLoadStoreBounds().asSkIRect(),
                                     GrGLGpu::ResolveDirection::kSingleToMSAA);
@@ -86,6 +87,7 @@ void GrGLOpsRenderPass::onEnd() {
         fColorLoadAndStoreInfo.fStoreOp == GrStoreOp::kStore &&
         glRT->hasDynamicMSAAAttachment()) {
         // Blit the msaa attachment into the single sample fbo.
+        fGpu->stats()->incMSAAResolves();
         fGpu->resolveRenderFBOs(glRT, this->dmsaaLoadStoreBounds().asSkIRect(),
                                 GrGLGpu::ResolveDirection::kMSAAToSingle,
                                 true /*invalidateReadBufferAfterBlit*/);
