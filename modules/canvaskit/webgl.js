@@ -133,6 +133,10 @@
       // GrDirectContext.maxSurfaceSampleCount); stock leaves it undefined.
       CanvasKit.f16MsaaApi = 1;
 
+      // API level of tools/canvaskit-build's HDR colour (ColorSpace.MakeRGB, NamedTransferFn/NamedGamut,
+      // ColorSpace queries, ColorFilter.MakeColorSpaceXform); stock leaves it undefined.
+      CanvasKit.hdrColorApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
