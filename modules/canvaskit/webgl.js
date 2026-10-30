@@ -108,6 +108,10 @@
       // builds leave it undefined, so callers feature-detect before passing options.
       CanvasKit.gpuOptionsApi = 1;
 
+      // API level of tools/canvaskit-build's GPU diagnostics (returning cache getters,
+      // getResourceCacheUsage, purges, gpuStats); stock builds leave it undefined.
+      CanvasKit.diagnosticsApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
