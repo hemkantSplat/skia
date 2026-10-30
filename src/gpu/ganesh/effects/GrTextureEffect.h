@@ -156,6 +156,7 @@ public:
         UniformHandle fSubsetUni;
         UniformHandle fClampUni;
         UniformHandle fIDimsUni;
+        UniformHandle fYFlipUni;
         UniformHandle fBorderUni;
         GrGLSLShaderBuilder::SamplerHandle fSamplerHandle;
     };
@@ -206,6 +207,11 @@ private:
     bool onIsEqual(const GrFragmentProcessor&) const override;
 
     bool matrixEffectShouldNormalize() const;
+
+    bool usesNearestCells() const {
+        return fSamplerState.filter() == GrSamplerState::Filter::kNearest &&
+               fSamplerState.mipmapMode() == GrSamplerState::MipmapMode::kNone;
+    }
 
     bool hasClampToBorderShaderMode() const {
         return ShaderModeIsClampToBorder(fShaderModes[0]) ||

@@ -598,7 +598,7 @@ void Device::drawEdgeAAQuad(const SkRect& rect,
                                                 SkToGrQuadAAFlags(aaFlags),
                                                 this->localToDevice(),
                                                 clip,
-                                                nullptr);
+                                                SkMatrix::I());
     } else {
         // Use fillRectWithEdgeAA to preserve mathematical properties of dst being rectangular
         fSurfaceDrawContext->fillRectWithEdgeAA(this->clip(),

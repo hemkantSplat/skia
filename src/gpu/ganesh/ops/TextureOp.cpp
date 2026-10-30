@@ -350,14 +350,19 @@ private:
     friend class ::GrOp;
 
     struct ColorSubsetAndAA {
-        ColorSubsetAndAA(const SkPMColor4f& color, const SkRect& subsetRect, GrQuadAAFlags aaFlags)
+        ColorSubsetAndAA(const SkPMColor4f& color, const SkRect& subsetRect, GrQuadAAFlags aaFlags,
+                         const SkMatrix& deviceToLocal, const SkPoint3& textureNormalization)
                 : fColor(color)
+                , fDeviceToLocal(deviceToLocal)
+                , fTextureNormalization(textureNormalization)
                 , fSubsetRect(subsetRect)
                 , fAAFlags(static_cast<uint16_t>(aaFlags)) {
             SkASSERT(fAAFlags == static_cast<uint16_t>(aaFlags));
         }
 
         SkPMColor4f fColor;
+        SkMatrix fDeviceToLocal;
+        SkPoint3 fTextureNormalization;
         // If the op doesn't use subsets, this is ignored. If the op uses subsets and the specific
         // entry does not, this rect will equal kLargeRect, so it automatically has no effect.
         SkRect fSubsetRect;
@@ -493,6 +498,7 @@ private:
         NormalizationParams params = proxy_normalization_params(proxyView.proxy(),
                                                                 proxyView.origin());
         normalize_src_quad(params, &quad->fLocal);
+
         SkRect subset = normalize_and_inset_subset(filter, params, subsetRect);
 
         // Set bounds before clipping so we don't have to worry about unioning the bounds of
@@ -500,7 +506,7 @@ private:
         bool hairline = GrQuadUtils::WillUseHairline(quad->fDevice, aaType, quad->fEdgeFlags);
         this->setBounds(quad->fDevice.bounds(), HasAABloat(aaType == GrAAType::kCoverage),
                         hairline ? IsHairline::kYes : IsHairline::kNo);
-        int quadCount = this->appendQuad(quad, color, subset);
+        int quadCount = this->appendQuad(quad, color, subset, params);
         fViewCountPairs[0] = {proxyView.detachProxy(), quadCount};
     }
 
@@ -569,6 +575,8 @@ private:
             // Use dstRect/srcRect unless dstClip is provided, in which case derive new source
             // coordinates by mapping dstClipQuad by the dstRect to srcRect transform.
             DrawQuad quad;
+            quad.fDeviceToLocal = DrawQuad::DeviceToLocal(ctm,
+                    SkMatrix::RectToRect(set[q].fDstRect, set[q].fSrcRect));
             if (set[q].fDstClipQuad) {
                 quad.fDevice = GrQuad::MakeFromSkQuad(set[q].fDstClipQuad, ctm);
 
@@ -636,13 +644,14 @@ private:
                     curProxy, set[q].fProxyView.origin());
             normalize_src_quad(proxyParams, &quad.fLocal);
 
+
             // This subset may represent a no-op, otherwise it will have the origin and dimensions
             // of the texture applied to it.
             SkRect subset = normalize_and_inset_subset(filter, proxyParams, subsetForQuad);
 
             // Always append a quad (or 2 if perspective clipped), it just may refer back to a prior
             // ViewCountPair (this frequently happens when Chrome draws 9-patches).
-            fViewCountPairs[p].fQuadCnt += this->appendQuad(&quad, set[q].fColor, subset);
+            fViewCountPairs[p].fQuadCnt += this->appendQuad(&quad, set[q].fColor, subset, proxyParams);
         }
         // The # of proxy switches should match what was provided (+1 because we incremented p
         // when a new proxy was encountered).
@@ -657,7 +666,8 @@ private:
                         hasSubpixel ? IsHairline::kYes : IsHairline::kNo);
     }
 
-    int appendQuad(DrawQuad* quad, const SkPMColor4f& color, const SkRect& subset) {
+    int appendQuad(DrawQuad* quad, const SkPMColor4f& color, const SkRect& subset,
+                   const NormalizationParams& params) {
         DrawQuad extra;
         // Always clip to W0 to stay consistent with GrQuad::bounds
         int quadCount = GrQuadUtils::ClipToW0(quad, &extra);
@@ -667,9 +677,9 @@ private:
             quad->fEdgeFlags = GrQuadAAFlags::kNone;
             quadCount = 1;
         }
-        fQuads.append(quad->fDevice, {color, subset, quad->fEdgeFlags},  &quad->fLocal);
+        fQuads.append(quad->fDevice, {color, subset, quad->fEdgeFlags, quad->fDeviceToLocal, {params.fIW, params.fInvH, params.fYOffset}},  &quad->fLocal);
         if (quadCount > 1) {
-            fQuads.append(extra.fDevice, {color, subset, extra.fEdgeFlags}, &extra.fLocal);
+            fQuads.append(extra.fDevice, {color, subset, extra.fEdgeFlags, quad->fDeviceToLocal, {params.fIW, params.fInvH, params.fYOffset}}, &extra.fLocal);
             fMetadata.fTotalQuadCount++;
         }
         return quadCount;
@@ -765,7 +775,7 @@ private:
                     const ColorSubsetAndAA& info = iter.metadata();
 
                     tessellator.append(iter.deviceQuad(), iter.localQuad(), info.fColor,
-                                       info.fSubsetRect, info.aaFlags());
+                                       info.fSubsetRect, info.aaFlags(), info.fDeviceToLocal, info.fTextureNormalization);
                 }
 
                 SkASSERT((totVerticesSeen + meshVertexCnt) * vertexSize
@@ -877,7 +887,7 @@ private:
 
         desc->fVertexSpec = VertexSpec(quadType, colorType, srcQuadType, /* hasLocal */ true,
                                        subset, overallAAType, /* alpha as coverage */ true,
-                                       indexBufferOption);
+                                       indexBufferOption, /* hasTexture */ true);
 
         SkASSERT(desc->fNumTotalQuads <=
                  skgpu::ganesh::QuadPerEdgeAA::QuadLimit(indexBufferOption));
@@ -1386,6 +1396,8 @@ void TextureOp::AddTextureSetOps(ganesh::SurfaceDrawContext* sdc,
             }
 
             DrawQuad quad;
+            quad.fDeviceToLocal = DrawQuad::DeviceToLocal(ctm,
+                    SkMatrix::RectToRect(set[i].fDstRect, set[i].fSrcRect));
             quad.fEdgeFlags = set[i].fAAFlags;
             if (set[i].fDstClipQuad) {
                 quad.fDevice = GrQuad::MakeFromSkQuad(set[i].fDstClipQuad, ctm);
@@ -1553,7 +1565,7 @@ GR_DRAW_OP_TEST_DEFINE(TextureOpImpl) {
     auto alphaType = static_cast<SkAlphaType>(
             random->nextRangeU(kUnknown_SkAlphaType + 1, kLastEnum_SkAlphaType));
 
-    DrawQuad quad = {GrQuad::MakeFromRect(rect, viewMatrix), GrQuad(srcRect), aaFlags};
+    DrawQuad quad = DrawQuad::MakeFromRect(rect, viewMatrix, srcRect, aaFlags);
     return TextureOp::Make(context, std::move(proxyView), alphaType,
                            std::move(texXform), filter, mm, color, saturate,
                            SkBlendMode::kSrcOver, aaType, &quad,

@@ -131,10 +131,10 @@ public:
         // Conservatively keep track of the local coordinates; it may be that the paint doesn't
         // need them after analysis is finished. If the paint is known to be solid up front they
         // can be skipped entirely.
-        fQuads.append(quad->fDevice, {paintColor, quad->fEdgeFlags},
+        fQuads.append(quad->fDevice, {paintColor, quad->fEdgeFlags, quad->fDeviceToLocal},
                       fHelper.isTrivial() ? nullptr : &quad->fLocal);
         if (count > 1) {
-            fQuads.append(extra.fDevice, { paintColor, extra.fEdgeFlags },
+            fQuads.append(extra.fDevice, {paintColor, extra.fEdgeFlags, quad->fDeviceToLocal},
                           fHelper.isTrivial() ? nullptr : &extra.fLocal);
         }
     }
@@ -284,7 +284,7 @@ private:
             SkASSERT(iter.isLocalValid() != fHelper.isTrivial());
             auto info = iter.metadata();
             tessellator.append(iter.deviceQuad(), iter.localQuad(),
-                               info.fColor, kEmptyDomain, info.fAAFlags);
+                               info.fColor, kEmptyDomain, info.fAAFlags, info.fDeviceToLocal, {1, 1, 0});
         }
     }
 
@@ -459,10 +459,10 @@ private:
             return false;
         } else {
             // Can actually add the 1 or 2 quads representing the draw
-            fQuads.append(quad->fDevice, { color, quad->fEdgeFlags },
+            fQuads.append(quad->fDevice, {color, quad->fEdgeFlags, quad->fDeviceToLocal},
                           fHelper.isTrivial() ? nullptr : &quad->fLocal);
             if (count > 1) {
-                fQuads.append(extra.fDevice, { color, extra.fEdgeFlags },
+                fQuads.append(extra.fDevice, {color, extra.fEdgeFlags, quad->fDeviceToLocal},
                               fHelper.isTrivial() ? nullptr : &extra.fLocal);
             }
             // Update the bounds
@@ -475,6 +475,7 @@ private:
     struct ColorAndAA {
         SkPMColor4f fColor;
         GrQuadAAFlags fAAFlags;
+        SkMatrix fDeviceToLocal;
     };
 
     Helper fHelper;
@@ -510,7 +511,7 @@ GrOp::Owner FillRectOp::MakeNonAARect(GrRecordingContext* context,
                                       const SkMatrix& view,
                                       const SkRect& rect,
                                       const GrUserStencilSettings* stencil) {
-    DrawQuad quad{GrQuad::MakeFromRect(rect, view), GrQuad(rect), GrQuadAAFlags::kNone};
+    DrawQuad quad = DrawQuad::MakeFromRect(rect, view, rect, GrQuadAAFlags::kNone);
     return FillRectOpImpl::Make(context, std::move(paint), GrAAType::kNone, &quad, stencil,
                                 InputFlags::kNone);
 }
@@ -526,9 +527,8 @@ GrOp::Owner FillRectOp::MakeOp(GrRecordingContext* context,
     // First make a draw op for the first quad in the set
     SkASSERT(cnt > 0);
 
-    DrawQuad quad{GrQuad::MakeFromRect(quads[0].fRect, viewMatrix),
-                  GrQuad::MakeFromRect(quads[0].fRect, quads[0].fLocalMatrix),
-                  quads[0].fAAFlags};
+    DrawQuad quad = DrawQuad::MakeFromRect(quads[0].fRect, viewMatrix,
+                                                 quads[0].fLocalMatrix, quads[0].fAAFlags);
     paint.setColor4f(quads[0].fColor);
     GrOp::Owner op = FillRectOp::Make(context, std::move(paint), aaType,
                                       &quad, stencilSettings, InputFlags::kNone);
@@ -537,9 +537,8 @@ GrOp::Owner FillRectOp::MakeOp(GrRecordingContext* context,
     *numConsumed = 1;
     // Accumulate remaining quads similar to onCombineIfPossible() without creating an op
     for (int i = 1; i < cnt; ++i) {
-        quad = {GrQuad::MakeFromRect(quads[i].fRect, viewMatrix),
-                GrQuad::MakeFromRect(quads[i].fRect, quads[i].fLocalMatrix),
-                quads[i].fAAFlags};
+        quad = DrawQuad::MakeFromRect(quads[i].fRect, viewMatrix,
+                                      quads[i].fLocalMatrix, quads[i].fAAFlags);
 
         GrAAType resolvedAA;
         GrQuadUtils::ResolveAAType(aaType, quads[i].fAAFlags, quad.fDevice,
@@ -609,21 +608,19 @@ GR_DRAW_OP_TEST_DEFINE(FillRectOp) {
         if (random->nextBool()) {
             // Single local matrix
             SkMatrix localMatrix = GrTest::TestMatrixInvertible(random);
-            DrawQuad quad = {GrQuad::MakeFromRect(rect, viewMatrix),
-                             GrQuad::MakeFromRect(rect, localMatrix), aaFlags};
+            DrawQuad quad = DrawQuad::MakeFromRect(rect, viewMatrix, localMatrix, aaFlags);
             return skgpu::ganesh::FillRectOp::Make(
                     context, std::move(paint), aaType, &quad, stencil);
         } else {
             // Pass local rect directly
             SkRect localRect = GrTest::TestRect(random);
-            DrawQuad quad = {GrQuad::MakeFromRect(rect, viewMatrix),
-                             GrQuad(localRect), aaFlags};
+            DrawQuad quad = DrawQuad::MakeFromRect(rect, viewMatrix, localRect, aaFlags);
             return skgpu::ganesh::FillRectOp::Make(
                     context, std::move(paint), aaType, &quad, stencil);
         }
     } else {
         // The simplest constructor
-        DrawQuad quad = {GrQuad::MakeFromRect(rect, viewMatrix), GrQuad(rect), aaFlags};
+        DrawQuad quad = DrawQuad::MakeFromRect(rect, viewMatrix, rect, aaFlags);
         return skgpu::ganesh::FillRectOp::Make(context, std::move(paint), aaType, &quad, stencil);
     }
 }

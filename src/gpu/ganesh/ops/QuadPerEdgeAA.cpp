@@ -64,7 +64,9 @@ void write_quad_generic(VertexWriter* vb,
                         const float coverage[4],
                         const SkPMColor4f& color,
                         const SkRect& geomSubset,
-                        const SkRect& texSubset) {
+                        const SkRect& texSubset,
+                    const SkMatrix& deviceToLocal,
+                    const SkPoint3& textureNormalization) {
     static constexpr auto If = VertexWriter::If<float>;
 
     SkASSERT(!spec.hasLocalCoords() || localQuad);
@@ -84,11 +86,16 @@ void write_quad_generic(VertexWriter* vb,
             *vb << VertexColor(color * (mode == CoverageMode::kWithColor ? coverage[i] : 1), wide);
         }
 
-        // save local position
+        // Repeat the original draw matrix, independent of tessellated positions.
         if (spec.hasLocalCoords()) {
-            *vb << localQuad->x(i)
-                << localQuad->y(i)
-                << If(spec.localQuadType() == GrQuad::Type::kPerspective, localQuad->w(i));
+            for (int row = 0; row < 3; ++row) {
+                *vb << deviceToLocal[3 * row] << deviceToLocal[3 * row + 1]
+                    << deviceToLocal[3 * row + 2];
+            }
+        }
+
+        if (spec.hasTexture()) {
+            *vb << textureNormalization.fX << textureNormalization.fY << textureNormalization.fZ;
         }
 
         // save the geometry subset
@@ -115,7 +122,9 @@ void write_2d_color(VertexWriter* vb,
                     const float coverage[4],
                     const SkPMColor4f& color,
                     const SkRect& geomSubset,
-                    const SkRect& texSubset) {
+                    const SkRect& texSubset,
+                    const SkMatrix& deviceToLocal,
+                    const SkPoint3& textureNormalization) {
     // Assert assumptions about VertexSpec
     SkASSERT(spec.deviceQuadType() != GrQuad::Type::kPerspective);
     SkASSERT(!spec.hasLocalCoords());
@@ -135,189 +144,6 @@ void write_2d_color(VertexWriter* vb,
         *vb << deviceQuad->x(i)
             << deviceQuad->y(i)
             << VertexColor(color * coverage[i], wide);
-    }
-}
-
-// 2D (XY), no explicit coverage, UV locals, no color, no geometry subset, no texture subset
-// This represents opaque, non AA, textured rects
-void write_2d_uv(VertexWriter* vb,
-                 const VertexSpec& spec,
-                 const GrQuad* deviceQuad,
-                 const GrQuad* localQuad,
-                 const float coverage[4],
-                 const SkPMColor4f& color,
-                 const SkRect& geomSubset,
-                 const SkRect& texSubset) {
-    // Assert assumptions about VertexSpec
-    SkASSERT(spec.deviceQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.hasLocalCoords() && spec.localQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.coverageMode() == CoverageMode::kNone);
-    SkASSERT(!spec.hasVertexColors());
-    SkASSERT(!spec.requiresGeometrySubset());
-    SkASSERT(!spec.hasSubset());
-    SkASSERT(localQuad);
-
-    for (int i = 0; i < 4; ++i) {
-        *vb << deviceQuad->x(i)
-            << deviceQuad->y(i)
-            << localQuad->x(i)
-            << localQuad->y(i);
-    }
-}
-
-// 2D (XY), no explicit coverage, UV locals, vertex color, no geometry or texture subsets
-// This represents transparent, non AA (or AA with cov. as alpha), textured rects
-void write_2d_color_uv(VertexWriter* vb,
-                       const VertexSpec& spec,
-                       const GrQuad* deviceQuad,
-                       const GrQuad* localQuad,
-                       const float coverage[4],
-                       const SkPMColor4f& color,
-                       const SkRect& geomSubset,
-                       const SkRect& texSubset) {
-    // Assert assumptions about VertexSpec
-    SkASSERT(spec.deviceQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.hasLocalCoords() && spec.localQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.coverageMode() == CoverageMode::kNone ||
-             spec.coverageMode() == CoverageMode::kWithColor);
-    SkASSERT(spec.hasVertexColors());
-    SkASSERT(!spec.requiresGeometrySubset());
-    SkASSERT(!spec.hasSubset());
-    SkASSERT(localQuad);
-
-    auto wide = spec.colorStorage();
-    for (int i = 0; i < 4; ++i) {
-        // If this is not coverage-with-alpha, make sure coverage == 1 so it doesn't do anything
-        SkASSERT(spec.coverageMode() == CoverageMode::kWithColor || coverage[i] == 1.f);
-        *vb << deviceQuad->x(i)
-            << deviceQuad->y(i)
-            << VertexColor(color * coverage[i], wide)
-            << localQuad->x(i)
-            << localQuad->y(i);
-    }
-}
-
-// 2D (XY), explicit coverage, UV locals, no color, no geometry subset, no texture subset
-// This represents opaque, AA, textured rects
-void write_2d_cov_uv(VertexWriter* vb,
-                     const VertexSpec& spec,
-                     const GrQuad* deviceQuad,
-                     const GrQuad* localQuad,
-                     const float coverage[4],
-                     const SkPMColor4f& color,
-                     const SkRect& geomSubset,
-                     const SkRect& texSubset) {
-    // Assert assumptions about VertexSpec
-    SkASSERT(spec.deviceQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.hasLocalCoords() && spec.localQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.coverageMode() == CoverageMode::kWithPosition);
-    SkASSERT(!spec.hasVertexColors());
-    SkASSERT(!spec.requiresGeometrySubset());
-    SkASSERT(!spec.hasSubset());
-    SkASSERT(localQuad);
-
-    for (int i = 0; i < 4; ++i) {
-        *vb << deviceQuad->x(i)
-            << deviceQuad->y(i)
-            << coverage[i]
-            << localQuad->x(i)
-            << localQuad->y(i);
-    }
-}
-
-// NOTE: The three _strict specializations below match the non-strict uv functions above, except
-// that they also write the UV subset. These are included to benefit SkiaRenderer, which must make
-// use of both fast and strict constrained subsets. When testing _strict was not that common across
-// GMS, SKPs, and SVGs but we have little visibility into actual SkiaRenderer statistics. If
-// SkiaRenderer can avoid subsets more, these 3 functions should probably be removed for simplicity.
-
-// 2D (XY), no explicit coverage, UV locals, no color, tex subset but no geometry subset
-// This represents opaque, non AA, textured rects with strict uv sampling
-void write_2d_uv_strict(VertexWriter* vb,
-                        const VertexSpec& spec,
-                        const GrQuad* deviceQuad,
-                        const GrQuad* localQuad,
-                        const float coverage[4],
-                        const SkPMColor4f& color,
-                        const SkRect& geomSubset,
-                        const SkRect& texSubset) {
-    // Assert assumptions about VertexSpec
-    SkASSERT(spec.deviceQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.hasLocalCoords() && spec.localQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.coverageMode() == CoverageMode::kNone);
-    SkASSERT(!spec.hasVertexColors());
-    SkASSERT(!spec.requiresGeometrySubset());
-    SkASSERT(spec.hasSubset());
-    SkASSERT(localQuad);
-
-    for (int i = 0; i < 4; ++i) {
-        *vb << deviceQuad->x(i)
-            << deviceQuad->y(i)
-            << localQuad->x(i)
-            << localQuad->y(i)
-            << texSubset;
-    }
-}
-
-// 2D (XY), no explicit coverage, UV locals, vertex color, tex subset but no geometry subset
-// This represents transparent, non AA (or AA with cov. as alpha), textured rects with strict sample
-void write_2d_color_uv_strict(VertexWriter* vb,
-                              const VertexSpec& spec,
-                              const GrQuad* deviceQuad,
-                              const GrQuad* localQuad,
-                              const float coverage[4],
-                              const SkPMColor4f& color,
-                              const SkRect& geomSubset,
-                              const SkRect& texSubset) {
-    // Assert assumptions about VertexSpec
-    SkASSERT(spec.deviceQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.hasLocalCoords() && spec.localQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.coverageMode() == CoverageMode::kNone ||
-             spec.coverageMode() == CoverageMode::kWithColor);
-    SkASSERT(spec.hasVertexColors());
-    SkASSERT(!spec.requiresGeometrySubset());
-    SkASSERT(spec.hasSubset());
-    SkASSERT(localQuad);
-
-    auto wide = spec.colorStorage();
-    for (int i = 0; i < 4; ++i) {
-        // If this is not coverage-with-alpha, make sure coverage == 1 so it doesn't do anything
-        SkASSERT(spec.coverageMode() == CoverageMode::kWithColor || coverage[i] == 1.f);
-        *vb << deviceQuad->x(i)
-            << deviceQuad->y(i)
-            << VertexColor(color * coverage[i], wide)
-            << localQuad->x(i)
-            << localQuad->y(i)
-            << texSubset;
-    }
-}
-
-// 2D (XY), explicit coverage, UV locals, no color, tex subset but no geometry subset
-// This represents opaque, AA, textured rects with strict uv sampling
-void write_2d_cov_uv_strict(VertexWriter* vb,
-                            const VertexSpec& spec,
-                            const GrQuad* deviceQuad,
-                            const GrQuad* localQuad,
-                            const float coverage[4],
-                            const SkPMColor4f& color,
-                            const SkRect& geomSubset,
-                            const SkRect& texSubset) {
-    // Assert assumptions about VertexSpec
-    SkASSERT(spec.deviceQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.hasLocalCoords() && spec.localQuadType() != GrQuad::Type::kPerspective);
-    SkASSERT(spec.coverageMode() == CoverageMode::kWithPosition);
-    SkASSERT(!spec.hasVertexColors());
-    SkASSERT(!spec.requiresGeometrySubset());
-    SkASSERT(spec.hasSubset());
-    SkASSERT(localQuad);
-
-    for (int i = 0; i < 4; ++i) {
-        *vb << deviceQuad->x(i)
-            << deviceQuad->y(i)
-            << coverage[i]
-            << localQuad->x(i)
-            << localQuad->y(i)
-            << texSubset;
     }
 }
 
@@ -348,39 +174,11 @@ ColorType MinColorType(SkPMColor4f color, GrClampType clampType, const GrCaps& c
 ////////////////// Tessellator Implementation
 
 Tessellator::WriteQuadProc Tessellator::GetWriteQuadProc(const VertexSpec& spec) {
-    // All specialized writing functions requires 2D geometry and no geometry subset. This is not
-    // the same as just checking device type vs. kRectilinear since non-AA general 2D quads do not
-    // require a geometry subset and could then go through a fast path.
-    if (spec.deviceQuadType() != GrQuad::Type::kPerspective && !spec.requiresGeometrySubset()) {
-        CoverageMode mode = spec.coverageMode();
-        if (spec.hasVertexColors()) {
-            if (mode != CoverageMode::kWithPosition) {
-                // Vertex colors, but no explicit coverage
-                if (!spec.hasLocalCoords()) {
-                    // Non-UV with vertex colors (possibly with coverage folded into alpha)
-                    return write_2d_color;
-                } else if (spec.localQuadType() != GrQuad::Type::kPerspective) {
-                    // UV locals with vertex colors (possibly with coverage-as-alpha)
-                    return spec.hasSubset() ? write_2d_color_uv_strict : write_2d_color_uv;
-                }
-            }
-            // Else fall through; this is a spec that requires vertex colors and explicit coverage,
-            // which means it's anti-aliased and the FPs don't support coverage as alpha, or
-            // it uses 3D local coordinates.
-        } else if (spec.hasLocalCoords() && spec.localQuadType() != GrQuad::Type::kPerspective) {
-            if (mode == CoverageMode::kWithPosition) {
-                // UV locals with explicit coverage
-                return spec.hasSubset() ? write_2d_cov_uv_strict : write_2d_cov_uv;
-            } else {
-                SkASSERT(mode == CoverageMode::kNone);
-                return spec.hasSubset() ? write_2d_uv_strict : write_2d_uv;
-            }
-        }
-        // Else fall through to generic vertex function; this is a spec that has no vertex colors
-        // and [no|uvr] local coords, which doesn't happen often enough to warrant specialization.
+    if (!spec.hasLocalCoords() && spec.hasVertexColors() &&
+        spec.deviceQuadType() != GrQuad::Type::kPerspective &&
+        !spec.requiresGeometrySubset() && spec.coverageMode() != CoverageMode::kWithPosition) {
+        return write_2d_color;
     }
-
-    // Arbitrary spec hits the slow path
     return write_quad_generic;
 }
 
@@ -390,7 +188,9 @@ Tessellator::Tessellator(const VertexSpec& spec, char* vertices)
         , fWriteProc(Tessellator::GetWriteQuadProc(spec)) {}
 
 void Tessellator::append(GrQuad* deviceQuad, GrQuad* localQuad,
-                         const SkPMColor4f& color, const SkRect& uvSubset, GrQuadAAFlags aaFlags) {
+                         const SkPMColor4f& color, const SkRect& uvSubset, GrQuadAAFlags aaFlags,
+                         const SkMatrix& deviceToLocal,
+                        const SkPoint3& textureNormalization) {
     // We allow Tessellator to be created with a null vertices pointer for convenience, but it is
     // assumed it will never actually be used in those cases.
     SkASSERT(fVertexWriter);
@@ -422,11 +222,11 @@ void Tessellator::append(GrQuad* deviceQuad, GrQuad* localQuad,
             // Have to write the coverage AA vertex structure, but there's no math to be done for a
             // non-aa quad batched into a coverage AA op.
             fWriteProc(&fVertexWriter, fVertexSpec, deviceQuad, localQuad, kFullCoverage, color,
-                       geomSubset, uvSubset);
+                       geomSubset, uvSubset, deviceToLocal, textureNormalization);
             // Since we pass the same corners in, the outer vertex structure will have 0 area and
             // the coverage interpolation from 1 to 0 will not be visible.
             fWriteProc(&fVertexWriter, fVertexSpec, deviceQuad, localQuad, kZeroCoverage, color,
-                       geomSubset, uvSubset);
+                       geomSubset, uvSubset, deviceToLocal, textureNormalization);
         } else {
             // Reset the tessellation helper to match the current geometry
             fAAHelper.reset(*deviceQuad, localQuad);
@@ -447,7 +247,7 @@ void Tessellator::append(GrQuad* deviceQuad, GrQuad* localQuad,
             float coverage[4];
             fAAHelper.inset(edgeDistances, deviceQuad, localQuad).store(coverage);
             fWriteProc(&fVertexWriter, fVertexSpec, deviceQuad, localQuad, coverage, color,
-                       geomSubset, uvSubset);
+                       geomSubset, uvSubset, deviceToLocal, textureNormalization);
 
             // Then outer vertices, which use 0.f for their coverage. If the inset was degenerate
             // to a line (had all coverages < 1), tweak the outset distance so the outer frame's
@@ -470,14 +270,14 @@ void Tessellator::append(GrQuad* deviceQuad, GrQuad* localQuad,
             }
             fAAHelper.outset(edgeDistances, deviceQuad, localQuad);
             fWriteProc(&fVertexWriter, fVertexSpec, deviceQuad, localQuad, kZeroCoverage, color,
-                       geomSubset, uvSubset);
+                       geomSubset, uvSubset, deviceToLocal, textureNormalization);
         }
     } else {
         // No outsetting needed, just write a single quad with full coverage
         SkASSERT(fVertexSpec.coverageMode() == CoverageMode::kNone &&
                  !fVertexSpec.requiresGeometrySubset());
         fWriteProc(&fVertexWriter, fVertexSpec, deviceQuad, localQuad, kFullCoverage, color,
-                   kIgnoredSubset, uvSubset);
+                   kIgnoredSubset, uvSubset, deviceToLocal, textureNormalization);
     }
 }
 
@@ -603,7 +403,8 @@ size_t VertexSpec::vertexSize() const {
         count += GrVertexAttribTypeSize(kFloat4_GrVertexAttribType);
     }
 
-    count += this->localDimensionality() * GrVertexAttribTypeSize(kFloat_GrVertexAttribType);
+    count += this->hasLocalCoords() ? 9 * sizeof(float) : 0;
+    count += this->hasTexture() ? 3 * sizeof(float) : 0;
 
     if (ColorType::kByte == this->colorType()) {
         count += GrVertexAttribTypeSize(kUByte4_norm_GrVertexAttribType);
@@ -651,13 +452,17 @@ public:
         // texturing, device-dimensions are single bit flags
         b->addBool(fTexSubset.isInitialized(),    "subset");
         b->addBool(fSampler.isInitialized(),      "textured");
+        if (fSampler.isInitialized()) {
+            b->addBool(fSampler.samplerState().filter() == GrSamplerState::Filter::kNearest &&
+                       fSampler.samplerState().mipmapMode() == GrSamplerState::MipmapMode::kNone,
+                       "nearestCells");
+        }
         b->addBool(fNeedsPerspective,             "perspective");
         b->addBool((fSaturate == Saturate::kYes), "saturate");
 
-        b->addBool(fLocalCoord.isInitialized(),   "hasLocalCoords");
-        if (fLocalCoord.isInitialized()) {
-            // 2D (0) or 3D (1)
-            b->addBits(1, (kFloat3_GrVertexAttribType == fLocalCoord.cpuType()), "localCoordsType");
+        b->addBool(fLocalMatrix0.isInitialized(), "hasLocalCoords");
+        if (fLocalMatrix0.isInitialized()) {
+            b->addBits(1, 1, "fragmentLocalCoords");
         }
         b->addBool(fColor.isInitialized(),        "hasColor");
         if (fColor.isInitialized()) {
@@ -718,10 +523,22 @@ public:
                     gpArgs->fPositionVar = gp.fPosition.asShaderVar();
                 }
 
-                // This attribute will be uninitialized if earlier FP analysis determined no
-                // local coordinates are needed (and this will not include the inline texture
-                // fetch this GP does before invoking FPs).
-                gpArgs->fLocalCoordVar = gp.fLocalCoord.asShaderVar();
+                if (gp.fLocalMatrix0.isInitialized()) {
+                    const Attribute* rows[] = {&gp.fLocalMatrix0, &gp.fLocalMatrix1, &gp.fLocalMatrix2};
+                    const char* names[] = {"localMatrix0", "localMatrix1", "localMatrix2"};
+                    for (int i = 0; i < 3; ++i) {
+                        args.fFragBuilder->codeAppendf("float3 %s;", names[i]);
+                        args.fVaryingHandler->addPassThroughAttribute(rows[i]->asShaderVar(),
+                                names[i], Interpolation::kMustBeFlat);
+                    }
+                    args.fFragBuilder->codeAppend(
+                            "float3 localH = float3(dot(localMatrix0, sk_FragCoord.xy1),"
+                            "dot(localMatrix1, sk_FragCoord.xy1),"
+                            "dot(localMatrix2, sk_FragCoord.xy1));"
+                            "float2 localCoord = localH.xy / localH.z;");
+                    gpArgs->fLocalCoordVar = GrShaderVar("localCoord", SkSLType::kFloat2);
+                    gpArgs->fLocalCoordShader = kFragment_GrShaderType;
+                }
 
                 // Solid color before any texturing gets modulated in
                 const char* blendDst;
@@ -748,18 +565,14 @@ public:
                     // Texture coordinates clamped by the subset on the fragment shader; if the GP
                     // has a texture, it's guaranteed to have local coordinates
                     args.fFragBuilder->codeAppend("float2 texCoord;");
-                    if (gp.fLocalCoord.cpuType() == kFloat3_GrVertexAttribType) {
-                        // Can't do a pass through since we need to perform perspective division
-                        GrGLSLVarying v(gp.fLocalCoord.gpuType());
-                        args.fVaryingHandler->addVarying(gp.fLocalCoord.name(), &v);
-                        args.fVertBuilder->codeAppendf("%s = %s;",
-                                                       v.vsOut(), gp.fLocalCoord.name());
-                        args.fFragBuilder->codeAppendf("texCoord = %s.xy / %s.z;",
-                                                       v.fsIn(), v.fsIn());
-                    } else {
-                        args.fVaryingHandler->addPassThroughAttribute(gp.fLocalCoord.asShaderVar(),
-                                                                      "texCoord");
-                    }
+                    args.fFragBuilder->codeAppend("float3 textureNormalization;");
+                    args.fVaryingHandler->addPassThroughAttribute(gp.fTextureNormalization.asShaderVar(),
+                            "textureNormalization", Interpolation::kMustBeFlat);
+                    args.fFragBuilder->codeAppendf(
+                            "texCoord = %s * textureNormalization.xy + float2(0, textureNormalization.z);",
+                            gp.fSampler.samplerState().filter() == GrSamplerState::Filter::kNearest &&
+                            gp.fSampler.samplerState().mipmapMode() == GrSamplerState::MipmapMode::kNone
+                                    ? "(ceil(localCoord) - 0.5)" : "localCoord");
 
                     // Clamp the now 2D localCoordName variable by the subset if it is provided
                     if (gp.fTexSubset.isInitialized()) {
@@ -891,12 +704,15 @@ private:
             fGeomSubset = {"geomSubset", kFloat4_GrVertexAttribType, SkSLType::kFloat4};
         }
 
-        int localDim = spec.localDimensionality();
-        if (localDim == 3) {
-            fLocalCoord = {"localCoord", kFloat3_GrVertexAttribType, SkSLType::kFloat3};
-        } else if (localDim == 2) {
-            fLocalCoord = {"localCoord", kFloat2_GrVertexAttribType, SkSLType::kFloat2};
-        } // else localDim == 0 and attribute remains uninitialized
+        if (spec.hasLocalCoords()) {
+            fLocalMatrix0 = {"localMatrix0", kFloat3_GrVertexAttribType, SkSLType::kFloat3};
+            fLocalMatrix1 = {"localMatrix1", kFloat3_GrVertexAttribType, SkSLType::kFloat3};
+            fLocalMatrix2 = {"localMatrix2", kFloat3_GrVertexAttribType, SkSLType::kFloat3};
+        }
+
+        if (spec.hasTexture()) {
+            fTextureNormalization = {"textureNormalization", kFloat3_GrVertexAttribType, SkSLType::kFloat3};
+        }
 
         if (spec.hasVertexColors()) {
             fColor = MakeColorAttribute("color", spec.colorStorage());
@@ -906,7 +722,7 @@ private:
             fTexSubset = {"texSubset", kFloat4_GrVertexAttribType, SkSLType::kFloat4};
         }
 
-        this->setVertexAttributesWithImplicitOffsets(&fPosition, 6);
+        this->setVertexAttributesWithImplicitOffsets(&fPosition, 9);
     }
 
     const TextureSampler& onTextureSampler(int) const override { return fSampler; }
@@ -914,7 +730,10 @@ private:
     Attribute fPosition; // May contain coverage as last channel
     Attribute fCoverage; // Used for non-perspective position to avoid Intel Metal issues
     Attribute fColor; // May have coverage modulated in if the FPs support it
-    Attribute fLocalCoord;
+    Attribute fLocalMatrix0;
+    Attribute fLocalMatrix1;
+    Attribute fLocalMatrix2;
+    Attribute fTextureNormalization;
     Attribute fGeomSubset; // Screen-space bounding box on geometry+aa outset
     Attribute fTexSubset; // Texture-space bounding box on local coords
 
