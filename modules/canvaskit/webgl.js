@@ -112,6 +112,10 @@
       // getResourceCacheUsage, purges, gpuStats); stock builds leave it undefined.
       CanvasKit.diagnosticsApi = 1;
 
+      // API level of tools/canvaskit-build's compositing primitives (Blender.MakeAdd, saveLayer
+      // colorSpace, ColorSpace.SRGB_LINEAR, WebGL advanced blend); stock builds leave it undefined.
+      CanvasKit.compositingApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
