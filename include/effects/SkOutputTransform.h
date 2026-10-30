@@ -37,11 +37,11 @@ public:
     static sk_sp<SkColorFilter> ToneMap(ToneCurve curve, float exposure);
 
     /** Floats in the parametric grade's uniform block. */
-    static constexpr int kGradeUniformCount = 30;
+    static constexpr int kGradeUniformCount = 31;
 
     /**
      *  The parametric grade on scene-linear Rec.709: `uniforms` is the packed block (balance 3x3,
-     *  lift, slope, power, contrast, saturation, vibrance, hue 3x3; matrices column-major) and
+     *  lift, slope, power, contrast, saturation, vibrance, hue 3x3, sepia; matrices column-major) and
      *  `curves` the 256x2 table strip (row 0 red/green/blue, row 1 master), sampled at texel
      *  centres. Null for a wrong-sized block or no curves.
      */
