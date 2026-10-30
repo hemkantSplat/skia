@@ -2663,7 +2663,17 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                             optional_override([](float dx, float dy, sk_sp<SkImageFilter> input)
                                                       -> sk_sp<SkImageFilter> {
                                 return SkImageFilters::Offset(dx, dy, input);
-                            }));
+                            })).class_function("_MakeTransformBlur", optional_override([](WASMPointerF32 pPtr, int count,
+                                                                   int minSamples, int maxSamples,
+                                                                   sk_sp<SkImageFilter> input)->sk_sp<SkImageFilter> {
+            // JS passes the path as consecutive row-major 4x4s; the factory validates the count.
+            const float* floats = reinterpret_cast<const float*>(pPtr);
+            std::vector<SkM44> path;
+            for (int i = 0; i < count; ++i) {
+                path.push_back(SkM44::RowMajor(floats + 16 * i));
+            }
+            return SkImageFilters::TransformBlur(path, minSamples, maxSamples, input);
+        }));
 
     class_<SkMaskFilter>("MaskFilter")
             .smart_ptr<sk_sp<SkMaskFilter>>("sk_sp<MaskFilter>")
