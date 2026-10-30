@@ -37,6 +37,7 @@ public:
 
         void reset() {
             fShaderCompilations = 0;
+            fSkSLTranslations = 0;
             fNumInlineCompilationFailures = 0;
             fNumPreCompilationFailures = 0;
             fNumCompilationFailures = 0;
@@ -50,6 +51,10 @@ public:
 
         int shaderCompilations() const { return fShaderCompilations; }
         void incShaderCompilations() { fShaderCompilations++; }
+
+        // SkSL -> backend source translations of program stages (not cache-served ones).
+        int skslTranslations() const { return fSkSLTranslations; }
+        void incSkSLTranslations() { fSkSLTranslations++; }
 
         int numInlineCompilationFailures() const { return fNumInlineCompilationFailures; }
         void incNumInlineCompilationFailures() { ++fNumInlineCompilationFailures; }
@@ -87,6 +92,7 @@ public:
 
     private:
         std::atomic<int> fShaderCompilations{0};
+        std::atomic<int> fSkSLTranslations{0};
 
         std::atomic<int> fNumInlineCompilationFailures{0};
         std::array<std::atomic<int>, kNumProgramCacheResults> fInlineProgramCacheStats = {};
@@ -100,6 +106,7 @@ public:
 
 #else
         void incShaderCompilations() {}
+        void incSkSLTranslations() {}
         void incNumInlineCompilationFailures() {}
         void incNumInlineProgramCacheResult(ProgramCacheResult stat) {}
         void incNumPreCompilationFailures() {}
