@@ -97,6 +97,9 @@
 #include "src/gpu/RefCntedCallback.h"
 #include "src/gpu/ganesh/GrProxyProvider.h"
 #include "src/gpu/ganesh/GrRecordingContextPriv.h"
+#include "src/gpu/ganesh/Device.h"
+#include "src/gpu/ganesh/GrRenderTargetProxy.h"
+#include "src/gpu/ganesh/surface/SkSurface_Ganesh.h"
 #include "src/gpu/ganesh/gl/GrGLDefines.h"
 
 #include <GLES2/gl2.h>
@@ -368,6 +371,37 @@ sk_sp<SkSurface> MakeRenderTarget(sk_sp<GrDirectContext> dContext, int width, in
                                                       nullptr,
                                                       true));
     return surface;
+}
+
+// Explicit surface settings; sampleCount <= 0 keeps the parent's (makeSurface) or 1 (MakeRenderTarget).
+struct SimpleSurfaceOptions {
+    int sampleCount;
+};
+
+SkSurfaceProps toSurfaceProps(const SkSurfaceProps& base, const SimpleSurfaceOptions&) {
+    return base;
+}
+
+// SkSurface::makeSurface (parent origin and props, unbudgeted), with an explicit sample count.
+sk_sp<SkSurface> MakeSurfaceWithOptions(SkSurface& parent, SimpleImageInfo sii,
+                                        SimpleSurfaceOptions options) {
+    if (!parent.recordingContext()) {
+        return nullptr;
+    }
+    GrSurfaceProxyView view = static_cast<SkSurface_Ganesh&>(parent).getDevice()->readSurfaceView();
+    int sampleCount = options.sampleCount > 0 ? options.sampleCount
+                                              : view.asRenderTargetProxy()->numSamples();
+    SkSurfaceProps props = toSurfaceProps(parent.props(), options);
+    return SkSurfaces::RenderTarget(parent.recordingContext(), skgpu::Budgeted::kNo,
+                                    toSkImageInfo(sii), sampleCount, view.origin(), &props);
+}
+
+sk_sp<SkSurface> MakeRenderTargetWithOptions(sk_sp<GrDirectContext> dContext, SimpleImageInfo sii,
+                                             SimpleSurfaceOptions options) {
+    SkSurfaceProps props = toSurfaceProps(SkSurfaceProps(), options);
+    return SkSurfaces::RenderTarget(dContext.get(), skgpu::Budgeted::kYes, toSkImageInfo(sii),
+                                    std::max(options.sampleCount, 1),
+                                    kBottomLeft_GrSurfaceOrigin, &props, true);
 }
 
 sk_sp<SkSurface> MakeRenderTarget(sk_sp<GrDirectContext> dContext, SimpleImageInfo sii) {
@@ -1164,6 +1198,9 @@ EMSCRIPTEN_BINDINGS(Skia) {
     function("_MakeRenderTargetII",
              select_overload<sk_sp<SkSurface>(sk_sp<GrDirectContext>, SimpleImageInfo)>(
                      &MakeRenderTarget));
+    function("_MakeRenderTargetWithOptions", &MakeRenderTargetWithOptions);
+    value_object<SimpleSurfaceOptions>("SurfaceOptions")
+        .field("sampleCount", &SimpleSurfaceOptions::sampleCount);
 #endif  // CK_ENABLE_WEBGL
 
 #ifdef CK_ENABLE_WEBGPU
@@ -2944,6 +2981,9 @@ EMSCRIPTEN_BINDINGS(Skia) {
                         return self.makeSurface(toSkImageInfo(sii));
                     }),
                     allow_raw_pointers())
+#ifdef CK_ENABLE_WEBGL
+        .function("_makeSurfaceWithOptions", &MakeSurfaceWithOptions)
+#endif
 #ifdef ENABLE_GPU
             .function("reportBackendTypeIsGPU", optional_override([](SkSurface& self) -> bool {
                           return self.getCanvas()->recordingContext() != nullptr;
