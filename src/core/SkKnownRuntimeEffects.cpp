@@ -402,6 +402,17 @@ SkRuntimeEffect* make_arithmetic_blender() {
                                options);
 }
 
+SkRuntimeEffect* make_add_blender() {
+    SkRuntimeEffect::Options options = get_options(StableKey::kAdd);
+
+    static constexpr char kAddBlenderCode[] =
+        "half4 main(half4 src, half4 dst) {"
+            "return src + dst;"
+        "}";
+
+    return SkMakeRuntimeEffect(SkRuntimeEffect::MakeForBlender, kAddBlenderCode, options);
+}
+
 SkRuntimeEffect* make_high_contrast_color_filter() {
     SkRuntimeEffect::Options options = get_options(StableKey::kHighContrast);
 
@@ -581,6 +592,10 @@ const SkRuntimeEffect* GetKnownRuntimeEffect(StableKey stableKey) {
         case StableKey::kArithmetic: {
             static const SkRuntimeEffect* sArithmeticEffect = make_arithmetic_blender();
             return sArithmeticEffect;
+        }
+        case StableKey::kAdd: {
+            static const SkRuntimeEffect* sAddEffect = make_add_blender();
+            return sAddEffect;
         }
 
         // Color Filters

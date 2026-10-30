@@ -20,6 +20,13 @@ public:
      */
     static sk_sp<SkBlender> Arithmetic(float k1, float k2, float k3, float k4, bool enforcePremul);
 
+    /**
+     *  Create a blender that returns src + dst per premul channel, clamped only where the
+     *  destination cannot store values above 1 (unlike SkBlendMode::kPlus, which always saturates).
+     *  Ganesh maps it to fixed-function (ONE, ONE), so float targets need no destination read.
+     */
+    static sk_sp<SkBlender> Add();
+
 private:
     SkBlenders() = delete;
 };

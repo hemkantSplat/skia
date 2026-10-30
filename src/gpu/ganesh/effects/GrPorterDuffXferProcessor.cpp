@@ -302,8 +302,22 @@ std::unique_ptr<GrXferProcessor::ProgramImpl> PDLCDXferProcessor::makeProgramImp
 
 ///////////////////////////////////////////////////////////////////////////////
 
-constexpr GrPorterDuffXPFactory::GrPorterDuffXPFactory(SkBlendMode xfermode)
-        : fBlendMode(xfermode) {}
+constexpr GrPorterDuffXPFactory::GrPorterDuffXPFactory(SkBlendMode xfermode, bool unclampedPlus)
+        : fBlendMode(xfermode), fUnclampedPlus(unclampedPlus) {}
+
+const GrXPFactory* GrPorterDuffXPFactory::UnclampedPlus() {
+    static constexpr const GrPorterDuffXPFactory gUnclampedPlusPDXPF(SkBlendMode::kPlus, true);
+    return &gUnclampedPlusPDXPF;
+}
+
+// kPlus saturates, which the hardware does only on normalized targets; the unclamped variant
+// needs the shader only where the target's contract is clamped floats.
+static bool plus_needs_shader_clamp(SkBlendMode mode, bool unclampedPlus, GrClampType clampType) {
+    if (SkBlendMode::kPlus != mode) {
+        return false;
+    }
+    return unclampedPlus ? GrClampType::kManual == clampType : GrClampType::kAuto != clampType;
+}
 
 const GrXPFactory* GrPorterDuffXPFactory::Get(SkBlendMode blendMode) {
     SkASSERT((unsigned)blendMode <= (unsigned)SkBlendMode::kLastCoeffMode);
@@ -391,7 +405,7 @@ sk_sp<const GrXferProcessor> GrPorterDuffXPFactory::makeXferProcessor(
     // pixels aren't guaranteed to automatically be normalized (i.e. any floating point config).
     if ((blendFormula.hasSecondaryOutput() && !caps.shaderCaps()->fDualSourceBlendingSupport) ||
         (isLCD && (SkBlendMode::kSrcOver != fBlendMode /*|| !color.isOpaque()*/)) ||
-        (GrClampType::kAuto != clampType && SkBlendMode::kPlus == fBlendMode)) {
+        plus_needs_shader_clamp(fBlendMode, fUnclampedPlus, clampType)) {
         return sk_sp<const GrXferProcessor>(new ShaderPDXferProcessor(fBlendMode, coverage));
     }
     return sk_sp<const GrXferProcessor>(new PorterDuffXferProcessor(blendFormula, coverage));
@@ -399,7 +413,7 @@ sk_sp<const GrXferProcessor> GrPorterDuffXPFactory::makeXferProcessor(
 
 static inline GrXPFactory::AnalysisProperties analysis_properties(
         const GrProcessorAnalysisColor& color, const GrProcessorAnalysisCoverage& coverage,
-        const GrCaps& caps, GrClampType clampType, SkBlendMode mode) {
+        const GrCaps& caps, GrClampType clampType, SkBlendMode mode, bool unclampedPlus) {
     using AnalysisProperties = GrXPFactory::AnalysisProperties;
     AnalysisProperties props = AnalysisProperties::kNone;
     bool hasCoverage = GrProcessorAnalysisCoverage::kNone != coverage;
@@ -442,7 +456,7 @@ static inline GrXPFactory::AnalysisProperties analysis_properties(
         }
     }
 
-    if (GrClampType::kAuto != clampType && SkBlendMode::kPlus == mode) {
+    if (plus_needs_shader_clamp(mode, unclampedPlus, clampType)) {
         props |= AnalysisProperties::kReadsDstInShader;
     }
 
@@ -461,7 +475,7 @@ GrXPFactory::AnalysisProperties GrPorterDuffXPFactory::analysisProperties(
         const GrProcessorAnalysisCoverage& coverage,
         const GrCaps& caps,
         GrClampType clampType) const {
-    return analysis_properties(color, coverage, caps, clampType, fBlendMode);
+    return analysis_properties(color, coverage, caps, clampType, fBlendMode, fUnclampedPlus);
 }
 
 GR_DEFINE_XP_FACTORY_TEST(GrPorterDuffXPFactory)
@@ -553,5 +567,6 @@ GrXPFactory::AnalysisProperties GrPorterDuffXPFactory::SrcOverAnalysisProperties
         const GrProcessorAnalysisCoverage& coverage,
         const GrCaps& caps,
         GrClampType clampType) {
-    return analysis_properties(color, coverage, caps, clampType, SkBlendMode::kSrcOver);
+    return analysis_properties(color, coverage, caps, clampType, SkBlendMode::kSrcOver,
+                               /*unclampedPlus=*/false);
 }

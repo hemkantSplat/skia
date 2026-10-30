@@ -118,6 +118,7 @@ var CanvasKit = {
 
   Blender: {
     Mode: function() {},
+    MakeAdd: function() {},
   },
 
   GrDirectContext: {
