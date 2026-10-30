@@ -85,7 +85,9 @@ static constexpr int kUnknownRuntimeEffectIDStart = kUserDefinedKnownRuntimeEffe
     M(GlowErf8)             \
     M(GlowErf16)            \
     M(GlowErf32)            \
-    M(GlowRadial)
+    M(GlowRadial)           \
+    M(LightResolve)         \
+    M(LightAdd)
 
 // WARNING: If any of the existing values are changed, UniqueKeys that have stably-keyed effects
 // will need to be invalidated. (Adding new values to the end of the enum should be fine though.)
@@ -101,7 +103,7 @@ enum class StableKey : uint32_t {
 #undef M1
 #undef M
 
-    kLast =    kGlowRadial,
+    kLast =    kLightAdd,
 };
 
 static const int kStableKeyCnt = static_cast<int>(StableKey::kLast) -

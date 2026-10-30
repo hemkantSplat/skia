@@ -58,6 +58,8 @@ skia_effects_sources = [
   "$_src/effects/SkGlowShader.cpp",
   "$_src/effects/SkGlowShaderPriv.h",
   "$_src/effects/SkHighContrastFilter.cpp",
+  "$_src/effects/SkLightResolve.cpp",
+  "$_src/effects/SkLightResolvePriv.h",
   "$_src/effects/SkShaderMaskFilterImpl.cpp",
   "$_src/effects/SkShaderMaskFilterImpl.h",
   "$_src/effects/SkTableMaskFilter.cpp",
