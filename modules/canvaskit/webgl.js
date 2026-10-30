@@ -372,6 +372,12 @@
         return texHandle
       }
 
+      // A retained context-bound image; Skia, not WebGL generateMipmap, owns the mip levels.
+      CanvasKit.Surface.prototype.makeImageFromImage = function(image, mipmapped) {
+        CanvasKit.setCurrentContext(this._context);
+        return this._makeImageFromImage(image, !!mipmapped);
+      };
+
       CanvasKit.Surface.prototype.makeImageFromTexture = function(tex, info) {
         CanvasKit.setCurrentContext(this._context);
         var texHandle = pushTexture(tex);

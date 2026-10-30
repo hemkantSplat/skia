@@ -2655,7 +2655,9 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                       }),
                       allow_raw_pointers())
 #endif
-            .function("makeCopyWithDefaultMipmaps",
+            .function("textureSize", &SkImage::textureSize)
+        .function("hasMipmaps", &SkImage::hasMipmaps)
+        .function("makeCopyWithDefaultMipmaps",
                       optional_override([](sk_sp<SkImage> self) -> sk_sp<SkImage> {
                           return self->withDefaultMipmaps();
                       }))
@@ -3657,7 +3659,15 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                       }))
             .function("height", &SkSurface::height)
 #ifdef CK_ENABLE_WEBGL
-            .function("_makeImageFromTexture",
+            // Keep Ganesh's normal AsView/mipmap path, but return the owning texture image.
+        .function("_makeImageFromImage", optional_override([](SkSurface& self,
+                                                sk_sp<SkImage> image, bool mipmapped) {
+            auto context = GrAsDirectContext(self.recordingContext());
+            return SkImages::TextureFromImage(context, image.get(),
+                    mipmapped ? skgpu::Mipmapped::kYes : skgpu::Mipmapped::kNo,
+                    skgpu::Budgeted::kYes);
+        }))
+        .function("_makeImageFromTexture",
                       optional_override([](SkSurface& self,
                                            uint32_t webglHandle,
                                            uint32_t texHandle,
