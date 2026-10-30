@@ -176,7 +176,7 @@ public:
         iter = fQuads.metadata();
         SkPMColor4f colorOverride;
         if (quadColors.isConstant(&colorOverride)) {
-            fColorType = skgpu::ganesh::QuadPerEdgeAA::MinColorType(colorOverride);
+            fColorType = skgpu::ganesh::QuadPerEdgeAA::MinColorType(colorOverride, clampType, caps);
             while(iter.next()) {
                 iter->fColor = colorOverride;
             }
@@ -185,7 +185,7 @@ public:
             fColorType = ColorType::kNone;
             while(iter.next()) {
                 fColorType = std::max(fColorType,
-                                      skgpu::ganesh::QuadPerEdgeAA::MinColorType(iter->fColor));
+                                      skgpu::ganesh::QuadPerEdgeAA::MinColorType(iter->fColor, clampType, caps));
             }
         }
         // Most SkShaders' FPs multiply their calculated color by the paint color or alpha. We want

@@ -6,6 +6,7 @@
  */
 
 #include "src/gpu/ganesh/text/GlyphData.h"
+#include <array>
 
 #include "include/private/SkAssert.h"
 #include "src/core/SkGlyph.h"
@@ -29,16 +30,18 @@ struct AtlasPt {
 };
 
 // Normal text mask, SDFT, or color.
+template<typename Color>
 struct Mask2DVertex {
     SkPoint devicePos;
-    GrColor color;
+    Color color;
     AtlasPt atlasPos;
     AtlasPt atlasOrigin;
     AtlasPt atlasSize;
 };
 
 struct ARGB2DVertex {
-    ARGB2DVertex(SkPoint d, GrColor, AtlasPt a, AtlasPt o, AtlasPt size)
+    template<typename Color>
+    ARGB2DVertex(SkPoint d, Color, AtlasPt a, AtlasPt o, AtlasPt size)
             : devicePos{d}, atlasPos{a}, atlasOrigin{o}, atlasSize{size} {}
 
     SkPoint devicePos;
@@ -48,16 +51,18 @@ struct ARGB2DVertex {
 };
 
 // Perspective SDFT or SDFT forced to 3D or perspective color.
+template<typename Color>
 struct Mask3DVertex {
     SkPoint3 devicePos;
-    GrColor color;
+    Color color;
     AtlasPt atlasPos;
     AtlasPt atlasOrigin;
     AtlasPt atlasSize;
 };
 
 struct ARGB3DVertex {
-    ARGB3DVertex(SkPoint3 d, GrColor, AtlasPt a, AtlasPt o, AtlasPt size)
+    template<typename Color>
+    ARGB3DVertex(SkPoint3 d, Color, AtlasPt a, AtlasPt o, AtlasPt size)
             : devicePos{d}, atlasPos{a}, atlasOrigin{o}, atlasSize{size} {}
 
     SkPoint3 devicePos;
@@ -67,8 +72,9 @@ struct ARGB3DVertex {
 };
 
 // The 99% case. Direct Mask, No clip, No RGB.
-void fillDirectNoClipping(SkZip<Mask2DVertex[4], const Glyph, const SkPoint> quadData,
-                          GrColor color,
+template<typename Color>
+void fillDirectNoClipping(SkZip<Mask2DVertex<Color>[4], const Glyph, const SkPoint> quadData,
+                          Color color,
                           SkPoint originOffset) {
     for (auto [quad, glyph, leftTop] : quadData) {
         auto [al, at, ar, ab] = glyph.entry().fAtlasLocator.getUVs();
@@ -90,9 +96,9 @@ auto LTBR(const Rect& r) {
 }
 
 // Handle any combination of BW or color and clip or no clip.
-template <typename Quad, typename VertexData>
+template <typename Quad, typename VertexData, typename Color>
 void fillDirectClipped(SkZip<Quad, const Glyph, const VertexData> quadData,
-                       GrColor color,
+                       Color color,
                        SkPoint originOffset,
                        SkIRect* clip = nullptr) {
     for (auto [quad, glyph, leftTop] : quadData) {
@@ -133,9 +139,9 @@ void fillDirectClipped(SkZip<Quad, const Glyph, const VertexData> quadData,
     }
 }
 
-template <typename Quad, typename VertexData>
+template <typename Quad, typename VertexData, typename Color>
 void fill2D(SkZip<Quad, const Glyph, const VertexData> quadData,
-            GrColor color,
+            Color color,
             const SkMatrix& viewDifference) {
     for (auto [quad, glyph, leftTop] : quadData) {
         auto [l, t] = leftTop;
@@ -152,9 +158,9 @@ void fill2D(SkZip<Quad, const Glyph, const VertexData> quadData,
     }
 }
 
-template <typename Quad, typename VertexData>
+template <typename Quad, typename VertexData, typename Color>
 void fill3D(SkZip<Quad, const Glyph, const VertexData> quadData,
-            GrColor color,
+            Color color,
             const SkMatrix& viewDifference) {
     auto mapXYZ = [&](SkScalar x, SkScalar y) {
         return viewDifference.mapPointToHomogeneous({x, y});
@@ -269,24 +275,28 @@ std::tuple<bool, int> GlyphData::regenerateAtlas(int begin,
     }
 }
 
-size_t GlyphData::vertexStride(MaskFormat mf, const SkMatrix& matrix) const {
+size_t GlyphData::vertexStride(MaskFormat mf, const SkMatrix& matrix, skgpu::VertexColorType colorType) const {
     if (mf != skgpu::MaskFormat::kARGB) {
         // For formats MaskFormat::kA565 and MaskFormat::kA8 where A8 include SDF.
-        return matrix.hasPerspective() ? sizeof(Mask3DVertex) : sizeof(Mask2DVertex);
+        return (matrix.hasPerspective() ? sizeof(SkPoint3) : sizeof(SkPoint)) +
+               skgpu::VertexColor(SK_PMColor4fWHITE, colorType).size() + 3*sizeof(AtlasPt);
     }
     // For format MaskFormat::kARGB
     return matrix.hasPerspective() ? sizeof(ARGB3DVertex) : sizeof(ARGB2DVertex);
 }
 
-void GlyphData::fillVertexData(const sktext::gpu::VertexFiller& vf,
+template<typename Color>
+void GlyphData::fillVertexDataTyped(const sktext::gpu::VertexFiller& vf,
                                SkSpan<const Glyph> glyphs,
                                int offset,
                                int count,
-                               const SkPMColor4f& pmColor,
+                               Color color,
                                const SkMatrix& positionMatrix,
                                SkIRect clip,
                                void* vertexBuffer) {
-    GrColor color = pmColor.toBytes_RGBA();
+    constexpr auto colorType = sizeof(Color) == 4 ? skgpu::VertexColorType::kByte
+                             : sizeof(Color) == 8 ? skgpu::VertexColorType::kHalf
+                                                  : skgpu::VertexColorType::kFloat;
     auto quadData = [&](auto dst) {
         return SkMakeZip(dst, glyphs.subspan(offset, count), vf.topLefts().subspan(offset, count));
     };
@@ -298,26 +308,26 @@ void GlyphData::fillVertexData(const sktext::gpu::VertexFiller& vf,
         if (noTransformNeeded) {
             if (clip.isEmpty()) {
                 if (vf.maskFormat() != MaskFormat::kARGB) {
-                    using Quad = Mask2DVertex[4];
-                    SkASSERT(sizeof(Mask2DVertex) ==
-                             this->vertexStride(vf.maskFormat(), SkMatrix::I()));
+                    using Quad = Mask2DVertex<Color>[4];
+                    SkASSERT(sizeof(Mask2DVertex<Color>) ==
+                             this->vertexStride(vf.maskFormat(), SkMatrix::I(), colorType));
                     fillDirectNoClipping(quadData((Quad*)vertexBuffer), color, originOffset);
                 } else {
                     using Quad = ARGB2DVertex[4];
                     SkASSERT(sizeof(ARGB2DVertex) ==
-                             this->vertexStride(vf.maskFormat(), SkMatrix::I()));
+                             this->vertexStride(vf.maskFormat(), SkMatrix::I(), colorType));
                     fillDirectClipped(quadData((Quad*)vertexBuffer), color, originOffset);
                 }
             } else {
                 if (vf.maskFormat() != MaskFormat::kARGB) {
-                    using Quad = Mask2DVertex[4];
-                    SkASSERT(sizeof(Mask2DVertex) ==
-                             this->vertexStride(vf.maskFormat(), SkMatrix::I()));
+                    using Quad = Mask2DVertex<Color>[4];
+                    SkASSERT(sizeof(Mask2DVertex<Color>) ==
+                             this->vertexStride(vf.maskFormat(), SkMatrix::I(), colorType));
                     fillDirectClipped(quadData((Quad*)vertexBuffer), color, originOffset, &clip);
                 } else {
                     using Quad = ARGB2DVertex[4];
                     SkASSERT(sizeof(ARGB2DVertex) ==
-                             this->vertexStride(vf.maskFormat(), SkMatrix::I()));
+                             this->vertexStride(vf.maskFormat(), SkMatrix::I(), colorType));
                     fillDirectClipped(quadData((Quad*)vertexBuffer), color, originOffset, &clip);
                 }
             }
@@ -330,23 +340,43 @@ void GlyphData::fillVertexData(const sktext::gpu::VertexFiller& vf,
     if (!positionMatrix.hasPerspective()) {
         if (vf.maskFormat() == MaskFormat::kARGB) {
             using Quad = ARGB2DVertex[4];
-            SkASSERT(sizeof(ARGB2DVertex) == this->vertexStride(vf.maskFormat(), positionMatrix));
+            SkASSERT(sizeof(ARGB2DVertex) == this->vertexStride(vf.maskFormat(), positionMatrix, colorType));
             fill2D(quadData((Quad*)vertexBuffer), color, viewDifference);
         } else {
-            using Quad = Mask2DVertex[4];
-            SkASSERT(sizeof(Mask2DVertex) == this->vertexStride(vf.maskFormat(), positionMatrix));
+            using Quad = Mask2DVertex<Color>[4];
+            SkASSERT(sizeof(Mask2DVertex<Color>) == this->vertexStride(vf.maskFormat(), positionMatrix, colorType));
             fill2D(quadData((Quad*)vertexBuffer), color, viewDifference);
         }
     } else {
         if (vf.maskFormat() == MaskFormat::kARGB) {
             using Quad = ARGB3DVertex[4];
-            SkASSERT(sizeof(ARGB3DVertex) == this->vertexStride(vf.maskFormat(), positionMatrix));
+            SkASSERT(sizeof(ARGB3DVertex) == this->vertexStride(vf.maskFormat(), positionMatrix, colorType));
             fill3D(quadData((Quad*)vertexBuffer), color, viewDifference);
         } else {
-            using Quad = Mask3DVertex[4];
-            SkASSERT(sizeof(Mask3DVertex) == this->vertexStride(vf.maskFormat(), positionMatrix));
+            using Quad = Mask3DVertex<Color>[4];
+            SkASSERT(sizeof(Mask3DVertex<Color>) == this->vertexStride(vf.maskFormat(), positionMatrix, colorType));
             fill3D(quadData((Quad*)vertexBuffer), color, viewDifference);
         }
+    }
+}
+
+void GlyphData::fillVertexData(const sktext::gpu::VertexFiller& vf, SkSpan<const Glyph> glyphs,
+                               int offset, int count, const SkPMColor4f& color,
+                               skgpu::VertexColorType colorType, const SkMatrix& matrix,
+                               SkIRect clip, void* vertices) {
+    switch (colorType) {
+        case skgpu::VertexColorType::kByte:
+            this->fillVertexDataTyped(vf, glyphs, offset, count, color.toBytes_RGBA(), matrix, clip, vertices);
+            break;
+        case skgpu::VertexColorType::kHalf: {
+            std::array<uint16_t, 4> halves;
+            to_half(skvx::float4::Load(color.vec())).store(halves.data());
+            this->fillVertexDataTyped(vf, glyphs, offset, count, halves, matrix, clip, vertices);
+            break;
+        }
+        case skgpu::VertexColorType::kFloat:
+            this->fillVertexDataTyped(vf, glyphs, offset, count, color, matrix, clip, vertices);
+            break;
     }
 }
 

@@ -25,9 +25,9 @@ struct GrShaderCaps;
  */
 class GrRRectShadowGeoProc : public GrGeometryProcessor {
 public:
-    static GrGeometryProcessor* Make(SkArenaAlloc* arena, const GrSurfaceProxyView& lutView) {
+    static GrGeometryProcessor* Make(SkArenaAlloc* arena, const GrSurfaceProxyView& lutView, skgpu::VertexColorType colorType) {
         return arena->make([&](void* ptr) {
-            return new (ptr) GrRRectShadowGeoProc(lutView);
+            return new (ptr) GrRRectShadowGeoProc(lutView, colorType);
         });
     }
 
@@ -45,7 +45,7 @@ public:
 private:
     class Impl;
 
-    GrRRectShadowGeoProc(const GrSurfaceProxyView& lutView);
+    GrRRectShadowGeoProc(const GrSurfaceProxyView& lutView, skgpu::VertexColorType colorType);
 
     const TextureSampler& onTextureSampler(int i) const override { return fLUTTextureSampler; }
 

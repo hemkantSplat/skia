@@ -128,7 +128,8 @@ GrStrokeTessellationShader::GrStrokeTessellationShader(const GrShaderCaps& shade
     }
     if (fPatchAttribs & PatchAttribs::kColor) {
         fAttribs.emplace_back("dynamicColorAttr",
-                              (fPatchAttribs & PatchAttribs::kWideColorIfEnabled)
+                              (fPatchAttribs & PatchAttribs::kHalfColorIfEnabled) ? kHalf4_GrVertexAttribType
+                              : (fPatchAttribs & PatchAttribs::kWideColorIfEnabled)
                                       ? kFloat4_GrVertexAttribType
                                       : kUByte4_norm_GrVertexAttribType,
                               SkSLType::kHalf4);

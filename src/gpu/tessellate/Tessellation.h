@@ -87,6 +87,7 @@ enum class PatchAttribs {
                           //       uniform values.
 
     // Extra flags.
+    kHalfColorIfEnabled = 1 << 8,  // Half-float storage when kWideColorIfEnabled is set.
     kWideColorIfEnabled = 1 << 6,  // If kColor is set, specifies it to be float4 wide color.
 };
 
@@ -105,7 +106,8 @@ constexpr size_t PatchAttribsStride(PatchAttribs attribs) {
            (attribs & PatchAttribs::kFanPoint ? sizeof(float) * 2 : 0) +
            (attribs & PatchAttribs::kStrokeParams ? sizeof(float) * 2 : 0) +
            (attribs & PatchAttribs::kColor
-                    ? (attribs & PatchAttribs::kWideColorIfEnabled ? sizeof(float)
+                    ? (attribs & PatchAttribs::kHalfColorIfEnabled ? sizeof(uint16_t)
+                       : attribs & PatchAttribs::kWideColorIfEnabled ? sizeof(float)
                                                                    : sizeof(uint8_t)) * 4 : 0) +
            (attribs & PatchAttribs::kPaintDepth ? sizeof(float) : 0) +
            (attribs & PatchAttribs::kExplicitCurveType ? sizeof(float) : 0) +

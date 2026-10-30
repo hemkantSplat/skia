@@ -41,7 +41,7 @@ using Saturate = skgpu::ganesh::TextureOp::Saturate;
 
 enum class CoverageMode { kNone, kWithPosition, kWithColor };
 enum class Subset : bool { kNo = false, kYes = true };
-enum class ColorType { kNone, kByte, kFloat, kLast = kFloat };
+enum class ColorType { kNone, kByte, kHalf, kFloat, kLast = kFloat };
 static const int kColorTypeCount = static_cast<int>(ColorType::kLast) + 1;
 
 enum class IndexBufferOption {
@@ -55,7 +55,7 @@ static const int kIndexBufferOptionCount = static_cast<int>(IndexBufferOption::k
 IndexBufferOption CalcIndexBufferOption(GrAAType aa, int numQuads);
 
 // Gets the minimum ColorType that can represent a color.
-ColorType MinColorType(SkPMColor4f);
+ColorType MinColorType(SkPMColor4f, GrClampType, const GrCaps&);
 
 // Specifies the vertex configuration for an op that renders per-edge AA quads. The vertex
 // order (when enabled) is device position, color, local position, subset, aa edge equations.
@@ -100,6 +100,11 @@ public:
     }
     bool hasLocalCoords() const { return fHasLocalCoords; }
     ColorType colorType() const { return static_cast<ColorType>(fColorType); }
+    skgpu::VertexColorType colorStorage() const {
+        return this->colorType() == ColorType::kFloat ? skgpu::VertexColorType::kFloat
+                 : this->colorType() == ColorType::kHalf ? skgpu::VertexColorType::kHalf
+                                                       : skgpu::VertexColorType::kByte;
+    }
     bool hasVertexColors() const { return ColorType::kNone != this->colorType(); }
     bool hasSubset() const { return fHasSubset; }
     bool usesCoverageAA() const { return fUsesCoverageAA; }

@@ -31,6 +31,7 @@ class VertexFiller;
 
 namespace skgpu {
 enum class MaskFormat : int;
+enum class VertexColorType : uint8_t;
 }
 
 namespace skgpu::ganesh {
@@ -92,18 +93,21 @@ public:
                                           sktext::gpu::GlyphVector& glyphVector,
                                           GrMeshDrawTarget* target);
 
-    size_t vertexStride(MaskFormat, const SkMatrix& positionMatrix) const;
+    size_t vertexStride(MaskFormat, const SkMatrix& positionMatrix, skgpu::VertexColorType) const;
 
     void fillVertexData(const sktext::gpu::VertexFiller& vf,
                         SkSpan<const Glyph> glyphs,
                         int offset,
                         int count,
-                        const SkPMColor4f& pmColor,
+                        const SkPMColor4f& pmColor, skgpu::VertexColorType,
                         const SkMatrix& positionMatrix,
                         SkIRect clip,
                         void* vertexBuffer);
 
 private:
+    template<typename Color>
+    void fillVertexDataTyped(const sktext::gpu::VertexFiller&, SkSpan<const Glyph>,
+                             int offset, int count, Color, const SkMatrix&, SkIRect, void*);
     GlyphData(const GlyphData&) = delete;
     GlyphData(GlyphData&&) = delete;
     GlyphData& operator=(const GlyphData&) = delete;

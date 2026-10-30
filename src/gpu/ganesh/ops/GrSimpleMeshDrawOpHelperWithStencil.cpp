@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/GrSimpleMeshDrawOpHelperWithStencil.h"
 
 #include "src/gpu/ganesh/GrProcessorAnalysis.h"
@@ -28,12 +29,12 @@ GrDrawOp::FixedFunctionFlags GrSimpleMeshDrawOpHelperWithStencil::fixedFunctionF
 
 GrProcessorSet::Analysis GrSimpleMeshDrawOpHelperWithStencil::finalizeProcessors(
         const GrCaps& caps, const GrAppliedClip* clip, GrClampType clampType,
-        GrProcessorAnalysisCoverage geometryCoverage, SkPMColor4f* geometryColor, bool* wideColor) {
+        GrProcessorAnalysisCoverage geometryCoverage, SkPMColor4f* geometryColor, skgpu::VertexColorType* colorType) {
     GrProcessorAnalysisColor color = *geometryColor;
     auto result = this->finalizeProcessors(caps, clip, clampType, geometryCoverage, &color);
     color.isConstant(geometryColor);
-    if (wideColor) {
-        *wideColor = !geometryColor->fitsInBytes();
+    if (colorType) {
+        *colorType = GrVertexColorStorage(*geometryColor, clampType, caps);
     }
     return result;
 }

@@ -4,6 +4,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+#include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/QuadPerEdgeAA.h"
 
 #include "include/core/SkBlendMode.h"
@@ -79,7 +80,7 @@ void write_quad_generic(VertexWriter* vb,
 
         // save color
         if (spec.hasVertexColors()) {
-            bool wide = spec.colorType() == ColorType::kFloat;
+            auto wide = spec.colorStorage();
             *vb << VertexColor(color * (mode == CoverageMode::kWithColor ? coverage[i] : 1), wide);
         }
 
@@ -127,7 +128,7 @@ void write_2d_color(VertexWriter* vb,
     // accumulate local coords conservatively (paint not trivial), and then after analysis realize
     // the processors don't need local coordinates.
 
-    bool wide = spec.colorType() == ColorType::kFloat;
+    auto wide = spec.colorStorage();
     for (int i = 0; i < 4; ++i) {
         // If this is not coverage-with-alpha, make sure coverage == 1 so it doesn't do anything
         SkASSERT(spec.coverageMode() == CoverageMode::kWithColor || coverage[i] == 1.f);
@@ -184,7 +185,7 @@ void write_2d_color_uv(VertexWriter* vb,
     SkASSERT(!spec.hasSubset());
     SkASSERT(localQuad);
 
-    bool wide = spec.colorType() == ColorType::kFloat;
+    auto wide = spec.colorStorage();
     for (int i = 0; i < 4; ++i) {
         // If this is not coverage-with-alpha, make sure coverage == 1 so it doesn't do anything
         SkASSERT(spec.coverageMode() == CoverageMode::kWithColor || coverage[i] == 1.f);
@@ -278,7 +279,7 @@ void write_2d_color_uv_strict(VertexWriter* vb,
     SkASSERT(spec.hasSubset());
     SkASSERT(localQuad);
 
-    bool wide = spec.colorType() == ColorType::kFloat;
+    auto wide = spec.colorStorage();
     for (int i = 0; i < 4; ++i) {
         // If this is not coverage-with-alpha, make sure coverage == 1 so it doesn't do anything
         SkASSERT(spec.coverageMode() == CoverageMode::kWithColor || coverage[i] == 1.f);
@@ -332,12 +333,15 @@ IndexBufferOption CalcIndexBufferOption(GrAAType aa, int numQuads) {
     }
 }
 
-// This is a more elaborate version of fitsInBytes() that allows "no color" for white
-ColorType MinColorType(SkPMColor4f color) {
+ColorType MinColorType(SkPMColor4f color, GrClampType clampType, const GrCaps& caps) {
+    if (GrVertexColorIsWide(color, clampType)) {
+        return GrVertexColorStorage(color, clampType, caps) == skgpu::VertexColorType::kHalf
+                       ? ColorType::kHalf : ColorType::kFloat;
+    }
     if (color == SK_PMColor4fWHITE) {
         return ColorType::kNone;
     } else {
-        return color.fitsInBytes() ? ColorType::kByte : ColorType::kFloat;
+        return ColorType::kByte;
     }
 }
 
@@ -603,6 +607,8 @@ size_t VertexSpec::vertexSize() const {
 
     if (ColorType::kByte == this->colorType()) {
         count += GrVertexAttribTypeSize(kUByte4_norm_GrVertexAttribType);
+    } else if (ColorType::kHalf == this->colorType()) {
+        count += GrVertexAttribTypeSize(kHalf4_GrVertexAttribType);
     } else if (ColorType::kFloat == this->colorType()) {
         count += GrVertexAttribTypeSize(kFloat4_GrVertexAttribType);
     }
@@ -656,7 +662,8 @@ public:
         b->addBool(fColor.isInitialized(),        "hasColor");
         if (fColor.isInitialized()) {
             // bytes (0) or floats (1)
-            b->addBits(1, (kFloat4_GrVertexAttribType == fColor.cpuType()), "colorType");
+            b->addBits(2, (fColor.cpuType() == kFloat4_GrVertexAttribType ? 2 :
+                           fColor.cpuType() == kHalf4_GrVertexAttribType ? 1 : 0), "colorType");
         }
         // and coverage mode, 00 for none, 01 for withposition, 10 for withcolor, 11 for
         // position+geomsubset
@@ -892,7 +899,7 @@ private:
         } // else localDim == 0 and attribute remains uninitialized
 
         if (spec.hasVertexColors()) {
-            fColor = MakeColorAttribute("color", ColorType::kFloat == spec.colorType());
+            fColor = MakeColorAttribute("color", spec.colorStorage());
         }
 
         if (spec.hasSubset()) {

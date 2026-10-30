@@ -2700,7 +2700,7 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                                          sk_sp<SkImageFilter> input) -> sk_sp<SkImageFilter> {
                         SkColor4f c = ptrToSkColor4f(cPtr);
                         return SkImageFilters::DropShadow(
-                                dx, dy, sigmaX, sigmaY, c.toSkColor(), input);
+                                dx, dy, sigmaX, sigmaY, c, nullptr, input);
                     }))
             .class_function(
                     "_MakeDropShadowOnly",
@@ -2712,7 +2712,7 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                                          sk_sp<SkImageFilter> input) -> sk_sp<SkImageFilter> {
                         SkColor4f c = ptrToSkColor4f(cPtr);
                         return SkImageFilters::DropShadowOnly(
-                                dx, dy, sigmaX, sigmaY, c.toSkColor(), input);
+                                dx, dy, sigmaX, sigmaY, c, nullptr, input);
                     }))
             .class_function(
                     "_MakeErode",

@@ -36,6 +36,8 @@ private:
     friend void ::SkRegisterMergeImageFilterFlattenable();
     SK_FLATTENABLE_HOOKS(SkMergeImageFilter)
 
+    bool onSupportsRasterF16() const override { return true; }
+
     MatrixCapability onGetCTMCapability() const override { return MatrixCapability::kComplex; }
 
     skif::FilterResult onFilterImage(const skif::Context& ctx) const override;
