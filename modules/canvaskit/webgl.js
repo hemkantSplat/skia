@@ -171,6 +171,24 @@
           this._resetGpuStats();
       };
 
+      // Flushes and submits all pending work; options.onFinished runs once the GPU has done it.
+      CanvasKit.GrDirectContext.prototype.flushAndSubmit = function(options) {
+          CanvasKit.setCurrentContext(this._context);
+          this._flushAndSubmit(CanvasKit._flushFinished(options),
+                               !!(options && options['gpuTime']));
+      };
+
+      CanvasKit.GrDirectContext.prototype.submit = function(syncCpu) {
+          CanvasKit.setCurrentContext(this._context);
+          return this._submit(!!syncCpu);
+      };
+
+      // Runs the finished callbacks whose GPU work has completed; never blocks.
+      CanvasKit.GrDirectContext.prototype.checkAsyncWorkCompletion = function() {
+          CanvasKit.setCurrentContext(this._context);
+          this._checkAsyncWorkCompletion();
+      };
+
       CanvasKit.GrDirectContext.prototype.releaseResourcesAndAbandonContext = function() {
           CanvasKit.setCurrentContext(this._context);
           this._releaseResourcesAndAbandonContext();
