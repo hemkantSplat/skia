@@ -18,6 +18,7 @@ PUBLIC_HEADERS = [
     "SkCornerPathEffect.h",
     "SkDashPathEffect.h",
     "SkDiscretePathEffect.h",
+    "SkGlowShader.h",
     "SkGradient.h",
     "SkHighContrastFilter.h",
     "SkLumaColorFilter.h",

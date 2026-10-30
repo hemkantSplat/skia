@@ -817,7 +817,9 @@ var CanvasKit = {
     MakeBlend: function() {},
     MakeColor: function() {},
     MakeFractalNoise: function() {},
+    MakeGlow: function() {},
     MakeLinearGradient: function() {},
+    MakeRadialGlow: function() {},
     MakeRadialGradient: function() {},
     MakeSweepGradient: function() {},
     MakeTurbulence: function() {},
@@ -825,6 +827,8 @@ var CanvasKit = {
 
     // private API (from C++ bindings)
     _MakeColor: function() {},
+    _MakeGlow: function() {},
+    _MakeRadialGlow: function() {},
     _MakeLinearGradient: function() {},
     _MakeRadialGradient: function() {},
     _MakeSweepGradient: function() {},

@@ -20,6 +20,8 @@ EFFECTS_FILES = [
     "SkEmbossMask.h",
     "SkEmbossMaskFilter.cpp",
     "SkEmbossMaskFilter.h",
+    "SkGlowShader.cpp",
+    "SkGlowShaderPriv.h",
     "SkHighContrastFilter.cpp",
     "SkShaderMaskFilterImpl.cpp",
     "SkShaderMaskFilterImpl.h",
