@@ -127,7 +127,8 @@
 
       // API level of tools/canvaskit-build's native effects (Shader.MakeGlow/MakeRadialGlow,
       // Blender.MakeLightResolve, output-transform color filters); stock leaves it undefined.
-      CanvasKit.nativeEffectsApi = 1;
+      // 2: the glow core takes a blur sigma and masks its lobes (maskLobes).
+      CanvasKit.nativeEffectsApi = 2;
 
       // API level of tools/canvaskit-build's F16 MSAA (float sample counts queried from WebGL 2,
       // GrDirectContext.maxSurfaceSampleCount); stock leaves it undefined.
