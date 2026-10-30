@@ -427,10 +427,12 @@ var CanvasKit = {
     MakeLerp: function() {},
     MakeLinearToSRGBGamma: function() {},
     MakeMatrix: function() {},
+    MakeHSLAMatrix: function() {},
     MakeSRGBToLinearGamma: function() {},
     // private API (from C++ bindings)
     _MakeBlend: function() {},
     _makeMatrix: function() {},
+    _makeHSLAMatrix: function() {},
   },
 
   ColorMatrix: {
@@ -547,6 +549,7 @@ var CanvasKit = {
   },
 
   ImageFilter: {
+    MakeArithmetic: function() {},
     MakeBlend: function() {},
     MakeBlur: function() {},
     MakeColorFilter: function() {},
@@ -559,6 +562,7 @@ var CanvasKit = {
     MakeImage: function() {},
     MakeMatrixTransform: function() {},
     MakeOffset: function() {},
+    MakeShader: function() {},
 
     prototype: {
       getOutputBounds: function() {},
@@ -566,6 +570,10 @@ var CanvasKit = {
 
     // private API
     _getOutputBounds: function() {},
+    _MakeArithmetic: function() {},
+    _MakeDilate: function() {},
+    _MakeErode: function() {},
+    _MakeShader: function() {},
     _MakeDropShadow: function() {},
     _MakeDropShadowOnly: function() {},
     _MakeImageCubic: function() {},
