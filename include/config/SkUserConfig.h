@@ -149,5 +149,10 @@
  */
 // #define SKVX_DISABLE_SIMD
 // #define SKRP_CPU_SCALAR
+/*
+ * CanvasKit custom build (tools/canvaskit-build): keep Ganesh's GPU counters in release so
+ * GrDirectContext.gpuStats() can read them.
+ */
+#define GR_GPU_STATS 1
 
 #endif
