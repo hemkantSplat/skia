@@ -11,6 +11,7 @@
 #include "include/core/SkPathTypes.h"
 
 #include <cmath>
+#include <iterator>
 
 namespace cfplan {
 namespace {
@@ -966,19 +967,64 @@ Error PlanInstance::releaseImage(uint32_t handle, uint32_t gen) {
 
 // ---- replay ------------------------------------------------------------------------------------------------------
 
-int32_t PlanInstance::beginReplay(SkCanvas* canvas, uint32_t root) {
-    if (!canvas) return -int32_t(Error::kBadPayload);
-    if (!find(root)) return -int32_t(Error::kUnknownNode);
-    const int32_t id = fNextToken;
-    fNextToken = fNextToken == INT32_MAX ? 1 : fNextToken + 1;
-    fTokens.push_back({id, canvas, canvas->getSaveCount(), {}});
-    pushFrame(fTokens.back(), root);
-    fCounters.replays++;
-    return id;
+// A token is one walk: a stack of frames over the plan, paused at each live node for its JS producer. Tokens nest
+// strictly (LIFO); a paused token is resumed by the next step, which checks what the producer left on the canvas.
+
+Error PlanInstance::canOpenToken(SkCanvas* canvas) const {
+    if (!canvas) return Error::kBadPayload;
+    if (fUnderRestore) return Error::kLiveUnderRestore;
+    return fTokens.size() < kMaxOpenTokens ? Error::kOk : Error::kLimit;
 }
 
-void PlanInstance::pushFrame(Token& token, uint32_t id) {
-    token.frames.push_back({fState.nodes.find(id), kNone, 0, Stage::kEnter});
+PlanInstance::Token& PlanInstance::openToken(SkCanvas* canvas, const ReplayTarget& target) {
+    const int32_t id = fNextToken;
+    fNextToken = fNextToken == INT32_MAX ? 1 : fNextToken + 1;
+    fTokens.push_back({id, canvas, canvas->getSaveCount(), target, 0, {}});
+    fCounters.replays++;
+    return fTokens.back();
+}
+
+int32_t PlanInstance::beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target) {
+    if (Error e = canOpenToken(canvas); e != Error::kOk) return -int32_t(e);
+    if (!find(root)) return -int32_t(Error::kUnknownNode);
+    if (!fTokens.empty()) {
+        const Token& enclosing = fTokens.back();
+        if (!enclosing.pauseSaveCount) return -int32_t(Error::kTokenOrder);
+        const uint32_t live = enclosing.frames.back().id;
+        uint32_t parent = find(root)->structure.parent;
+        while (parent != kNone && parent != live) parent = find(parent)->structure.parent;
+        if (parent != live) return -int32_t(Error::kTokenOrder);
+    }
+    if (target.colorType > TargetColorType::kF16Linear || !(target.outputScale > 0) ||
+        !std::isfinite(target.outputScale)) {
+        return -int32_t(Error::kBadPayload);
+    }
+    Token& token = openToken(canvas, target);
+    pushNode(token, root, Scope(), false);
+    return token.id;
+}
+
+int32_t PlanInstance::beginReplayChildren(SkCanvas* canvas, uint32_t live, float alpha) {
+    if (Error e = canOpenToken(canvas); e != Error::kOk) return -int32_t(e);
+    const Node* node = find(live);
+    if (!node) return -int32_t(Error::kUnknownNode);
+    if (node->structure.kind != Kind::kLive || !(alpha >= 0 && alpha <= 1)) return -int32_t(Error::kBadPayload);
+    // The children belong to the innermost token's current pause, and replay inside it.
+    if (fTokens.empty() || !fTokens.back().pauseSaveCount || fTokens.back().frames.back().id != live) {
+        return -int32_t(Error::kTokenOrder);
+    }
+    const ReplayTarget target = fTokens.back().target;
+    Token& token = openToken(canvas, target);
+    // Only the children's own placements apply: the live node's params belong to the producer that called this.
+    Scope scope;
+    scope.foldedAlpha = alpha;
+    token.frames.push_back({node, live, node->structure.first, canvas->getSaveCount(), Stage::kChildren, scope, false,
+                            false});
+    return token.id;
+}
+
+void PlanInstance::pushNode(Token& token, uint32_t id, Scope scope, bool clipBypass) {
+    token.frames.push_back({fState.nodes.find(id), id, kNone, 0, Stage::kEnter, scope, false, clipBypass});
 }
 
 const SkPath& PlanInstance::clipPath(Key key) {
@@ -989,12 +1035,17 @@ const SkPath& PlanInstance::clipPath(Key key) {
 
 int32_t PlanInstance::step(int32_t tokenId) {
     if (fTokens.empty() || fTokens.back().id != tokenId) return -int32_t(Error::kTokenOrder);
+    if (fUnderRestore) return -int32_t(Error::kLiveUnderRestore);
     Token& token = fTokens.back();
+    if (token.pauseSaveCount) {
+        if (Error e = resume(token); e != Error::kOk) return -int32_t(e);
+    }
     SkCanvas* canvas = token.canvas;
     while (!token.frames.empty()) {
         Frame& f = token.frames.back();
         const Node& n = *f.node;
         const Params& params = n.params;
+        const bool live = n.structure.kind == Kind::kLive;
         switch (f.stage) {
             case Stage::kEnter:
                 fCounters.visited++;
@@ -1005,8 +1056,14 @@ int32_t PlanInstance::step(int32_t tokenId) {
                 f.saveCount = canvas->save();
                 if (params.hasMatrix) canvas->concat(params.matrix);
                 OpenIsolation(canvas, params.isolation, fCounters);
+                if (params.isolation.set && (params.isolation.flags & kIsolationFold)) {
+                    f.scope.foldedAlpha *= params.isolation.alpha;
+                }
+                if (params.contain != ContainKind::kNone) f.scope.contain = &n;
+                // A live node's children are its producer's; the walk never enters them.
+                f.softClip = params.clip.soft && !live;
                 f.child = n.structure.first;
-                f.stage = params.clip.soft ? Stage::kBypassChildren : Stage::kContent;
+                f.stage = f.softClip ? Stage::kBypassChildren : Stage::kContent;
                 break;
             case Stage::kBypassChildren: {
                 // A soft clip's bypass children replay first, outside the clip.
@@ -1017,7 +1074,7 @@ int32_t PlanInstance::step(int32_t tokenId) {
                     break;
                 }
                 f.child = fState.nodes.find(c)->structure.next;
-                pushFrame(token, c);
+                pushNode(token, c, f.scope, true);
                 break;
             }
             case Stage::kContent:
@@ -1027,13 +1084,16 @@ int32_t PlanInstance::step(int32_t tokenId) {
                     canvas->drawPicture(params.picture);
                     fCounters.picturesDrawn++;
                 }
-                if (n.structure.kind == Kind::kLive) fCounters.liveSkipped++;  // K1b pauses here
+                if (live) {
+                    f.stage = Stage::kExit;  // resumes with the live node's next sibling
+                    return pause(token, f);
+                }
                 f.child = n.structure.first;
                 f.stage = Stage::kChildren;
                 break;
             case Stage::kChildren: {
                 uint32_t c = f.child;
-                while (c != kNone && params.clip.soft && fState.nodes.find(c)->structure.bypass) {
+                while (c != kNone && f.softClip && fState.nodes.find(c)->structure.bypass) {
                     c = fState.nodes.find(c)->structure.next;
                 }
                 if (c == kNone) {
@@ -1041,7 +1101,7 @@ int32_t PlanInstance::step(int32_t tokenId) {
                     break;
                 }
                 f.child = fState.nodes.find(c)->structure.next;
-                pushFrame(token, c);
+                pushNode(token, c, f.scope, false);
                 break;
             }
             case Stage::kExit:
@@ -1053,11 +1113,54 @@ int32_t PlanInstance::step(int32_t tokenId) {
     return 0;
 }
 
+// Hands the live node to JS on a protected canvas: the producer may push state, never pop what replay set.
+int32_t PlanInstance::pause(Token& token, const Frame& frame) {
+    SkCanvas* canvas = token.canvas;
+    canvas->save();
+    token.pauseSaveCount = canvas->getSaveCount();
+    const Params& params = frame.node->params;
+    LiveContext& c = fContexts[fTokens.size() - 1];
+    c.node = frame.id;
+    c.producer = params.live.producer;
+    c.inputsRev = params.live.inputsGen;
+    canvas->getLocalToDeviceAs3x3().get9(c.matrix);
+    const SkIRect clip = canvas->getDeviceClipBounds();
+    const float deviceClip[4] = {float(clip.fLeft), float(clip.fTop), float(clip.fRight), float(clip.fBottom)};
+    std::memcpy(c.deviceClip, deviceClip, sizeof deviceClip);
+    c.foldedAlpha = frame.scope.foldedAlpha;
+    c.clipBypass = frame.clipBypass;
+    const Params* contain = frame.scope.contain ? &frame.scope.contain->params : nullptr;
+    c.containKind = contain ? uint32_t(contain->contain) : 0;
+    if (contain) std::memcpy(c.containBounds, contain->containBounds, sizeof c.containBounds);
+    else std::fill(std::begin(c.containBounds), std::end(c.containBounds), 0.f);
+    c.target = token.target;
+    c.baseSaveCount = token.pauseSaveCount;
+    fCounters.livePauses++;
+    return 1;
+}
+
+// Below the protected depth is a refusal, never a repair; above it, the producer's excess saves are dropped.
+Error PlanInstance::resume(Token& token) {
+    const int count = token.canvas->getSaveCount();
+    if (count < token.pauseSaveCount) {
+        fUnderRestore = true;
+        return Error::kLiveUnderRestore;
+    }
+    if (count > token.pauseSaveCount) {
+        token.canvas->restoreToCount(token.pauseSaveCount);
+        fCounters.liveUnbalanced++;
+    }
+    token.canvas->restore();  // the protective save
+    token.pauseSaveCount = 0;
+    return Error::kOk;
+}
+
 Error PlanInstance::endReplay(int32_t tokenId) {
     if (fTokens.empty() || fTokens.back().id != tokenId) return Error::kTokenOrder;
     Token& token = fTokens.back();
     token.canvas->restoreToCount(token.baseSaveCount);
     fTokens.pop_back();
+    if (fTokens.empty()) fUnderRestore = false;
     return Error::kOk;
 }
 
