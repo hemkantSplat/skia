@@ -59,10 +59,21 @@ inline std::shared_ptr<Mesh> makeMesh(sk_sp<SkMeshSpecification> spec, int mode,
                                     size_t vertexOffset, std::shared_ptr<IndexBuffer> ib,
                                     size_t indexCount, size_t indexOffset, uintptr_t uniformPtr,
                                     size_t uniformSize, uintptr_t boundsPtr, std::shared_ptr<VertexBuffer> instances,
-                                    size_t instanceOffset, size_t instanceCount) {
+                                    size_t instanceOffset, size_t instanceCount, val childEffects) {
     if (!spec || !vb || mode < 0 || mode > 1 || uniformSize != spec->uniformSize()) return nullptr;
     if ((ib && vb->context != ib->context) || (instances && vb->context != instances->context)) {
         return nullptr;
+    }
+    std::vector<SkMesh::ChildPtr> children;
+    for (unsigned i = 0; i < childEffects["length"].as<unsigned>(); ++i) {
+        val child = childEffects[i];
+        switch (child["type"].as<unsigned>()) {
+            case 0: children.emplace_back(); break;
+            case 1: children.emplace_back(child["effect"].as<sk_sp<SkShader>>()); break;
+            case 2: children.emplace_back(child["effect"].as<sk_sp<SkColorFilter>>()); break;
+            case 3: children.emplace_back(child["effect"].as<sk_sp<SkBlender>>()); break;
+            default: return nullptr;
+        }
     }
     SkMesh::Instances instanceData{instances ? instances->buffer : nullptr, instanceOffset, instanceCount};
     const auto* descriptor = instances ? &instanceData : nullptr;
@@ -71,9 +82,9 @@ inline std::shared_ptr<Mesh> makeMesh(sk_sp<SkMeshSpecification> spec, int mode,
     if (!bounds.isFinite() || bounds.isEmpty()) return nullptr;
     auto result = ib ? SkMesh::MakeIndexed(spec, static_cast<SkMesh::Mode>(mode), vb->buffer,
                            vertexCount, vertexOffset, ib->buffer, indexCount, indexOffset,
-                           uniforms, {}, bounds, descriptor)
+                           uniforms, SkSpan(children), bounds, descriptor)
                      : SkMesh::Make(spec, static_cast<SkMesh::Mode>(mode), vb->buffer,
-                           vertexCount, vertexOffset, uniforms, {}, bounds, descriptor);
+                           vertexCount, vertexOffset, uniforms, SkSpan(children), bounds, descriptor);
     if (!result.mesh.isValid()) return nullptr;
     return std::make_shared<Mesh>(Mesh{std::move(result.mesh)});
 }

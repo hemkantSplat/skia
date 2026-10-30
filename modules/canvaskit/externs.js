@@ -1498,3 +1498,5 @@ CanvasKit.Canvas.prototype.drawMesh = function() {};
 
 CanvasKit.Canvas.prototype._getMeshContext = function() {};
 CanvasKit.Canvas.prototype.getMeshContext = function() {};
+
+CanvasKit.meshChildrenApi = 1;
