@@ -104,6 +104,10 @@
 
       CanvasKit.MakeGrContext = CanvasKit.MakeWebGLContext;
 
+      // API level of tools/canvaskit-build's GPU options (context options, SurfaceOptions); stock
+      // builds leave it undefined, so callers feature-detect before passing options.
+      CanvasKit.gpuOptionsApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           this._getResourceCacheLimitBytes();
