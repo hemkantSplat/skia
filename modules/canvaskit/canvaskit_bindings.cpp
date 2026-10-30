@@ -3548,11 +3548,12 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                                            uint32_t texHandle,
                                            SimpleImageInfo ii) -> sk_sp<SkImage> {
                           auto releaseCtx = new TextureReleaseContext{webglHandle, texHandle};
-                          GrGLTextureInfo gti = {
+                          // The backend format follows the requested colour type; F16 wraps half-float RGBA16F textures.
+            GrGLenum format = ii.colorType == kRGBA_F16_SkColorType ? GR_GL_RGBA16F : GR_GL_RGBA8;
+            GrGLTextureInfo gti = {
                                   GR_GL_TEXTURE_2D,
                                   texHandle,
-                                  GR_GL_RGBA8};  // TODO(kjlubick) look at ii for this
-                          auto gbt = GrBackendTextures::MakeGL(
+                                  format};  auto gbt = GrBackendTextures::MakeGL(
                                   ii.width, ii.height, skgpu::Mipmapped::kNo, gti);
                           auto dContext = GrAsDirectContext(self.getCanvas()->recordingContext());
 
