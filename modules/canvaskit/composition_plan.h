@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -149,6 +150,7 @@ public:
         new (fData + fSize++) T(value);
     }
     void pop() { fSize--; }
+    void swap(Buffer& other) { std::swap(fData, other.fData); std::swap(fSize, other.fSize); std::swap(fCap, other.fCap); }
     void clear() { fSize = 0; }
 
 private:
@@ -440,9 +442,47 @@ struct Params {
     float containBounds[4] = {};
 };
 
+// Conservative local bounds: a rect (possibly empty), or unbounded.
+struct Bounds {
+    SkRect rect = SkRect::MakeEmpty();
+    bool unbounded = false;
+
+    static Bounds Unbounded() { return {SkRect::MakeEmpty(), true}; }
+    void join(const Bounds& other);
+    void outset(const float reach[4]);  // l, t, r, b
+    void intersect(const SkRect& clip);
+};
+
+// Per-node signed changes to the subtree counts an edit carries up its ancestry.
+struct Tally {
+    int32_t deviceDependent = 0;
+    int32_t clockBound = 0;
+
+    Tally operator-() const { return {-deviceDependent, -clockBound}; }
+    Tally operator-(const Tally& o) const { return {deviceDependent - o.deviceDependent, clockBound - o.clockBound}; }
+};
+
+// What native derives per node and keeps incrementally (§4.4 output validity): maintained by one O(depth) ancestor walk
+// per edit; content bounds are invalidated by that walk and recomputed lazily from the children's cached bounds.
+struct Derived {
+    uint64_t subtreeGen = 0;
+    uint32_t deviceDependent = 0;  // device-dependent pictures and live nodes in the subtree, self included
+    uint32_t clockBound = 0;       // clock-bound live nodes in the subtree, self included
+    bool boundsDirty = true;
+    Bounds content;  // picture, children, clip, outset and contain, in the node's local space; before its isolation
+};
+
+// A raster substitution: the subtree replays as this image, drawn into `dst` in the node's local space.
+struct Raster {
+    Key image = kNoKey;
+    SkRect dst = SkRect::MakeEmpty();
+};
+
 struct Node {
     Structure structure;
     Params params;
+    Derived derived;
+    Raster raster;
 };
 
 struct PictureEntry {
@@ -464,13 +504,18 @@ struct PathEntry {
     SkPath* path = nullptr;
 };
 
+struct ImageEntry {
+    sk_sp<SkImage> image;
+    uint32_t refs = 0;  // raster substitutions naming it
+};
+
 // The committed state of one instance.
 struct PlanState {
     SlotMap<uint32_t, Node> nodes;
     SlotMap<Key, PathEntry> paths;
     Index<uint32_t> pathHandles;  // defined generations per path handle
     std::unordered_map<Key, PictureEntry> pictures;
-    std::unordered_map<Key, sk_sp<SkImage>> images;
+    std::unordered_map<Key, ImageEntry> images;
     // Registered generations per handle, so a lookup can tell an unknown handle from a wrong generation.
     std::unordered_map<uint32_t, uint32_t> pictureHandles, imageHandles;
 };
@@ -482,6 +527,9 @@ struct StagedNode {
     bool live;        // committed when the packet began
     uint32_t born;    // the record of its latest Insert in this packet, or kNone
     Structure structure;
+    Derived derived;
+    Tally own;
+    bool upkeep = false;
 };
 
 struct StagedPath {
@@ -493,7 +541,10 @@ struct StagedPath {
     PathData data;
 };
 
+struct ClearedRaster { uint32_t node; Key image; };
+
 struct StagedState {
+    Buffer<ClearedRaster> clearedRasters;
     Index<uint32_t> nodeIndex;  // id → entry
     Chunks<StagedNode> nodes;
     Index<Key> pathIndex;
@@ -503,6 +554,8 @@ struct StagedState {
     Buffer<uint32_t> stack;  // Remove's subtree walk
     uint32_t nodeCount = 0;
     uint32_t pathCount = 0;
+    uint64_t generation = 0;
+    uint32_t upkeepVisits = 0;
 
     // Frees what the touched entries own and forgets them; returns the entries visited, never capacity.
     uint32_t clear();
@@ -516,6 +569,8 @@ struct Counters {
     uint32_t lastAllocations = 0;    // pass 1 checked allocations
     uint32_t lastCommitAllocations = 0;  // pass 2 checked allocations: always 0
     uint32_t lastCleanup = 0;        // staged entries freed after the apply
+    uint32_t lastUpkeepVisits = 0;
+    uint64_t rastersDrawn = 0, rastersFellBack = 0, boundsComputed = 0;
     uint64_t replays = 0, visited = 0, picturesDrawn = 0, layers = 0, clips = 0;
     uint64_t livePauses = 0, liveUnbalanced = 0;  // live slots handed to JS; of them, left with excess saves
 };
@@ -568,8 +623,18 @@ public:
     Error registerImage(uint32_t handle, uint32_t gen, sk_sp<SkImage> image);
     Error releaseImage(uint32_t handle, uint32_t gen);
 
+    // Raster substitution (§4.4, main-local): `node`'s subtree replays as the image until an edit reaches it or its
+    // subtree. The image holds the subtree before the node's own isolation; a layer reaching past its content
+    // (init-with-previous, an extent-wide blend) or a linear F16 layer is refused.
+    Error setRaster(uint32_t node, uint32_t handle, uint32_t gen, const SkRect& dst, double expectedSubtreeGen = -1);
+    Error clearRaster(uint32_t node);
+    const Buffer<ClearedRaster>& clearedRasters() const { return fClearedRasters; }
+    void clearRasterReport() { fClearedRasters.clear(); }
+    // The node's conservative bounds in its local space (before its own matrix, its isolation applied); lazy.
+    Bounds bounds(uint32_t node);
+
     // Replay of `root`'s subtree onto `canvas`. A token is positive; a failure is the negated Error.
-    int32_t beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target);
+    int32_t beginReplay(SkCanvas* canvas, uint32_t root, const ReplayTarget& target, bool contentOnly = false);
     // Replay of a paused live node's children in its local space; only legal while the innermost token is paused there.
     int32_t beginReplayChildren(SkCanvas* canvas, uint32_t live, float alpha);
     // 0 when the walk is complete, 1 when paused at a live node (its context in slot openTokens() - 1), else -Error.
@@ -603,11 +668,12 @@ private:
     enum class Stage : uint8_t { kEnter, kBypassChildren, kContent, kChildren, kExit };
     // What a node's own params leave in force for its content and children: X3 replayGroup's folded alpha and contain.
     struct Scope {
+        bool antialiasedClip = false;
         float foldedAlpha = 1;
         const Node* contain = nullptr;  // nearest node at or above with SetContain
     };
     struct Frame {
-        const Node* node;
+        Node* node;
         uint32_t id;
         uint32_t child;
         int saveCount;
@@ -615,6 +681,7 @@ private:
         Scope scope;
         bool softClip;    // bypass children replay before the clip
         bool clipBypass;  // this node is a bypass child replayed before its parent's soft clip
+        bool contentOnly = false;
     };
     struct Token {
         int32_t id;
@@ -627,6 +694,12 @@ private:
 
     ApplyResult validate(const uint8_t* packet, uint32_t records, uint32_t floats);
     void commit(const uint8_t* packet, uint32_t records, uint32_t floats);
+    const Bounds& contentBounds(Node& node);
+    Bounds ownBounds(Node& node);
+    void dirtyBounds(uint32_t id);
+    // A layer's bounds for saveLayer: the hint, else the derived content bounds; none keeps the clip's extent.
+    std::optional<SkRect> layerBounds(Node& node);
+    void drawRaster(SkCanvas* canvas, const Node& node);
     Error canOpenToken(SkCanvas* canvas) const;
     Token& openToken(SkCanvas* canvas, const ReplayTarget& target);
     void pushNode(Token& token, uint32_t id, Scope scope, bool clipBypass);
@@ -636,10 +709,14 @@ private:
 
     const uint32_t fId;
     uint32_t fApplied = 0;  // the sequence the next packet's base must equal
+    uint64_t fGeneration = 0;
     int32_t fNextToken = 1;
     Allocator fAlloc;
     PlanState fState;
     StagedState fStaged;
+    Buffer<ClearedRaster> fClearedRasters;
+    struct BoundsWork { Node* node; bool ready; };
+    Buffer<BoundsWork> fBoundsWork;
     std::vector<uint8_t> fPacket;
     std::vector<Token> fTokens;
     std::vector<LiveContext> fContexts = std::vector<LiveContext>(kMaxOpenTokens);
