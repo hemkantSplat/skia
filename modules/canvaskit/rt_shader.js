@@ -1,10 +1,9 @@
 CanvasKit._extraInitializations = CanvasKit._extraInitializations || [];
 CanvasKit._extraInitializations.push(function() {
 
-  // sksl is the shader code.
-  // errorCallback is a function that will be called with an error string if the
-  // effect cannot be made. If not provided, the error will be logged.
-  CanvasKit.RuntimeEffect.Make = function(sksl, errorCallback) {
+  // Compiles sksl with one of the _Make* bindings. errorCallback gets the error string if the
+  // effect cannot be made; without one, the error is logged.
+  function makeEffect(make, sksl, errorCallback) {
     // The easiest way to pass a function into C++ code is to wrap it in an object and
     // treat it as an emscripten::val on the other side.
     var callbackObj = {
@@ -12,21 +11,31 @@ CanvasKit._extraInitializations.push(function() {
         console.log('RuntimeEffect error', err);
       },
     };
-    return CanvasKit.RuntimeEffect._Make(sksl, callbackObj);
+    return make(sksl, callbackObj);
+  }
+
+  // Copies the children's bare pointers (re-wrapped as sk_sp in C++); the caller frees the result.
+  function copyChildPointers(children) {
+    var barePointers = [];
+    for (var i = 0; i < children.length; i++) {
+      barePointers.push(children[i].$$.ptr);
+    }
+    return copy1dArray(barePointers, 'HEAPU32');
+  }
+
+  // sksl is the shader code.
+  CanvasKit.RuntimeEffect.Make = function(sksl, errorCallback) {
+    return makeEffect(CanvasKit.RuntimeEffect._Make, sksl, errorCallback);
   };
 
   // sksl is the blender code.
-  // errorCallback is a function that will be called with an error string if the
-  // effect cannot be made. If not provided, the error will be logged.
   CanvasKit.RuntimeEffect.MakeForBlender = function(sksl, errorCallback) {
-    // The easiest way to pass a function into C++ code is to wrap it in an object and
-    // treat it as an emscripten::val on the other side.
-    var callbackObj = {
-      'onError': errorCallback || function(err) {
-        console.log('RuntimeEffect error', err);
-      },
-    };
-    return CanvasKit.RuntimeEffect._MakeForBlender(sksl, callbackObj);
+    return makeEffect(CanvasKit.RuntimeEffect._MakeForBlender, sksl, errorCallback);
+  };
+
+  // sksl is the color filter code: half4 main(half4 color).
+  CanvasKit.RuntimeEffect.MakeForColorFilter = function(sksl, errorCallback) {
+    return makeEffect(CanvasKit.RuntimeEffect._MakeForColorFilter, sksl, errorCallback);
   };
 
   CanvasKit.RuntimeEffect.prototype.makeShader = function(floats, localMatrix) {
@@ -47,17 +56,27 @@ CanvasKit._extraInitializations.push(function() {
     var shouldOwnUniforms = !floats['_ck'];
     var fptr = copy1dArray(floats, 'HEAPF32');
     var localMatrixPtr = copy3x3MatrixToWasm(localMatrix);
-    var barePointers = [];
-    for (var i = 0; i < childrenShaders.length; i++) {
-      // childrenShaders are emscriptens smart pointer type. We want to get the bare pointer
-      // and send that over the wire, so it can be re-wrapped as an sk_sp.
-      barePointers.push(childrenShaders[i].$$.ptr);
-    }
-    var childrenPointers = copy1dArray(barePointers, 'HEAPU32');
+    var children = childrenShaders || [];
+    var childrenPointers = copyChildPointers(children);
     // Our array has 4 bytes per float, so be sure to account for that before
     // sending it over the wire.
-    return this._makeShaderWithChildren(fptr, floats.length * 4, shouldOwnUniforms, childrenPointers,
-                                        barePointers.length, localMatrixPtr);
+    var shader = this._makeShaderWithChildren(fptr, floats.length * 4, shouldOwnUniforms,
+                                              childrenPointers, children.length, localMatrixPtr);
+    CanvasKit._free(childrenPointers);
+    return shader;
+  }
+
+  // childrenShaders (optional) are the effect's `uniform shader` children, in declaration order.
+  CanvasKit.RuntimeEffect.prototype.makeColorFilter = function(floats, childrenShaders) {
+    // A MallocObj keeps its memory; plain arrays are copied and owned by the color filter.
+    var shouldOwnUniforms = !floats['_ck'];
+    var fptr = copy1dArray(floats, 'HEAPF32');
+    var children = childrenShaders || [];
+    var childrenPointers = copyChildPointers(children);
+    var filter = this._makeColorFilter(fptr, floats.length * 4, shouldOwnUniforms,
+                                       childrenPointers, children.length);
+    CanvasKit._free(childrenPointers);
+    return filter;
   }
 
   CanvasKit.RuntimeEffect.prototype.makeBlender = function(floats) {

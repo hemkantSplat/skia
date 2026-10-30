@@ -1099,6 +1099,34 @@ void castUniforms(void* data, size_t dataLen, const SkRuntimeEffect& effect) {
         }
     }
 }
+
+// Wraps uniforms copied from JS (ints cast in place); owned memory is freed with the result.
+sk_sp<SkData> uniformData(const SkRuntimeEffect& effect, WASMPointerF32 fPtr, size_t fLen,
+                          bool shouldOwnUniforms) {
+    void* data = reinterpret_cast<void*>(fPtr);
+    castUniforms(data, fLen, effect);
+    return shouldOwnUniforms ? SkData::MakeFromMalloc(data, fLen)
+                             : SkData::MakeWithoutCopy(data, fLen);
+}
+
+// Child shaders arrive as bare pointers owned by JS handles, so each child takes its own ref.
+std::vector<SkRuntimeEffect::ChildPtr> childShaders(WASMPointerU32 cPtrs, size_t cLen) {
+    SkShader** shaders = reinterpret_cast<SkShader**>(cPtrs);
+    std::vector<SkRuntimeEffect::ChildPtr> children;
+    children.reserve(cLen);
+    for (size_t i = 0; i < cLen; i++) {
+        children.emplace_back(sk_ref_sp(shaders[i]));
+    }
+    return children;
+}
+
+// The compiled effect, or null after passing Skia's error text to errHandler.onError.
+sk_sp<SkRuntimeEffect> effectOrReport(SkRuntimeEffect::Result result, emscripten::val errHandler) {
+    if (!result.effect) {
+        errHandler.call<void>("onError", emscripten::val(result.errorText.c_str()));
+    }
+    return std::move(result.effect);
+}
 #endif
 
 static SkSerialReturnType always_save_typeface_bytes(SkTypeface* face, void*) {
@@ -2983,121 +3011,78 @@ EMSCRIPTEN_BINDINGS(Skia) {
             .field("debugTrace", &SkRuntimeEffect::TracedShader::debugTrace);
 
     class_<SkRuntimeEffect>("RuntimeEffect")
-            .smart_ptr<sk_sp<SkRuntimeEffect>>("sk_sp<RuntimeEffect>")
-            .class_function(
-                    "_Make",
-                    optional_override([](std::string sksl,
-                                         emscripten::val errHandler) -> sk_sp<SkRuntimeEffect> {
-                        SkString s(sksl.c_str(), sksl.length());
-                        auto [effect, errorText] = SkRuntimeEffect::MakeForShader(s);
-                        if (!effect) {
-                            errHandler.call<void>("onError", val(errorText.c_str()));
-                            return nullptr;
-                        }
-                        return effect;
-                    }))
-            .class_function(
-                    "_MakeForBlender",
-                    optional_override([](std::string sksl,
-                                         emscripten::val errHandler) -> sk_sp<SkRuntimeEffect> {
-                        SkString s(sksl.c_str(), sksl.length());
-                        auto [effect, errorText] = SkRuntimeEffect::MakeForBlender(s);
-                        if (!effect) {
-                            errHandler.call<void>("onError", val(errorText.c_str()));
-                            return nullptr;
-                        }
-                        return effect;
-                    }))
-            .class_function("MakeTraced",
-                            optional_override([](sk_sp<SkShader> shader,
-                                                 int traceCoordX,
-                                                 int traceCoordY) -> SkRuntimeEffect::TracedShader {
-                                return SkRuntimeEffect::MakeTraced(
-                                        shader, SkIPoint::Make(traceCoordX, traceCoordY));
-                            }))
-            .function("_makeShader",
-                      optional_override([](SkRuntimeEffect& self,
-                                           WASMPointerF32 fPtr,
-                                           size_t fLen,
-                                           bool shouldOwnUniforms,
-                                           WASMPointerF32 mPtr) -> sk_sp<SkShader> {
-                          void* uniformData = reinterpret_cast<void*>(fPtr);
-                          castUniforms(uniformData, fLen, self);
-                          sk_sp<SkData> uniforms;
-                          if (shouldOwnUniforms) {
-                              uniforms = SkData::MakeFromMalloc(uniformData, fLen);
-                          } else {
-                              uniforms = SkData::MakeWithoutCopy(uniformData, fLen);
-                          }
-
-                          OptionalMatrix localMatrix(mPtr);
-                          return self.makeShader(
-                                  uniforms, nullptr, 0, mPtr ? &localMatrix : nullptr);
-                      }))
-            .function("_makeShaderWithChildren",
-                      optional_override([](SkRuntimeEffect& self,
-                                           WASMPointerF32 fPtr,
-                                           size_t fLen,
-                                           bool shouldOwnUniforms,
-                                           WASMPointerU32 cPtrs,
-                                           size_t cLen,
-                                           WASMPointerF32 mPtr) -> sk_sp<SkShader> {
-                          void* uniformData = reinterpret_cast<void*>(fPtr);
-                          castUniforms(uniformData, fLen, self);
-                          sk_sp<SkData> uniforms;
-                          if (shouldOwnUniforms) {
-                              uniforms = SkData::MakeFromMalloc(uniformData, fLen);
-                          } else {
-                              uniforms = SkData::MakeWithoutCopy(uniformData, fLen);
-                          }
-
-                          sk_sp<SkShader>* children = new sk_sp<SkShader>[cLen];
-                          SkShader** childrenPtrs = reinterpret_cast<SkShader**>(cPtrs);
-                          for (size_t i = 0; i < cLen; i++) {
-                              // This bare pointer was already part of an sk_sp (owned outside of
-                              // here), so we want to ref the new sk_sp so makeShader doesn't clean
-                              // it up.
-                              children[i] = sk_ref_sp<SkShader>(childrenPtrs[i]);
-                          }
-                          OptionalMatrix localMatrix(mPtr);
-                          auto s = self.makeShader(
-                                  uniforms, children, cLen, mPtr ? &localMatrix : nullptr);
-                          delete[] children;
-                          return s;
-                      }))
-            .function("_makeBlender",
-                      optional_override([](SkRuntimeEffect& self,
-                                           WASMPointerF32 fPtr,
-                                           size_t fLen,
-                                           bool shouldOwnUniforms) -> sk_sp<SkBlender> {
-                          void* uniformData = reinterpret_cast<void*>(fPtr);
-                          castUniforms(uniformData, fLen, self);
-                          sk_sp<SkData> uniforms;
-                          if (shouldOwnUniforms) {
-                              uniforms = SkData::MakeFromMalloc(uniformData, fLen);
-                          } else {
-                              uniforms = SkData::MakeWithoutCopy(uniformData, fLen);
-                          }
-
-                          return self.makeBlender(uniforms, {});
-                      }))
-            .function("getUniformCount", optional_override([](SkRuntimeEffect& self) -> int {
-                          return self.uniforms().size();
-                      }))
-            .function("getUniformFloatCount", optional_override([](SkRuntimeEffect& self) -> int {
-                          return self.uniformSize() / sizeof(float);
-                      }))
-            .function("getUniformName",
-                      optional_override([](SkRuntimeEffect& self, int i) -> JSString {
-                          auto it = self.uniforms().begin() + i;
-                          return emscripten::val(std::string(it->name).c_str());
-                      }))
-            .function("getUniform",
-                      optional_override([](SkRuntimeEffect& self, int i) -> RuntimeEffectUniform {
-                          auto it = self.uniforms().begin() + i;
-                          RuntimeEffectUniform su = fromUniform(*it);
-                          return su;
-                      }));
+        .smart_ptr<sk_sp<SkRuntimeEffect>>("sk_sp<RuntimeEffect>")
+        .class_function("_Make", optional_override([](std::string sksl,
+                                                     emscripten::val errHandler
+                                                    )->sk_sp<SkRuntimeEffect> {
+            return effectOrReport(SkRuntimeEffect::MakeForShader(SkString(sksl.c_str(), sksl.length())), errHandler);
+        }))
+        .class_function("_MakeForBlender", optional_override([](std::string sksl,
+                                                     emscripten::val errHandler
+                                                    )->sk_sp<SkRuntimeEffect> {
+            return effectOrReport(SkRuntimeEffect::MakeForBlender(SkString(sksl.c_str(), sksl.length())), errHandler);
+        }))
+        .class_function("_MakeForColorFilter", optional_override([](std::string sksl,
+                                                     emscripten::val errHandler
+                                                    )->sk_sp<SkRuntimeEffect> {
+            return effectOrReport(SkRuntimeEffect::MakeForColorFilter(SkString(sksl.c_str(), sksl.length())), errHandler);
+        }))
+        .class_function("MakeTraced", optional_override([](
+                sk_sp<SkShader> shader,
+                int traceCoordX,
+                int traceCoordY) -> SkRuntimeEffect::TracedShader {
+            return SkRuntimeEffect::MakeTraced(shader, SkIPoint::Make(traceCoordX, traceCoordY));
+        }))
+        .function("_makeShader", optional_override([](SkRuntimeEffect& self,
+                                                      WASMPointerF32 fPtr,
+                                                      size_t fLen,
+                                                      bool shouldOwnUniforms,
+                                                      WASMPointerF32 mPtr)->sk_sp<SkShader> {
+            OptionalMatrix localMatrix(mPtr);
+            return self.makeShader(uniformData(self, fPtr, fLen, shouldOwnUniforms), {},
+                                   mPtr ? &localMatrix : nullptr);
+        }))
+        .function("_makeShaderWithChildren", optional_override([](SkRuntimeEffect& self,
+                                                                  WASMPointerF32 fPtr,
+                                                                  size_t fLen,
+                                                                  bool shouldOwnUniforms,
+                                                                  WASMPointerU32 cPtrs,
+                                                                  size_t cLen,
+                                                                  WASMPointerF32 mPtr)->sk_sp<SkShader> {
+            OptionalMatrix localMatrix(mPtr);
+            return self.makeShader(uniformData(self, fPtr, fLen, shouldOwnUniforms),
+                                   childShaders(cPtrs, cLen), mPtr ? &localMatrix : nullptr);
+        }))
+        .function("_makeColorFilter", optional_override([](SkRuntimeEffect& self,
+                                                           WASMPointerF32 fPtr,
+                                                           size_t fLen,
+                                                           bool shouldOwnUniforms,
+                                                           WASMPointerU32 cPtrs,
+                                                           size_t cLen)->sk_sp<SkColorFilter> {
+            return self.makeColorFilter(uniformData(self, fPtr, fLen, shouldOwnUniforms),
+                                        childShaders(cPtrs, cLen));
+        }))
+        .function("_makeBlender", optional_override([](SkRuntimeEffect& self,
+                                                       WASMPointerF32 fPtr,
+                                                       size_t fLen,
+                                                       bool shouldOwnUniforms)->sk_sp<SkBlender> {
+            return self.makeBlender(uniformData(self, fPtr, fLen, shouldOwnUniforms), {});
+        }))
+        .function("getUniformCount", optional_override([](SkRuntimeEffect& self)->int {
+            return self.uniforms().size();
+        }))
+        .function("getUniformFloatCount", optional_override([](SkRuntimeEffect& self)->int {
+            return self.uniformSize() / sizeof(float);
+        }))
+        .function("getUniformName", optional_override([](SkRuntimeEffect& self, int i)->JSString {
+            auto it = self.uniforms().begin() + i;
+            return emscripten::val(std::string(it->name).c_str());
+        }))
+        .function("getUniform", optional_override([](SkRuntimeEffect& self, int i)->RuntimeEffectUniform {
+            auto it = self.uniforms().begin() + i;
+            RuntimeEffectUniform su = fromUniform(*it);
+            return su;
+        }));
 
     value_object<RuntimeEffectUniform>("RuntimeEffectUniform")
             .field("columns", &RuntimeEffectUniform::columns)
