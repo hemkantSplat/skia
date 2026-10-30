@@ -2342,8 +2342,8 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                           return actualCodePoints;
                       }))
             .function("getPath", optional_override([](const SkFont& self, SkGlyphID glyph) -> SkPathOrNull {
-            SkPath path;
-            return self.getPath(glyph, &path) ? emscripten::val(path) : emscripten::val::null();
+            auto path = self.getPath(glyph);
+            return path ? emscripten::val(*path) : emscripten::val::null();
         }))
         .function("_getPaths", optional_override([](const SkFont& self, WASMPointerU16 gPtr,
                                                    int count) -> JSObject {
@@ -2351,13 +2351,10 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                 JSObject paths = emscripten::val::array();
                 int index = 0;
             } context;
-            self.getPaths(reinterpret_cast<const SkGlyphID*>(gPtr), count,
+            self.getPaths({reinterpret_cast<const SkGlyphID*>(gPtr), static_cast<size_t>(count)},
                 [](const SkPath* original, const SkMatrix& matrix, void* ctx) {
                     auto& result = *static_cast<Context*>(ctx);
-                    SkPath path;
-                    if (original) {
-                        original->transform(matrix, &path);
-                    }
+                    SkPath path = original ? original->makeTransform(matrix) : SkPath();
                     result.paths.set(result.index++, original ? emscripten::val(path)
                                                               : emscripten::val::null());
                 }, &context);
@@ -2958,6 +2955,19 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
 
             .function("makeDashed", &MakeDashed)
             .function("_makeTrimmed", &MakeTrimmed)
+            .function("_makeWithEffect", optional_override([](const SkPath& self,
+                                                         sk_sp<SkPathEffect> effect,
+                                                         bool stroke,
+                                                         float resScale) -> SkPathOrNull {
+                if (!effect || !(resScale > 0) || !std::isfinite(resScale)) {
+                    return emscripten::val::null();
+                }
+                SkStrokeRec rec(stroke ? SkStrokeRec::kHairline_InitStyle : SkStrokeRec::kFill_InitStyle);
+                rec.setResScale(resScale);
+                SkPathBuilder path;
+                return effect->filterPath(&path, self, &rec) ? emscripten::val(path.detach())
+                                                                      : emscripten::val::null();
+            }))
             .function("_makeStroked", &MakeStroked)
 
             // Exporting

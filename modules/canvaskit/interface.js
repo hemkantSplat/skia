@@ -322,6 +322,13 @@ CanvasKit.onRuntimeInitialized = function() {
     return this;
   };
 
+  CanvasKit.Path.prototype.makeWithEffect = function(effect, style, resScale) {
+    if (style !== 'fill' && style !== 'stroke') {
+      return null;
+    }
+    return this._makeWithEffect(effect, style === 'stroke', resScale === undefined ? 1 : resScale);
+  };
+
   CanvasKit["PathBuilder"].prototype["detachAndDelete"] = function() {
     var newPath = this.detach();
     this.delete();

@@ -2633,6 +2633,10 @@ export interface Paint extends EmbindObject<"Paint"> {
  * in a mutable fashion.
  */
 export interface Path extends EmbindObject<"Path"> {
+    /** New geometry: 'stroke' filters the centreline (hairline record), 'fill' the outline.
+     *  Null if the effect refuses (dash on a fill) or resScale is not finite and positive. */
+    makeWithEffect(effect: PathEffect, style: "fill" | "stroke", resScale?: number): Path | null;
+
     /**
      * Returns minimum and maximum axes values of the lines and curves in Path.
      * Returns (0, 0, 0, 0) if Path contains no points.
