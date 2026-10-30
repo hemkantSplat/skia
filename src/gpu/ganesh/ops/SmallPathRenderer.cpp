@@ -7,6 +7,7 @@
  */
 #include "src/gpu/ganesh/GrColor.h"
 #include "src/gpu/ganesh/ops/SmallPathRenderer.h"
+#include "src/core/SkFloatBits.h"
 
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkMatrix.h"
@@ -325,7 +326,8 @@ private:
                 int ceilDesiredDimension = SkScalarCeilToInt(desiredDimension);
 
                 // check to see if df path is cached
-                shapeData = atlasMgr->findOrCreate(args.fShape, ceilDesiredDimension);
+                // Fractional perspective mips can share the same rounded dimension.
+                shapeData = atlasMgr->findOrCreate(args.fShape, SkFloat2Bits(desiredDimension));
                 if (!shapeData->fAtlasLocator.plotLocator().isValid()) {
                     SkScalar scale = desiredDimension / maxDim;
 

@@ -54,7 +54,10 @@ SmallPathShapeDataKey::SmallPathShapeDataKey(const GrStyledShape& shape, const S
     fKey[2] = SkFloat2Bits(sy);
     fKey[3] = SkFloat2Bits(kx);
     fKey[4] = SkFloat2Bits(ky);
-    fKey[5] = fracX | (fracY >> 8);
+    fKey[7 ] = fracX | (fracY >> 8);
+    // Match the exact matrix used to rasterize the atlas entry.
+    fKey[5] = SkFloat2Bits(ctm.get(SkMatrix::kMTransX));
+    fKey[6] = SkFloat2Bits(ctm.get(SkMatrix::kMTransY));
     shape.writeUnstyledKey(&fKey[6]);
 }
 
