@@ -1,0 +1,23 @@
+import("//gn/skia.gni")
+
+# A single archive includes Skia and its static dependencies for the C consumer.
+static_library("cfsk") {
+  complete_static_lib = true
+  public = [ "cfsk.h" ]
+  sources = [
+    "cfsk_core.cpp",
+    "cfsk_effects.cpp",
+    "cfsk_graphite.cpp",
+    "cfsk_internal.h",
+    "cfsk_ordinals.cpp",
+    "cfsk_paths.cpp",
+    "cfsk_text.cpp",
+    "cfsk_unsupported.cpp",
+  ]
+  include_dirs = [ "../.." ]
+  deps = [
+    "//:pathops",
+    "//:skia",
+    "//third_party/dawn",
+  ]
+}
