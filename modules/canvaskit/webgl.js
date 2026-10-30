@@ -137,6 +137,10 @@
       // ColorSpace queries, ColorFilter.MakeColorSpaceXform); stock leaves it undefined.
       CanvasKit.hdrColorApi = 1;
 
+      // API level of tools/canvaskit-build's shared GL context (GrDirectContext.resetContext,
+      // GLBackendState, an honest kAll reset); stock leaves it undefined.
+      CanvasKit.sharedGlApi = 1;
+
       CanvasKit.GrDirectContext.prototype.getResourceCacheLimitBytes = function() {
           CanvasKit.setCurrentContext(this._context);
           return this._getResourceCacheLimitBytes();
