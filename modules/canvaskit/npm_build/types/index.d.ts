@@ -2150,6 +2150,11 @@ export interface FontMetrics {
  * See SkFont.h for more on this class.
  */
 export interface Font extends EmbindObject<"Font"> {
+    /** Returns an owned outline at this font's size/scale/skew, or null without an outline. */
+    getPath(glyphID: number): Path | null;
+    /** Batch outlines in input order, at the origin. Delete each non-null path after use. */
+    getPaths(glyphIDs: InputGlyphIDArray): (Path | null)[];
+
     /**
      * Returns the FontMetrics for this font.
      */

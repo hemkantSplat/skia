@@ -49,6 +49,15 @@ CanvasKit._extraInitializations.push(function() {
     return rv;
   };
 
+  CanvasKit.Font.prototype.getPaths = function(glyphs) {
+    var glyphPtr = copy1dArray(glyphs, 'HEAPU16');
+    try {
+      return this._getPaths(glyphPtr, glyphs.length);
+    } finally {
+      freeArraysThatAreNotMallocedByUsers(glyphPtr, glyphs);
+    }
+  };
+
   CanvasKit.Font.prototype.getGlyphIDs = function(str, numGlyphIDs, optionalOutputArray) {
     if (!numGlyphIDs) {
       numGlyphIDs = str.length;
