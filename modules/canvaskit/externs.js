@@ -130,6 +130,7 @@ var CanvasKit = {
   Blender: {
     Mode: function() {},
     MakeAdd: function() {},
+    MakeMin: function() {},
     MakeLightResolve: function() {},
 
     // private API (from C++ bindings)
