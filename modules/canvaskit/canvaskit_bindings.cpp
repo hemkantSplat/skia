@@ -66,6 +66,7 @@
 #include "include/utils/SkParsePath.h"
 #include "include/utils/SkShadowUtils.h"
 #include "src/core/SkFloatBits.h"
+#include "src/core/SkColorFilterPriv.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkPathRaw.h"
 #include "src/core/SkResourceCache.h"
@@ -2160,7 +2161,16 @@ EMSCRIPTEN_BINDINGS(Skia) {
             return SkColorFilters::HSLAMatrix(twentyFloats);
         }))
         .class_function("MakeSRGBToLinearGamma", &SkColorFilters::SRGBToLinearGamma)
-            .class_function("MakeLuma", &SkLumaColorFilter::Make).class_function("MakeOutputDecode", &SkOutputTransform::Decode)
+        // Unpremul, src transfer and gamut to dst's, premul; unclamped. Null if either is null.
+        .class_function("MakeColorSpaceXform", optional_override([](sk_sp<SkColorSpace> src,
+                                                                    sk_sp<SkColorSpace> dst) {
+            if (!src || !dst) {
+                return sk_sp<SkColorFilter>();
+            }
+            return SkColorFilterPriv::MakeColorSpaceXform(std::move(src), std::move(dst));
+        }))
+        .class_function("MakeLuma", &SkLumaColorFilter::Make)
+        .class_function("MakeOutputDecode", &SkOutputTransform::Decode)
         .class_function("MakeOutputEncode", &SkOutputTransform::Encode)
         // JS passes SkOutputTransform::ToneCurve by value.
         .class_function("_MakeToneMap", optional_override([](int curve, float exposure) {
