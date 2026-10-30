@@ -187,6 +187,29 @@
           return this._maxSurfaceSampleCount(colorType);
       };
 
+      // GrGLBackendState bits for GrDirectContext.resetContext; All is kAll_GrBackendState.
+      CanvasKit.GLBackendState = {
+          'RenderTarget': CanvasKit['_GLBackendState_RenderTarget'],
+          'TextureBinding': CanvasKit['_GLBackendState_TextureBinding'],
+          'View': CanvasKit['_GLBackendState_View'],
+          'Blend': CanvasKit['_GLBackendState_Blend'],
+          'MSAAEnable': CanvasKit['_GLBackendState_MSAAEnable'],
+          'Vertex': CanvasKit['_GLBackendState_Vertex'],
+          'Stencil': CanvasKit['_GLBackendState_Stencil'],
+          'PixelStore': CanvasKit['_GLBackendState_PixelStore'],
+          'Program': CanvasKit['_GLBackendState_Program'],
+          'FixedFunction': CanvasKit['_GLBackendState_FixedFunction'],
+          'Misc': CanvasKit['_GLBackendState_Misc'],
+          'All': CanvasKit['_GLBackendState_All'],
+      };
+
+      // Another library changed GL state on this context: Ganesh drops the cached state named by
+      // the bits (all of it by default) and re-sends it before its next GL use.
+      CanvasKit.GrDirectContext.prototype.resetContext = function(state) {
+          CanvasKit.setCurrentContext(this._context);
+          this._resetContext(state === undefined ? CanvasKit.GLBackendState['All'] : state);
+      };
+
       CanvasKit.GrDirectContext.prototype.resetGpuStats = function() {
           CanvasKit.setCurrentContext(this._context);
           this._resetGpuStats();
