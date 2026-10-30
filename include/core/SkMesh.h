@@ -81,9 +81,11 @@ public:
 
             kLast = kUByte4_unorm
         };
+        enum class Rate : uint32_t { kVertex, kInstance };
         Type     type;
         size_t   offset;
         SkString name;
+        Rate     rate = Rate::kVertex;
     };
 
     struct Varying {
@@ -152,7 +154,8 @@ public:
                        const SkString&         vs,
                        const SkString&         fs,
                        sk_sp<SkColorSpace>     cs,
-                       SkAlphaType             at);
+                       SkAlphaType             at,
+                       size_t                  instanceStride = 0);
 
     SkSpan<const Attribute> attributes() const { return SkSpan(fAttributes); }
 
@@ -185,6 +188,7 @@ public:
     const Varying* findVarying(std::string_view name) const;
 
     size_t stride() const { return fStride; }
+    size_t instanceStride() const { return fInstanceStride; }
 
     SkColorSpace* colorSpace() const { return fColorSpace.get(); }
 
@@ -203,10 +207,12 @@ private:
                                             const SkString&         vs,
                                             const SkString&         fs,
                                             sk_sp<SkColorSpace>     cs,
-                                            SkAlphaType             at);
+                                            SkAlphaType             at,
+                                            size_t                  instanceStride);
 
     SkMeshSpecification(SkSpan<const Attribute>,
                         size_t,
+                        size_t instanceStride,
                         SkSpan<const Varying>,
                         int passthroughLocalCoordsVaryingIndex,
                         uint32_t deadVaryingMask,
@@ -231,6 +237,7 @@ private:
     const std::unique_ptr<const SkSL::Program> fVS;
     const std::unique_ptr<const SkSL::Program> fFS;
     const size_t                               fStride;
+    const size_t                               fInstanceStride;
           uint32_t                             fHash;
     const int                                  fPassthroughLocalCoordsVaryingIndex;
     const uint32_t                             fDeadVaryingMask;
@@ -311,6 +318,12 @@ public:
 
     using ChildPtr = SkRuntimeEffect::ChildPtr;
 
+    struct Instances {
+        sk_sp<VertexBuffer> buffer;
+        size_t offset = 0;
+        size_t count = 0;
+    };
+
     /**
      * Creates a non-indexed SkMesh. The returned SkMesh can be tested for validity using
      * SkMesh::isValid(). An invalid mesh simply fails to draws if passed to SkCanvas::drawMesh().
@@ -324,7 +337,8 @@ public:
                        size_t vertexOffset,
                        sk_sp<const SkData> uniforms,
                        SkSpan<ChildPtr> children,
-                       const SkRect& bounds);
+                       const SkRect& bounds,
+                       const Instances* instances = nullptr);
 
     /**
      * Creates an indexed SkMesh. The returned SkMesh can be tested for validity using
@@ -342,7 +356,8 @@ public:
                               size_t indexOffset,
                               sk_sp<const SkData> uniforms,
                               SkSpan<ChildPtr> children,
-                              const SkRect& bounds);
+                              const SkRect& bounds,
+                              const Instances* instances = nullptr);
 
     sk_sp<SkMeshSpecification> refSpec() const { return fSpec; }
     SkMeshSpecification* spec() const { return fSpec.get(); }
@@ -354,6 +369,11 @@ public:
 
     size_t vertexOffset() const { return fVOffset; }
     size_t vertexCount()  const { return fVCount;  }
+
+    sk_sp<VertexBuffer> refInstanceBuffer() const { return fInstances.buffer; }
+    VertexBuffer* instanceBuffer() const { return fInstances.buffer.get(); }
+    size_t instanceOffset() const { return fInstances.offset; }
+    size_t instanceCount() const { return fInstances.count; }
 
     sk_sp<IndexBuffer> refIndexBuffer() const { return fIB; }
     IndexBuffer* indexBuffer() const { return fIB.get(); }
@@ -377,6 +397,7 @@ private:
 
     sk_sp<VertexBuffer> fVB;
     sk_sp<IndexBuffer>  fIB;
+    Instances          fInstances;
 
     sk_sp<const SkData> fUniforms;
     skia_private::STArray<2, ChildPtr> fChildren;

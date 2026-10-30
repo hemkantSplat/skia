@@ -412,12 +412,9 @@ private:
             vertBuilder->codeAppendf("%s attributes;",
                                      vsCallbacks.getMangledName("Attributes").c_str());
             {
-                size_t i = 0;
-                SkASSERT(mgp.vertexAttributes().count() == (int)mgp.fSpec->attributes().size());
-                for (auto attr : mgp.vertexAttributes()) {
-                    vertBuilder->codeAppendf("attributes.%s = %s;",
-                                             mgp.fSpec->attributes()[i++].name.c_str(),
-                                             attr.name());
+                for (const auto& attr : mgp.fSpec->attributes()) {
+                    vertBuilder->codeAppendf("attributes.%s = %s;", attr.name.c_str(),
+                                             attr.name.c_str());
                 }
             }
 
@@ -602,12 +599,16 @@ private:
             , fNeedsLocalCoords(needsLocalCoords) {
         fColor = color.value_or(SK_PMColor4fILLEGAL);
         for (const auto& srcAttr : fSpec->attributes()) {
-            fAttributes.emplace_back(srcAttr.name.c_str(),
+            auto& attributes = srcAttr.rate == SkMeshSpecification::Attribute::Rate::kInstance
+                                     ? fInstanceAttributes : fAttributes;
+            attributes.emplace_back(srcAttr.name.c_str(),
                                      attrib_type(srcAttr.type),
                                      SkMeshSpecificationPriv::AttrTypeAsSLType(srcAttr.type),
                                      srcAttr.offset);
         }
         this->setVertexAttributes(fAttributes.data(), fAttributes.size(), fSpec->stride());
+        this->setInstanceAttributes(fInstanceAttributes.data(), fInstanceAttributes.size(),
+                                    fSpec->instanceStride());
 
         // We are relying here on the fact that `visitTextureEffects` and `visitWithImpls` walk the
         // FP tree in the same order.
@@ -632,6 +633,7 @@ private:
     SkSpan<std::unique_ptr<GrFragmentProcessor>> fChildren; // backed by a TArray in MeshOp
     TArray<TextureSampler> fTextureSamplers;
     std::vector<Attribute> fAttributes;
+    std::vector<Attribute> fInstanceAttributes;
     SkMatrix fViewMatrix;
     SkPMColor4f fColor;
     sk_sp<GrColorSpaceXform> fColorSpaceXform;
@@ -763,6 +765,11 @@ private:
             return {};
         }
 
+        bool hasInstances() const { return !this->isFromVertices() && fMeshData.instances; }
+        size_t instanceCount() const { return fMeshData.instanceCount; }
+        size_t instanceOffset() const { return fMeshData.instanceOffset; }
+        const SkMeshPriv::VB* instances() const { return fMeshData.instances.get(); }
+
         void writeVertices(skgpu::VertexWriter& writer,
                            const SkMeshSpecification& spec,
                            bool transform) const;
@@ -795,6 +802,9 @@ private:
         struct MeshData {
             sk_sp<const SkMeshPriv::VB> vb;
             sk_sp<const SkMeshPriv::IB> ib;
+            sk_sp<const SkMeshPriv::VB> instances;
+            size_t instanceCount = 0;
+            size_t instanceOffset = 0;
 
             size_t vcount = 0;
             size_t icount = 0;
@@ -831,6 +841,8 @@ private:
     int                        fVertexCount;
     int                        fIndexCount;
     GrSimpleMesh*              fMesh = nullptr;
+    sk_sp<const GrBuffer> fInstanceBuffer;
+    int fBaseInstance = 0;
     GrProgramInfo*             fProgramInfo = nullptr;
     TArray<std::unique_ptr<GrFragmentProcessor>> fChildren;
 
@@ -848,6 +860,17 @@ MeshOp::Mesh::Mesh(const SkMesh& mesh) {
     fMeshData.voffset = mesh.vertexOffset();
     fMeshData.icount  = mesh.indexCount();
     fMeshData.ioffset = mesh.indexOffset();
+    if (mesh.instanceBuffer()) {
+        fMeshData.instances = sk_ref_sp(static_cast<SkMeshPriv::VB*>(mesh.instanceBuffer()));
+        fMeshData.instanceCount = mesh.instanceCount();
+        fMeshData.instanceOffset = mesh.instanceOffset();
+        if (fMeshData.instances->peek() && fMeshData.instanceCount) {
+            auto data = SkTAddOffset<const void>(fMeshData.instances->peek(), fMeshData.instanceOffset);
+            fMeshData.instances = SkMeshPriv::CpuVertexBuffer::Make(
+                    data, fMeshData.instanceCount * mesh.spec()->instanceStride());
+            fMeshData.instanceOffset = 0;
+        }
+    }
 
     // The caller could modify CPU buffers after the draw so we must copy the data.
     if (fMeshData.vb->peek()) {
@@ -1117,6 +1140,7 @@ void MeshOp::onCreateProgramInfo(const GrCaps* caps,
 }
 
 void MeshOp::onPrepareDraws(GrMeshDrawTarget* target) {
+    if (fMeshes[0].hasInstances() && !fMeshes[0].instanceCount()) return;
     size_t vertexStride = fSpecification->stride();
     sk_sp<const GrBuffer> vertexBuffer;
     int firstVertex;
@@ -1171,6 +1195,22 @@ void MeshOp::onPrepareDraws(GrMeshDrawTarget* target) {
         firstIndex /= sizeof(uint16_t);
     }
 
+    if (fMeshes[0].hasInstances()) {
+        const auto& mesh = fMeshes[0];
+        size_t stride = fSpecification->instanceStride();
+        if (mesh.instances()->isGaneshBacked()) {
+            fInstanceBuffer = static_cast<const SkMeshPriv::GaneshVertexBuffer*>(
+                    mesh.instances())->asGpuBuffer();
+            fBaseInstance = mesh.instanceOffset() / stride;
+        } else {
+            auto writer = target->makeVertexWriter(stride, mesh.instanceCount(),
+                                                   &fInstanceBuffer, &fBaseInstance);
+            if (!writer) return;
+            writer << skgpu::VertexWriter::Array(
+                    SkTAddOffset<const char>(mesh.instances()->peek(), mesh.instanceOffset()),
+                    stride * mesh.instanceCount());
+        }
+    }
     SkASSERT(!fMesh);
     fMesh = target->allocMesh();
 
@@ -1210,7 +1250,18 @@ void MeshOp::onExecute(GrOpFlushState* flushState, const SkRect& chainBounds) {
     flushState->bindTextures(fProgramInfo->geomProc(),
                              geomProcTextures.data(),
                              fProgramInfo->pipeline());
-    flushState->drawMesh(*fMesh);
+    if (fInstanceBuffer) {
+        flushState->bindBuffers(fMesh->fIndexBuffer, fInstanceBuffer, fMesh->fVertexBuffer);
+        if (fMesh->fIndexBuffer) {
+            flushState->drawIndexedInstanced(fIndexCount, fMesh->fBaseIndex,
+                    fMeshes[0].instanceCount(), fBaseInstance, fMesh->fBaseVertex);
+        } else {
+            flushState->drawInstanced(fMeshes[0].instanceCount(), fBaseInstance,
+                                      fVertexCount, fMesh->fBaseVertex);
+        }
+    } else {
+        flushState->drawMesh(*fMesh);
+    }
 }
 
 GrOp::CombineResult MeshOp::onCombineIfPossible(GrOp* t, SkArenaAlloc*, const GrCaps& caps) {

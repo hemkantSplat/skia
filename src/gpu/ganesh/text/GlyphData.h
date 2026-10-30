@@ -31,7 +31,7 @@ class VertexFiller;
 
 namespace skgpu {
 enum class MaskFormat : int;
-enum class VertexColorType : uint8_t;
+enum class VertexColorType;
 }
 
 namespace skgpu::ganesh {

@@ -114,6 +114,8 @@
 
 #include "src/gpu/ganesh/gl/GrGLGpu.h"
 
+#include "modules/canvaskit/mesh_bindings.h"
+
 #include <GLES2/gl2.h>
 #endif  // CK_ENABLE_WEBGL
 
@@ -2117,7 +2119,9 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                       select_overload<void(const sk_sp<SkTextBlob>&, float, float, const SkPaint&)>(
                               &SkCanvas::drawTextBlob))
 #endif
-            .function("_drawVertices",
+            .function("_drawMesh", &ck_mesh::draw)
+        .function("_getMeshContext", &ck_mesh::context)
+        .function("_drawVertices",
                       select_overload<void(const sk_sp<SkVertices>&, SkBlendMode, const SkPaint&)>(
                               &SkCanvas::drawVertices))
 
