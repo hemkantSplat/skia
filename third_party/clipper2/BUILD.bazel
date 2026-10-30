@@ -1,0 +1,11 @@
+load("//bazel:skia_rules.bzl", "skia_cc_library")
+
+licenses(["notice"])
+
+skia_cc_library(
+    name = "clipper2",
+    srcs = ["src/clipper.engine.cpp", "src/clipper.offset.cpp"],
+    hdrs = glob(["include/clipper2/*.h"]),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
