@@ -59,6 +59,77 @@
     CanvasKit.MeshVertexBuffer.prototype.update = function(offset, data) { return update.call(this, offset, data, false); };
     CanvasKit.MeshIndexBuffer.prototype.update = function(offset, data) { return update.call(this, offset, data, true); };
     CanvasKit.meshChildrenApi = 1;
+    CanvasKit.meshBufferInteropApi = 1;
+    var externalContexts = new WeakMap();
+    function externalState(gl) {
+      var state = externalContexts.get(gl);
+      if (!state) {
+        state = {generation:0, writing:false};
+        externalContexts.set(gl, state);
+        gl.canvas.addEventListener('webglcontextlost', function() { state.generation++; });
+      }
+      return state;
+    }
+    CanvasKit.MakeWebGLMeshVertexBuffer = function(context, byteLength) {
+      function failure(error) { return {'error':error}; }
+      if (!integer(byteLength) || !byteLength || byteLength % 4) return failure('invalid-argument');
+      if (!(context instanceof CanvasKit.GrDirectContext) || context['isDeleted']()) return failure('gpu-unavailable');
+      var registered = GL.getContext(context._context), gl = registered && registered.GLctx;
+      if (!gl || registered.version !== 2) return failure('gpu-unavailable');
+      if (gl.isContextLost()) return failure('context-lost');
+      var state = externalState(gl), generation = state.generation;
+      if (state.writing) return failure('busy');
+      CanvasKit.setCurrentContext(context._context);
+      var buffer = CanvasKit._MakeMeshVertexBuffer(context, 0, byteLength);
+      if (!buffer) return failure(gl.isContextLost() ? 'context-lost' : 'allocation-failed');
+      var handle = GL.buffers[buffer._webGLBufferID()];
+      if (!handle) { buffer['delete'](); return failure('gpu-unavailable'); }
+      var ownedContext = context['clone']();
+      ownedContext._context = context._context;
+      buffer._meshContext = ownedContext;
+      var retired = false, deleted = false;
+      function retire(error) { retired = true; handle = null; return failure(error); }
+      function contextLost() {
+        retire('context-lost');
+        if (!buffer['isDeleted']()) buffer._abandonContext();
+      }
+      gl.canvas.addEventListener('webglcontextlost', contextLost);
+      return {
+        'buffer':buffer,
+        'write':function(writer) {
+          if (deleted || buffer['isDeleted']()) return retire('retired');
+          if (gl.isContextLost()) { contextLost(); return failure('context-lost'); }
+          if (retired) return failure('retired');
+          if (generation !== state.generation) return retire('retired');
+          if (typeof writer !== 'function') return failure('invalid-argument');
+          if (state.writing) return failure('busy');
+          state.writing = true;
+          try {
+            // Submission orders every recorded draw before the external write on this context.
+            ownedContext['flushAndSubmit']();
+            if (gl.isContextLost()) { contextLost(); return failure('context-lost'); }
+            if (!buffer._webGLBufferID()) return retire('retired');
+            writer(gl, handle);
+            if (gl.isContextLost()) { contextLost(); return failure('context-lost'); }
+            return {'ok':true};
+          } finally {
+            try { ownedContext['resetContext'](); }
+            finally { state.writing = false; }
+          }
+        },
+        'delete':function() {
+          if (deleted) return;
+          if (state.writing) throw new Error('Cannot delete a mesh buffer during an external write');
+          if (gl.isContextLost()) contextLost();
+          gl.canvas.removeEventListener('webglcontextlost', contextLost);
+          deleted = retired = true;
+          handle = null;
+          CanvasKit.setCurrentContext(ownedContext._context);
+          if (!buffer['isDeleted']()) buffer['delete']();
+          ownedContext['delete']();
+        },
+      };
+    };
     function childEffects(children) {
       if (!Array.isArray(children)) return null;
       var result = [];
