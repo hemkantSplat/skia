@@ -124,6 +124,10 @@ var CanvasKit = {
     prototype: {
       getResourceCacheLimitBytes: function () {},
       getResourceCacheUsageBytes: function () {},
+      getResourceCacheUsage: function () {},
+      getResourceCachePurgeableBytes: function () {},
+      purgeUnlockedResources: function () {},
+      performDeferredCleanup: function () {},
       releaseResourcesAndAbandonContext: function () {},
       setResourceCacheLimitBytes: function () {},
     },
@@ -131,6 +135,10 @@ var CanvasKit = {
     // private API (from C++ bindings)
     _getResourceCacheLimitBytes: function() {},
     _getResourceCacheUsageBytes: function() {},
+    _getResourceCacheUsage: function() {},
+    _getResourceCachePurgeableBytes: function() {},
+    _purgeUnlockedResources: function() {},
+    _performDeferredCleanup: function() {},
     _releaseResourcesAndAbandonContext: function() {},
     _setResourceCacheLimitBytes: function() {},
   },
