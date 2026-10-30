@@ -20,7 +20,8 @@ PUBLIC_HEADERS = [
     "SkParse.h",
     "SkParsePath.h",
     "SkPathOffset.h",
-    "SkShadowUtils.h",
+    "SkWidthStroke.h",
+        "SkShadowUtils.h",
     "SkTextUtils.h",
     "SkTraceEventPhase.h",
 ]

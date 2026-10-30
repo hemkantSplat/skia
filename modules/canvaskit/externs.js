@@ -23,6 +23,8 @@
 //
 
 var CanvasKit = {
+  MakeWidthStroke: function() {},
+  _MakeWidthStroke: function() {},
   // public API (i.e. things we declare in the pre-js file or in the cpp bindings)
   Color: function() {},
   Color4f: function() {},
