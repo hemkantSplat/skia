@@ -92,6 +92,8 @@ CORE_FILES = [
     "GrDrawingManager.h",
     "GrDriverBugWorkarounds.cpp",
     "GrDstProxyView.h",
+    "GrDstReadCause.cpp",
+    "GrDstReadCause.h",
     "GrDynamicAtlas.cpp",
     "GrDynamicAtlas.h",
     "GrEagerVertexAllocator.cpp",

@@ -46,6 +46,11 @@ public:
         by reference because it is global and its ref-cnting methods are not thread safe. */
     static const GrXferProcessor& SimpleSrcOverXP();
 
+    static GrDstReadCause SrcOverDstReadCause(const GrProcessorAnalysisColor&,
+                                              const GrProcessorAnalysisCoverage&,
+                                              const GrCaps&,
+                                              GrClampType);
+
     static AnalysisProperties SrcOverAnalysisProperties(const GrProcessorAnalysisColor&,
                                                         const GrProcessorAnalysisCoverage&,
                                                         const GrCaps&,
@@ -63,6 +68,11 @@ private:
                                           const GrProcessorAnalysisCoverage&,
                                           const GrCaps&,
                                           GrClampType) const override;
+
+    GrDstReadCause dstReadCause(const GrProcessorAnalysisColor&,
+                                const GrProcessorAnalysisCoverage&,
+                                const GrCaps&,
+                                GrClampType) const override;
 
     GR_DECLARE_XP_FACTORY_TEST
     static void TestGetXPOutputTypes(const GrXferProcessor*, int* outPrimary, int* outSecondary);

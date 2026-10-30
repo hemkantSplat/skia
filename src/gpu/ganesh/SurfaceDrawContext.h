@@ -25,6 +25,7 @@
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "src/core/SkColorData.h"
 #include "src/gpu/ganesh/GrColorSpaceXform.h"
+#include "src/gpu/ganesh/GrDstReadCause.h"
 #include "src/gpu/ganesh/GrPaint.h"
 #include "src/gpu/ganesh/GrRenderTargetProxy.h"
 #include "src/gpu/ganesh/GrSamplerState.h"
@@ -703,6 +704,7 @@ private:
     // The op should have already had setClippedBounds called on it.
     [[nodiscard]] bool setupDstProxyView(const SkRect& opBounds,
                                          bool opRequiresMSAA,
+                                         GrDstReadCause cause,
                                          GrDstProxyView* result);
 
     OpsTask* replaceOpsTaskIfModifiesColor();
