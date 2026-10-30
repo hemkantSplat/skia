@@ -1,6 +1,10 @@
 // Adds compile-time JS functions to augment the CanvasKit interface.
 // Specifically, anything that should only be on the Skottie builds of canvaskit.
 
+// API level of tools/canvaskit-build's Skottie build; this file is linked only when Skottie is
+// compiled in, so stock (no_skottie) leaves it undefined.
+CanvasKit.skottieApi = 1;
+
 // assets is a dictionary of named blobs: { key: ArrayBuffer, ... }
 // The keys should be well-behaved strings - they're turned into null-terminated
 // strings for the native side.
