@@ -2597,7 +2597,7 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
             #ifdef CK_INCLUDE_RUNTIME_EFFECT
         .class_function("_MakeRuntimeShader", optional_override([](
                 const SkRuntimeEffectBuilder& builder, val childNames, val inputs,
-                SkScalar sampleRadius)->sk_sp<SkImageFilter> {
+                SkScalar sampleRadius, bool deviceResolution)->sk_sp<SkImageFilter> {
             const auto count = childNames["length"].as<unsigned>();
             if (count != inputs["length"].as<unsigned>() || !std::isfinite(sampleRadius) ||
                 sampleRadius < 0) { return nullptr; }
@@ -2611,7 +2611,9 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                 filters[i] = inputs[i].isNull() ? nullptr : inputs[i].as<sk_sp<SkImageFilter>>();
             }
             return SkImageFilters::RuntimeShader(builder, sampleRadius, views.data(),
-                                                  filters.data(), count);
+                                                  filters.data(), count, deviceResolution
+                    ? SkImageFilters::RuntimeShaderRasterPolicy::kDevice
+                    : SkImageFilters::RuntimeShaderRasterPolicy::kParameter);
         }))
 #endif
         .function("_getOutputBounds",

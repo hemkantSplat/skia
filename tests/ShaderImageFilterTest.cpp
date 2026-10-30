@@ -9,6 +9,10 @@
 #include "include/core/SkBlendMode.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
+#include "include/core/SkData.h"
+#include "include/core/SkGraphics.h"
+#include "src/core/SkImageFilter_Base.h"
+#include "src/core/SkImageFilterCache.h"
 #include "include/core/SkImageFilter.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkPaint.h"
@@ -208,6 +212,87 @@ static void test_runtime_shader(skiatest::Reporter* r, SkSurface* surface) {
         color = SkColorSetA(color, 255);
         REPORTER_ASSERT(r, SK_ColorRED == color, "Expected: %08x Actual: %08x", SK_ColorRED, color);
     }
+}
+
+
+DEF_TEST(RuntimeImageFilterDevicePolicy, r) {
+    using Policy = SkImageFilters::RuntimeShaderRasterPolicy;
+    auto effect = SkRuntimeEffect::MakeForShader(SkString(
+            "uniform shader source; half4 main(float2 p) { return source.eval(p); }")).effect;
+    SkRuntimeShaderBuilder builder(effect);
+    std::string_view name = "source";
+    sk_sp<SkImageFilter> input;
+    auto legacy = SkImageFilters::RuntimeShader(builder, 0.f, &name, &input, 1);
+    auto device = SkImageFilters::RuntimeShader(builder, 0.f, &name, &input, 1, Policy::kDevice);
+    REPORTER_ASSERT(r, legacy && device);
+    REPORTER_ASSERT(r, as_IFB(legacy)->uniqueID() != as_IFB(device)->uniqueID());
+    REPORTER_ASSERT(r, as_IFB(device)->getCTMCapability() == skif::MatrixCapability::kComplex);
+    REPORTER_ASSERT(r, as_IFB(legacy)->getCTMCapability() == skif::MatrixCapability::kTranslate);
+    input = SkImageFilters::Blur(1.f, 2.f, SkTileMode::kClamp, nullptr);
+    auto graph = SkImageFilters::RuntimeShader(builder, 0.f, &name, &input, 1, Policy::kDevice);
+    REPORTER_ASSERT(r, as_IFB(graph)->getCTMCapability() == skif::MatrixCapability::kComplex);
+
+#if !defined(SK_DISABLE_EFFECT_DESERIALIZATION)
+    for (auto filter : {legacy, device, graph}) {
+        auto data = filter->serialize();
+        auto restored = SkImageFilter::Deserialize(data->data(), data->size());
+        REPORTER_ASSERT(r, restored);
+        REPORTER_ASSERT(r, as_IFB(restored)->getCTMCapability() == as_IFB(filter)->getCTMCapability());
+        auto roundtrip = restored->serialize();
+        REPORTER_ASSERT(r, data->equals(roundtrip.get()));
+    }
+    REPORTER_ASSERT(r, !legacy->serialize()->equals(device->serialize().get()));
+#endif
+
+    auto render = [&](const sk_sp<SkImageFilter>& filter, float scale) {
+        auto info = SkImageInfo::Make(64, 64, kRGBA_F16_SkColorType, kPremul_SkAlphaType);
+        auto surface = SkSurfaces::Raster(info);
+        auto canvas = surface->getCanvas();
+        SkPaint paint;
+        for (int x = 0; x < 64; x += 4) {
+            paint.setColor(x % 8 ? SK_ColorWHITE : SK_ColorBLACK);
+            canvas->drawRect(SkRect::MakeXYWH(x, 0, 4, 64), paint);
+        }
+        canvas->scale(scale, scale);
+        if (filter) {
+            SkCanvas::SaveLayerRec rec;
+            rec.fBackdrop = filter.get();
+            rec.fSaveLayerFlags = SkCanvas::kF16ColorType;
+            canvas->saveLayer(rec);
+            canvas->restore();
+        }
+        SkBitmap pixels;
+        pixels.allocPixels(info);
+        REPORTER_ASSERT(r, surface->readPixels(pixels, 0, 0));
+        return pixels;
+    };
+    auto expected = render(nullptr, 1.f);
+    for (float scale : {.5f, 1.f, 1.5f, 2.f, 3.f}) {
+        auto actual = render(device, scale);
+        REPORTER_ASSERT(r, ToolUtils::equal_pixels(actual, expected));
+#if !defined(SK_DISABLE_EFFECT_DESERIALIZATION)
+        auto data = device->serialize();
+        auto restored = SkImageFilter::Deserialize(data->data(), data->size());
+        actual = render(restored, scale);
+        REPORTER_ASSERT(r, ToolUtils::equal_pixels(actual, expected));
+#endif
+    }
+    REPORTER_ASSERT(r, !ToolUtils::equal_pixels(render(legacy, 2.f), expected));
+}
+
+DEF_TEST(RuntimeImageFilterMappingCache, r) {
+    SkImageFilterCacheKey base(7, SkMatrix::I(), SkIRect::MakeWH(64,64), 9,
+                             SkIRect::MakeWH(64,64), kRGBA_F16_SkColorType, nullptr);
+    SkImageFilterCacheKey rotated(7, SkMatrix::I(), SkIRect::MakeWH(64,64), 9,
+                             SkIRect::MakeWH(64,64), kRGBA_F16_SkColorType, nullptr,
+                             SkMatrix::RotateDeg(30));
+    REPORTER_ASSERT(r, !(base == rotated));
+    auto cache = SkImageFilterCache::Create(4096);
+    auto filter = SkImageFilters::Blur(1, 1, nullptr);
+    cache->set(base, filter.get(), {});
+    skif::FilterResult result;
+    REPORTER_ASSERT(r, cache->get(base, &result));
+    REPORTER_ASSERT(r, !cache->get(rotated, &result));
 }
 
 DEF_TEST(SkRuntimeShaderImageFilter_CPU, r) {

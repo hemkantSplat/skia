@@ -37,7 +37,12 @@ CanvasKit._extraInitializations.push(function() {
 
   CanvasKit.ImageFilter.MakeRuntimeShader = function(builder, childNames, inputs, sampleRadius) {
     return CanvasKit.ImageFilter._MakeRuntimeShader(builder, childNames, inputs,
-                                                    sampleRadius === undefined ? 0 : sampleRadius);
+                                                    sampleRadius === undefined ? 0 : sampleRadius, false);
+  };
+
+  CanvasKit.ImageFilter.MakeRuntimeShaderAtDeviceResolution = function(builder, childNames, inputs, sampleRadius) {
+    return CanvasKit.ImageFilter._MakeRuntimeShader(builder, childNames, inputs,
+                                                    sampleRadius === undefined ? 0 : sampleRadius, true);
   };
 
   // sksl is the shader code.

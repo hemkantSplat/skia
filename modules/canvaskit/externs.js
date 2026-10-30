@@ -648,6 +648,7 @@ var CanvasKit = {
     MakeShader: function() {},
     MakeTransformBlur: function() {},
     MakeRuntimeShader: function() {},
+    MakeRuntimeShaderAtDeviceResolution: function() {},
     _MakeRuntimeShader: function() {},
 
     prototype: {
