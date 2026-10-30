@@ -2660,7 +2660,13 @@ constant("_GLBackendState_RenderTarget", (uint32_t)kRenderTarget_GrGLBackendStat
                     }))
             .class_function("MakeCompose", &SkImageFilters::Compose)
             .class_function(
-                    "_MakeDilate",
+                    "_MakeCrop", optional_override([](WASMPointerF32 rectPtr,
+                SkTileMode tileMode, sk_sp<SkImageFilter> input)->sk_sp<SkImageFilter> {
+            const SkRect& rect = *reinterpret_cast<const SkRect*>(rectPtr);
+            if (!rect.isFinite() || !rect.isSorted()) { return nullptr; }
+            return SkImageFilters::Crop(rect, tileMode, std::move(input));
+        }))
+        .class_function("_MakeDilate",
                     optional_override([](float radiusX,
                                          float radiusY,
                                          sk_sp<SkImageFilter> input,

@@ -647,6 +647,8 @@ var CanvasKit = {
     MakeOffset: function() {},
     MakeShader: function() {},
     MakeTransformBlur: function() {},
+    MakeCrop: function() {},
+    _MakeCrop: function() {},
     MakeRuntimeShader: function() {},
     MakeRuntimeShaderAtDeviceResolution: function() {},
     _MakeRuntimeShader: function() {},
