@@ -9,6 +9,7 @@
 #define skgpu_graphite_GlobalCache_DEFINED
 
 #include "include/core/SkRefCnt.h"
+#include "include/core/SkData.h"
 #include "include/gpu/graphite/ContextOptions.h"
 #include "include/private/SkTArray.h"
 #include "include/private/SkTDArray.h"

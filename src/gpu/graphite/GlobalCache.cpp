@@ -7,6 +7,7 @@
 
 #include "src/gpu/graphite/GlobalCache.h"
 #include <vector>
+#include <cstring>
 
 #include "include/gpu/graphite/Context.h"
 #include "include/private/SkAttributes.h"
@@ -89,7 +90,8 @@ void GlobalCache::invokePipelineCallback(ContextOptions::PipelineCacheOp op,
         SkAutoSpinlock lock{fSpinLock};
         bool found = false;
         for (const auto& key : fPersistentKeys) {
-            if (key->equals(serializedKey.get())) { found = true; break; }
+            if (key->size() == serializedKey->size() &&
+                !std::memcmp(key->data(), serializedKey->data(), key->size())) { found = true; break; }
         }
         if (!found) fPersistentKeys.push_back(serializedKey);
     }
