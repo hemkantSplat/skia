@@ -105,6 +105,8 @@ public:
     };
 
     PipelineStats getStats() const SK_EXCLUDES(fSpinLock);
+    void enablePipelinePersistence() { fPersistPipelineKeys = true; }
+    sk_sp<SkData> persistentPipelineData(size_t maxSize) const SK_EXCLUDES(fSpinLock);
 
     // Find and add operations for ComputePipelines, with the same pattern as GraphicsPipelines.
     sk_sp<ComputePipeline> findComputePipeline(const UniqueKey&) SK_EXCLUDES(fSpinLock);
@@ -202,6 +204,8 @@ private:
 
     PipelineCallbackContext fPipelineCallbackContext = nullptr;
 
+    bool fPersistPipelineKeys = false;
+    skia_private::TArray<sk_sp<SkData>> fPersistentKeys SK_GUARDED_BY(fSpinLock);
     PipelineCallback fPipelineCallback = nullptr;
     DeprecatedPipelineCallback fDeprecatedPipelineCallback = nullptr;
 

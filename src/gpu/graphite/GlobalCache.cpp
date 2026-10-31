@@ -6,6 +6,7 @@
  */
 
 #include "src/gpu/graphite/GlobalCache.h"
+#include <vector>
 
 #include "include/gpu/graphite/Context.h"
 #include "include/private/SkAttributes.h"
@@ -84,6 +85,14 @@ void GlobalCache::setPipelineCallback(PipelineCallbackContext context,
 void GlobalCache::invokePipelineCallback(ContextOptions::PipelineCacheOp op,
                                          const GraphicsPipeline* pipeline,
                                          sk_sp<SkData> serializedKey) {
+    if (fPersistPipelineKeys && op == ContextOptions::PipelineCacheOp::kAddingPipeline && serializedKey) {
+        SkAutoSpinlock lock{fSpinLock};
+        bool found = false;
+        for (const auto& key : fPersistentKeys) {
+            if (key->equals(serializedKey.get())) { found = true; break; }
+        }
+        if (!found) fPersistentKeys.push_back(serializedKey);
+    }
     // If both callbacks are provided the new version preempts the old version
     if (fPipelineCallback) {
         (*fPipelineCallback)(fPipelineCallbackContext,
@@ -95,6 +104,20 @@ void GlobalCache::invokePipelineCallback(ContextOptions::PipelineCacheOp op,
     } else if (fDeprecatedPipelineCallback && serializedKey) {
         (*fDeprecatedPipelineCallback)(fPipelineCallbackContext, std::move(serializedKey));
     }
+}
+
+sk_sp<SkData> GlobalCache::persistentPipelineData(size_t maxSize) const {
+    SkAutoSpinlock lock{fSpinLock};
+    // Little-endian length-prefixed serialized Graphite keys, versioned independently of Skia.
+    std::vector<uint8_t> bytes = {'C', 'F', 'P', '1'};
+    for (const auto& key : fPersistentKeys) {
+        if (key->size() > UINT32_MAX || bytes.size() + 4 + key->size() > maxSize) break;
+        uint32_t size = key->size();
+        for (int shift = 0; shift < 32; shift += 8) bytes.push_back(size >> shift);
+        auto data = static_cast<const uint8_t*>(key->data());
+        bytes.insert(bytes.end(), data, data + size);
+    }
+    return bytes.size() <= maxSize ? SkData::MakeWithCopy(bytes.data(), bytes.size()) : nullptr;
 }
 
 void GlobalCache::deleteResources() {

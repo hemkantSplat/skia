@@ -10,12 +10,26 @@
 #include "include/gpu/graphite/PrecompileContext.h"
 #include "include/gpu/graphite/dawn/DawnBackendContext.h"
 #include "include/gpu/graphite/dawn/DawnGraphiteTypes.h"
+#include "include/gpu/graphite/PersistentPipelineStorage.h"
+#include "dawn/native/DawnNative.h"
+#include "dawn/dawn_proc.h"
+#include "tools/graphite/dawn/GraphiteDawnToggles.h"
+#include <cstring>
 #include <atomic>
 #include <deque>
 #include <mutex>
 
 namespace graphite = skgpu::graphite;
+class PipelineStorage final : public graphite::PersistentPipelineStorage {
+public:
+    sk_sp<SkData> data;
+    sk_sp<SkData> load() override { return data; }
+    void store(const SkData& value) override { data = SkData::MakeWithCopy(value.data(), value.size()); }
+};
 struct cfsk_context {
+    std::unique_ptr<dawn::native::Instance> native_host;
+    PipelineStorage storage;
+    uint32_t inline_count = 0, precompiled_count = 0, unkeyable_count = 0;
     std::mutex pipeline_mutex;
     std::deque<sk_sp<SkData>> pipelines;
     std::thread::id owner = std::this_thread::get_id();
@@ -99,7 +113,7 @@ template <typename Source> cfsk_status readback(cfsk_context* context, const Sou
 #define CONTEXT_READY(c) do { auto status = context_ready(c); if (status != CFSK_OK) return status; } while (0)
 #define RECORDER_READY(r) do { auto status = recorder_ready(r); if (status != CFSK_OK) return status; } while (0)
 
-cfsk_status cfsk_context_make_dawn(const cfsk_context_options* options, cfsk_context** output) {
+static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes persistent_data, cfsk_context** output) {
     CFSK_BEGIN;
     CFSK_OUTPUT(output);
     CFSK_REQUIRE(options && options->dawn_instance && options->dawn_device && options->dawn_queue &&
@@ -120,18 +134,96 @@ cfsk_status cfsk_context_make_dawn(const cfsk_context_options* options, cfsk_con
     policy.fInternalMultisampleCount = graphite::ToSampleCount(options->internal_samples);
     policy.fGpuBudgetInBytes = options->gpu_budget_bytes;
     policy.fUserDefinedKnownRuntimeEffects = SkSpan<sk_sp<SkRuntimeEffect>>(effects);
+    context->storage.data = SkData::MakeWithCopy(persistent_data.data, persistent_data.length);
+    policy.fPersistentPipelineStorage = &context->storage;
     policy.fPipelineCallbackContext = context.get();
     policy.fPipelineCachingCallback = [](void* opaque, graphite::ContextOptions::PipelineCacheOp op,
-            const std::string&, uint32_t, bool, sk_sp<SkData> data) {
-        if (op == graphite::ContextOptions::PipelineCacheOp::kAddingPipeline && data) {
-            auto owner = static_cast<cfsk_context*>(opaque);
-            std::lock_guard<std::mutex> lock(owner->pipeline_mutex);
-            owner->pipelines.push_back(std::move(data));
-        }
+            const std::string&, uint32_t, bool from_precompile, sk_sp<SkData> data) {
+        if (op != graphite::ContextOptions::PipelineCacheOp::kAddingPipeline) return;
+        auto owner = static_cast<cfsk_context*>(opaque);
+        std::lock_guard<std::mutex> lock(owner->pipeline_mutex);
+        if (from_precompile) ++owner->precompiled_count;
+        else { ++owner->inline_count; if (!data) ++owner->unkeyable_count; }
+        if (data) owner->pipelines.push_back(std::move(data));
     };
     context->value = graphite::ContextFactory::MakeDawn(context->dawn, policy);
     if (!context->value) return cfsk::fail(CFSK_FAILED, "Graphite MakeDawn failed");
+    auto saved = context->storage.load();
+    if (saved && saved->size()) {
+        auto bytes = static_cast<const uint8_t*>(saved->data());
+        CFSK_REQUIRE(saved->size() >= 4 && !std::memcmp(bytes, "CFP1", 4));
+        auto precompile = context->value->makePrecompileContext();
+        for (size_t offset = 4; offset < saved->size();) {
+            CFSK_REQUIRE(saved->size() - offset >= 4);
+            uint32_t size = 0;
+            for (int shift = 0; shift < 32; shift += 8) size |= uint32_t(bytes[offset++]) << shift;
+            CFSK_REQUIRE(size && size <= saved->size() - offset);
+            if (!precompile->precompile(SkData::MakeWithCopy(bytes + offset, size)))
+                return cfsk::fail(CFSK_FAILED, "persistent pipeline key rejected");
+            offset += size;
+        }
+    }
     *output = context.release();
+    return CFSK_OK;
+}
+cfsk_status cfsk_context_make_dawn(const cfsk_context_options* options, cfsk_context** output) {
+    return make_dawn(options, {}, output);
+}
+cfsk_status cfsk_context_make_vulkan(cfsk_bytes persistent_data, cfsk_context** output) {
+    CFSK_BEGIN; CFSK_OUTPUT(output); CFSK_REQUIRE(cfsk::valid(persistent_data));
+    dawnProcSetProcs(&dawn::native::GetProcs());
+    wgpu::InstanceDescriptor descriptor;
+    auto instance_toggles = skiatest::graphite::GetInstanceToggles();
+    descriptor.nextInChain = &instance_toggles;
+    auto host = std::make_unique<dawn::native::Instance>(&descriptor);
+    wgpu::RequestAdapterOptions request;
+    request.backendType = wgpu::BackendType::Vulkan;
+    request.powerPreference = wgpu::PowerPreference::HighPerformance;
+    request.featureLevel = wgpu::FeatureLevel::Core;
+    auto toggles = skiatest::graphite::GetAdapterToggles();
+    request.nextInChain = &toggles;
+    for (auto& adapter : host->EnumerateAdapters(&request)) {
+        wgpu::Adapter api_adapter = adapter.Get();
+        wgpu::AdapterInfo info;
+        api_adapter.GetInfo(&info);
+        if (info.backendType != wgpu::BackendType::Vulkan || info.adapterType == wgpu::AdapterType::CPU) continue;
+        std::vector<wgpu::FeatureName> features;
+        skiatest::graphite::AddPreferredFeatures(api_adapter, features);
+        wgpu::Limits limits;
+        api_adapter.GetLimits(&limits);
+        wgpu::DeviceDescriptor config;
+        config.requiredFeatureCount = features.size();
+        config.requiredFeatures = features.data();
+        config.requiredLimits = &limits;
+        config.nextInChain = &toggles;
+        auto device = wgpu::Device::Acquire(adapter.CreateDevice(&config));
+        if (!device) continue;
+        auto queue = device.GetQueue();
+        cfsk_context_options options{};
+        options.dawn_instance = host->Get();
+        options.dawn_device = device.Get();
+        options.dawn_queue = queue.Get();
+        options.internal_samples = 1;
+        options.gpu_budget_bytes = 256 * 1024 * 1024;
+        auto status = make_dawn(&options, persistent_data, output);
+        if (status != CFSK_OK) return status;
+        (*output)->native_host = std::move(host);
+        return CFSK_OK;
+    }
+    return cfsk::unsupported("no hardware Dawn Vulkan adapter present");
+}
+cfsk_status cfsk_context_pipeline_cache(cfsk_context* context, cfsk_data** output) {
+    CFSK_BEGIN; CFSK_OUTPUT(output); CONTEXT_READY(context);
+    context->value->syncPipelineData(64 * 1024 * 1024);
+    return cfsk::resource(output, context->storage.data);
+}
+cfsk_status cfsk_context_pipeline_stats(cfsk_context* context, uint32_t* inline_count,
+        uint32_t* precompiled_count, uint32_t* unkeyable_count) {
+    CFSK_BEGIN; CONTEXT_READY(context); CFSK_REQUIRE(inline_count && precompiled_count && unkeyable_count);
+    std::lock_guard<std::mutex> lock(context->pipeline_mutex);
+    *inline_count = context->inline_count;
+    *precompiled_count = context->precompiled_count;
+    *unkeyable_count = context->unkeyable_count;
     return CFSK_OK;
 }
 cfsk_status cfsk_context_make_recorder(cfsk_context* context, cfsk_recorder** output) {

@@ -52,6 +52,7 @@ public:
     }
 
     void deviceTick(Context*) override;
+    void syncPipelineData(PersistentPipelineStorage*, size_t maxSize) override;
 
     const wgpu::BindGroupLayout& getUniformBuffersBindGroupLayout(
             wgpu::ShaderStage storageVisibility) const {

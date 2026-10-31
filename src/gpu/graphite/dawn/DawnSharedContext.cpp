@@ -8,6 +8,8 @@
 #include "src/gpu/graphite/dawn/DawnSharedContext.h"
 
 #include "include/gpu/graphite/Context.h"
+#include "include/gpu/graphite/PersistentPipelineStorage.h"
+#include "src/gpu/graphite/GlobalCache.h"
 #include "include/gpu/graphite/ContextOptions.h"
 #include "include/gpu/graphite/dawn/DawnBackendContext.h"
 #include "include/private/SkAttributes.h"
@@ -47,11 +49,13 @@ sk_sp<SharedContext> DawnSharedContext::Make(const DawnBackendContext& backendCo
 
     auto caps = std::make_unique<const DawnCaps>(backendContext, options);
 
-    return sk_sp<SharedContext>(new DawnSharedContext(backendContext,
+    auto result = sk_sp<SharedContext>(new DawnSharedContext(backendContext,
                                                       std::move(caps),
                                                       std::move(noopFragment),
                                                       options.fExecutor,
                                                       options.fUserDefinedKnownRuntimeEffects));
+    if (options.fPersistentPipelineStorage) result->globalCache()->enablePipelinePersistence();
+    return result;
 }
 
 DawnSharedContext::DawnSharedContext(const DawnBackendContext& backendContext,
@@ -75,6 +79,10 @@ DawnSharedContext::DawnSharedContext(const DawnBackendContext& backendContext,
 
     this->createUniformBuffersBindGroupLayout();
     this->createSingleTextureSamplerBindGroupLayout();
+}
+
+void DawnSharedContext::syncPipelineData(PersistentPipelineStorage* storage, size_t maxSize) {
+    if (auto data = this->globalCache()->persistentPipelineData(maxSize)) storage->store(*data);
 }
 
 DawnSharedContext::~DawnSharedContext() {
