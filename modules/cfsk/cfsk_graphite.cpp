@@ -114,7 +114,8 @@ template <typename Source> cfsk_status readback(cfsk_context* context, const Sou
 #define CONTEXT_READY(c) do { auto status = context_ready(c); if (status != CFSK_OK) return status; } while (0)
 #define RECORDER_READY(r) do { auto status = recorder_ready(r); if (status != CFSK_OK) return status; } while (0)
 
-static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes persistent_data, cfsk_context** output) {
+static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes persistent_data,
+        const std::vector<sk_sp<SkRuntimeEffect>>& known_effects, cfsk_context** output) {
     CFSK_BEGIN;
     CFSK_OUTPUT(output);
     CFSK_REQUIRE(options && options->dawn_instance && options->dawn_device && options->dawn_queue &&
@@ -126,6 +127,7 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
         effects.push_back(options->known_effects[i]->value);
     }
     std::unique_ptr<cfsk_context> context(new (std::nothrow) cfsk_context);
+    effects.insert(effects.end(), known_effects.begin(), known_effects.end());
     if (!context) return cfsk::fail(CFSK_OUT_OF_MEMORY, "context allocation failed");
     context->dawn.fInstance = wgpu::Instance(static_cast<WGPUInstance>(options->dawn_instance));
     context->dawn.fDevice = wgpu::Device(static_cast<WGPUDevice>(options->dawn_device));
@@ -168,9 +170,9 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
     return CFSK_OK;
 }
 cfsk_status cfsk_context_make_dawn(const cfsk_context_options* options, cfsk_context** output) {
-    return make_dawn(options, {}, output);
+    return make_dawn(options, {}, {}, output);
 }
-cfsk_status cfsk_context_make_vulkan(cfsk_bytes persistent_data, cfsk_context** output) {
+cfsk_status cfsk_context_make_vulkan(const cfsk_picture_resources* resources, cfsk_bytes persistent_data, cfsk_context** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); CFSK_REQUIRE(cfsk::valid(persistent_data));
     dawnProcSetProcs(&dawn::native::GetProcs());
     wgpu::InstanceDescriptor descriptor;
@@ -209,7 +211,9 @@ cfsk_status cfsk_context_make_vulkan(cfsk_bytes persistent_data, cfsk_context** 
         options.dawn_queue = queue.Get();
         options.internal_samples = 4;
         options.gpu_budget_bytes = 256 * 1024 * 1024;
-        auto status = make_dawn(&options, persistent_data, output);
+        auto known_effects = cfsk::picture_known_effects(resources);
+        SkDebugf("CFSK_KNOWN_RUNTIME_EFFECTS %zu\n", known_effects.size());
+        auto status = make_dawn(&options, persistent_data, known_effects, output);
         if (status != CFSK_OK) return status;
         (*output)->native_host = std::move(host);
         return CFSK_OK;

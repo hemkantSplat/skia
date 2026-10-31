@@ -50,6 +50,8 @@ public:
 
         sk_sp<SkImage> newImage = SkImages::TextureFromImage(recorder, image, requiredProps);
         if (!newImage) {
+            SkDebugf("IMAGE_PROVIDER_REFUSAL id=%u width=%d height=%d colorType=%d alphaType=%d mipmapped=%d\n",
+                image->uniqueID(), image->width(), image->height(), image->colorType(), image->alphaType(), requiredProps.fMipmapped);
             return nullptr;
         }
 

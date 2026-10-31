@@ -68,6 +68,7 @@ struct cfsk_contour { sk_sp<SkContourMeasure> value; };
 struct cfsk_width_stroke { sk_sp<SkWidthStroke> value; };
 
 namespace cfsk {
+std::vector<sk_sp<SkRuntimeEffect>> picture_known_effects(const cfsk_picture_resources* resources);
 extern thread_local std::string error;
 inline cfsk_status fail(cfsk_status code, const char* message) { error = message; return code; }
 inline cfsk_status unsupported(const char* feature) { return fail(CFSK_UNSUPPORTED, feature); }

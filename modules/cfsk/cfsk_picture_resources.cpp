@@ -3,6 +3,8 @@
 #include "include/core/SkSerialProcs.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkFontMgr.h"
+#include "src/core/SkRuntimeEffectPriv.h"
+#include "src/core/SkKnownRuntimeEffects.h"
 #include <cstring>
 #include <map>
 
@@ -11,6 +13,7 @@ struct cfsk_picture_resources {
     std::thread::id owner = std::this_thread::get_id();
     std::map<std::string, sk_sp<SkImage>> images;
     std::map<std::string, sk_sp<SkTypeface>> typefaces;
+    std::map<std::string, sk_sp<SkRuntimeEffect>> effects;
     bool complete = true;
 };
 namespace {
@@ -93,8 +96,21 @@ cfsk_status cfsk_picture_deserialize_shared(cfsk_picture_resources* resources, c
     procs.fImageCtx = resources;
     procs.fTypefaceStreamProc = typeface_proc;
     procs.fTypefaceCtx = resources;
+    procs.fRuntimeEffectCtx = resources;
+    procs.fRuntimeEffectProc = [](SkRuntimeEffect* effect, void* opaque) {
+        if (SkKnownRuntimeEffects::IsSkiaKnownRuntimeEffect(SkRuntimeEffectPriv::StableKey(*effect))) return;
+        auto& owner = *static_cast<cfsk_picture_resources*>(opaque);
+        std::string key = effect->allowShader() ? "shader:" : effect->allowColorFilter() ? "color:" : "blender:";
+        owner.effects.emplace(key + effect->source().c_str(), sk_ref_sp(effect));
+    };
     auto picture = SkPicture::MakeFromData(bytes.data, bytes.length, &procs);
     if (!picture || !resources->complete) return cfsk::fail(CFSK_FAILED, "shared picture resource decode failed");
     return cfsk::resource(output, std::move(picture));
 }
 void cfsk_picture_resources_destroy(cfsk_picture_resources* value) { delete value; }
+
+std::vector<sk_sp<SkRuntimeEffect>> cfsk::picture_known_effects(const cfsk_picture_resources* resources) {
+    std::vector<sk_sp<SkRuntimeEffect>> result;
+    if (resources) for (const auto& entry : resources->effects) result.push_back(entry.second);
+    return result;
+}

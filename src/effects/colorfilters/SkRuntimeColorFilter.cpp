@@ -111,6 +111,9 @@ sk_sp<SkFlattenable> SkRuntimeColorFilter::CreateProc(SkReadBuffer& buffer) {
         }
     }
 
+    if (effect && buffer.getDeserialProcs().fRuntimeEffectProc) {
+        buffer.getDeserialProcs().fRuntimeEffectProc(effect.get(), buffer.getDeserialProcs().fRuntimeEffectCtx);
+    }
     sk_sp<SkData> uniforms = buffer.readByteArrayAsData();
 
     skia_private::STArray<4, SkRuntimeEffect::ChildPtr> children;

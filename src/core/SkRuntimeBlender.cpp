@@ -71,6 +71,9 @@ sk_sp<SkFlattenable> SkRuntimeBlender::CreateProc(SkReadBuffer& buffer) {
         }
     }
 
+    if (effect && buffer.getDeserialProcs().fRuntimeEffectProc) {
+        buffer.getDeserialProcs().fRuntimeEffectProc(effect.get(), buffer.getDeserialProcs().fRuntimeEffectCtx);
+    }
     sk_sp<SkData> uniforms = buffer.readByteArrayAsData();
 
     STArray<4, SkRuntimeEffect::ChildPtr> children;

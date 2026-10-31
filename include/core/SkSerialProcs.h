@@ -21,6 +21,7 @@ class SkPicture;
 class SkTypeface;
 class SkReadBuffer;
 class SkStream;
+class SkRuntimeEffect;
 enum SkAlphaType : int;
 namespace sktext::gpu {
     class Slug;
@@ -118,6 +119,9 @@ struct SK_API SkDeserialProcs {
     // Can be used to restrict the tags that will be deserialized from SkPictures.
     SkDeserialAllowTagsProc      fAllowTagsProc = nullptr;
     void*                        fAllowTagsCtx = nullptr;
+    // Observes successfully decoded effects so hosts can freeze Graphite's known-effect registry.
+    void (*fRuntimeEffectProc)(SkRuntimeEffect*, void*) = nullptr;
+    void* fRuntimeEffectCtx = nullptr;
 };
 
 #endif

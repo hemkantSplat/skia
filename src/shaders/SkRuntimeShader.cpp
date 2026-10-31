@@ -150,6 +150,9 @@ sk_sp<SkFlattenable> SkRuntimeShader::CreateProc(SkReadBuffer& buffer) {
         }
     }
 
+    if (effect && buffer.getDeserialProcs().fRuntimeEffectProc) {
+        buffer.getDeserialProcs().fRuntimeEffectProc(effect.get(), buffer.getDeserialProcs().fRuntimeEffectCtx);
+    }
     sk_sp<SkData> uniforms = buffer.readByteArrayAsData();
 
     std::optional<SkMatrix> localM;
