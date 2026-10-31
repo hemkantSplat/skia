@@ -62,6 +62,7 @@ void AddPreferredFeatures(const wgpu::Adapter& adapter, std::vector<wgpu::Featur
     addFeature(wgpu::FeatureName::DawnTexelCopyBufferRowAlignment);
     addFeature(wgpu::FeatureName::DualSourceBlending);
     addFeature(wgpu::FeatureName::FramebufferFetch);
+    addFeature(wgpu::FeatureName::Float32Filterable);
     addFeature(wgpu::FeatureName::ImplicitDeviceSynchronization);
     addFeature(wgpu::FeatureName::MSAARenderToSingleSampled);
     addFeature(wgpu::FeatureName::ShaderF16);
