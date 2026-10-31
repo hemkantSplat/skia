@@ -129,7 +129,9 @@ public:
                              PipelineCallback,
                              DeprecatedPipelineCallback);
 
-    bool hasPipelineCallback() const { return fPipelineCallback || fDeprecatedPipelineCallback; }
+    bool hasPipelineCallback() const {
+        return fPersistPipelineKeys || fPipelineCallback || fDeprecatedPipelineCallback;
+    }
 
     void invokePipelineCallback(ContextOptions::PipelineCacheOp,
                                 const GraphicsPipeline*,

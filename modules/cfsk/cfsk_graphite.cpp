@@ -197,7 +197,7 @@ cfsk_status cfsk_context_make_vulkan(cfsk_bytes persistent_data, cfsk_context** 
         config.requiredLimits = &limits;
         config.nextInChain = &toggles;
         auto device = wgpu::Device::Acquire(adapter.CreateDevice(&config));
-        if (!device) continue;
+        if (!device) return cfsk::fail(CFSK_FAILED, "hardware Dawn Vulkan device creation failed");
         auto queue = device.GetQueue();
         cfsk_context_options options{};
         options.dawn_instance = host->Get();
