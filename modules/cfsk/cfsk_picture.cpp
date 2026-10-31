@@ -1,6 +1,7 @@
 /* A picture retains decoded resources; serialization embeds CPU pixels and fonts. */
 #include "cfsk_internal.h"
 #include "include/core/SkSerialProcs.h"
+#include "include/core/SkFontMgr.h"
 #include "include/encode/SkPngEncoder.h"
 
 namespace {
