@@ -336,9 +336,14 @@ const ShaderSnippet* ShaderCodeDictionary::getEntry(int codeSnippetID) const {
     if (IsSkiaKnownRuntimeEffect(codeSnippetID)) {
         int knownRTECodeSnippetID = codeSnippetID - kSkiaKnownRuntimeEffectsStart;
 
-        // TODO(b/238759147): if the snippet hasn't been initialized, get the SkRuntimeEffect and
-        // initialize it here
-        SkASSERT(fKnownRuntimeEffectCodeSnippets[knownRTECodeSnippetID].fPreambleGenerator);
+        // Deserialized pipeline keys can be the first use of a known effect in this Context.
+        if (!fKnownRuntimeEffectCodeSnippets[knownRTECodeSnippetID].fPreambleGenerator) {
+            auto effect = MaybeGetKnownRuntimeEffect(codeSnippetID);
+            if (!effect) return nullptr;
+            auto self = const_cast<ShaderCodeDictionary*>(this);
+            self->fKnownRuntimeEffectCodeSnippets[knownRTECodeSnippetID] = self->convertRuntimeEffect(
+                effect.get(), get_known_rte_name(static_cast<StableKey>(codeSnippetID)));
+        }
         return &fKnownRuntimeEffectCodeSnippets[knownRTECodeSnippetID];
     }
 

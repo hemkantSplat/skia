@@ -14,6 +14,7 @@
 #include "dawn/native/DawnNative.h"
 #include "dawn/dawn_proc.h"
 #include "tools/graphite/dawn/GraphiteDawnToggles.h"
+#include "tools/graphite/GraphiteToolUtils.h"
 #include <cstring>
 #include <atomic>
 #include <deque>
@@ -159,7 +160,7 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
             for (int shift = 0; shift < 32; shift += 8) size |= uint32_t(bytes[offset++]) << shift;
             CFSK_REQUIRE(size && size <= saved->size() - offset);
             if (!precompile->precompile(SkData::MakeWithCopy(bytes + offset, size)))
-                return cfsk::fail(CFSK_FAILED, "persistent pipeline key rejected");
+                return cfsk::fail(CFSK_FAILED, "persistent pipeline key rejected at byte " + std::to_string(offset));
             offset += size;
         }
     }
@@ -231,7 +232,7 @@ cfsk_status cfsk_context_pipeline_stats(cfsk_context* context, uint32_t* inline_
 }
 cfsk_status cfsk_context_make_recorder(cfsk_context* context, cfsk_recorder** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); CONTEXT_READY(context);
-    auto recorder = context->value->makeRecorder();
+    auto recorder = context->value->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
     if (!recorder) return cfsk::fail(CFSK_FAILED, "makeRecorder failed");
     *output = new (std::nothrow) cfsk_recorder{std::move(recorder), context, {}};
     return *output ? CFSK_OK : cfsk::fail(CFSK_OUT_OF_MEMORY, "recorder allocation failed");
@@ -309,7 +310,8 @@ cfsk_status cfsk_context_take_pipeline(cfsk_context* context, cfsk_data** output
 cfsk_status cfsk_surface_make_graphite(cfsk_recorder* recorder, const cfsk_image_info* info, uint8_t mipmapped, cfsk_surface** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); RECORDER_READY(recorder);
     CFSK_REQUIRE(cfsk::valid(info) && mipmapped <= 1);
-    auto status = cfsk::resource(output, SkSurfaces::RenderTarget(recorder->value.get(), cfsk::image_info(*info), static_cast<skgpu::Mipmapped>(mipmapped)));
+    SkSurfaceProps props(SkSurfaceProps::kDynamicMSAA_Flag, kUnknown_SkPixelGeometry);
+    auto status = cfsk::resource(output, SkSurfaces::RenderTarget(recorder->value.get(), cfsk::image_info(*info), static_cast<skgpu::Mipmapped>(mipmapped), &props));
     if (status == CFSK_OK) (*output)->gpu_context = recorder->context;
     return status;
 }
