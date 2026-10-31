@@ -10,6 +10,7 @@ static_library("cfsk") {
     "cfsk_graphite.cpp",
     "cfsk_internal.h",
     "cfsk_ordinals.cpp",
+    "cfsk_paragraph.cpp",
     "cfsk_paths.cpp",
     "cfsk_text.cpp",
     "cfsk_unsupported.cpp",
@@ -19,5 +20,8 @@ static_library("cfsk") {
     "//:pathops",
     "//:skia",
     "//third_party/dawn",
+    "//modules/skparagraph",
+    "//modules/skshaper",
+    "//modules/skunicode",
   ]
 }
