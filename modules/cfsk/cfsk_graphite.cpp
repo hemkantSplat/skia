@@ -160,7 +160,7 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
             for (int shift = 0; shift < 32; shift += 8) size |= uint32_t(bytes[offset++]) << shift;
             CFSK_REQUIRE(size && size <= saved->size() - offset);
             if (!precompile->precompile(SkData::MakeWithCopy(bytes + offset, size)))
-                return cfsk::fail(CFSK_FAILED, "persistent pipeline key rejected at byte " + std::to_string(offset));
+                return cfsk::fail(CFSK_FAILED, ("persistent pipeline key rejected at byte " + std::to_string(offset)).c_str());
             offset += size;
         }
     }
