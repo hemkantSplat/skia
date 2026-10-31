@@ -401,6 +401,8 @@ cfsk_status cfsk_canvas_draw_glyphs(cfsk_canvas* canvas, const uint16_t* glyphs,
 cfsk_status cfsk_canvas_draw_text_blob(cfsk_canvas* canvas, const cfsk_text_blob* blob, float x, float y, const cfsk_paint* paint);
 /* @cfsk Canvas.drawText => cfsk_canvas_draw_text | SkCanvas::drawSimpleText with UTF8; shaping uses Paragraph */
 cfsk_status cfsk_canvas_draw_text(cfsk_canvas* canvas, cfsk_string text, float x, float y, const cfsk_font* font, const cfsk_paint* paint);
+/* @cfsk coverage-mesh.drawCoverageMesh => cfsk_canvas_draw_coverage_mesh | CPU float-coverage mask batch; arrays borrowed synchronously; caller owns layer and SrcIn fill */
+cfsk_status cfsk_canvas_draw_coverage_mesh(cfsk_canvas* canvas, const float* positions, const float* coverage, size_t vertex_count, const uint16_t* indices, size_t index_count);
 /* @cfsk Canvas.drawVertices => cfsk_canvas_draw_vertices | SkCanvas::drawVertices */
 cfsk_status cfsk_canvas_draw_vertices(cfsk_canvas* canvas, const cfsk_vertices* vertices, uint32_t blend_mode, const cfsk_paint* paint);
 /* @cfsk Canvas.readPixels => cfsk_canvas_read_pixels | CPU SkCanvas::readPixels; GPU uses surface_readback */

@@ -558,7 +558,10 @@ cfsk_status cfsk_image_filter_transform_blur(const float* matrices44, size_t mat
     CFSK_REQUIRE(matrix_count >= 2 && matrix_count <= 16 && cfsk::finite(matrices44, matrix_count * 16) && minimum_samples > 0 && maximum_samples >= minimum_samples);
     std::vector<SkM44> path;
     for (size_t i = 0; i < matrix_count; ++i) path.push_back(SkM44::RowMajor(matrices44 + i * 16));
-    return cfsk::resource(output, SkImageFilters::TransformBlur(SkSpan<const SkM44>(path), minimum_samples, maximum_samples, cfsk::ref(input)));
+    auto filter = SkImageFilters::TransformBlur(SkSpan<const SkM44>(path), minimum_samples, maximum_samples, cfsk::ref(input));
+    // Still and singular paths legitimately return the source, which may be null.
+    if (!filter) return CFSK_OK;
+    return cfsk::resource(output, std::move(filter));
 }
 
 cfsk_status cfsk_shader_glow(const float* lobes, size_t lobe_float_count, const float* core, size_t core_float_count, cfsk_shader** output) {

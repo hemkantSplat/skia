@@ -14,7 +14,7 @@ declare_args() {
   skia_system_freetype2_include_path = "/usr/include/freetype2"
   skia_system_freetype2_lib = "freetype"
 
-  skia_use_freetype_woff2 = is_canvaskit
+  skia_use_freetype_woff2 = is_canvaskit || is_linux || is_win
   skia_use_freetype_svg = true
   skia_use_freetype_zlib = true
   skia_use_freetype_zlib_bundled = !skia_use_system_zlib
