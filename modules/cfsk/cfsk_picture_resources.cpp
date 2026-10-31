@@ -1,6 +1,7 @@
 /* Frozen picture archives share immutable image/font objects across recordings. */
 #include "cfsk_internal.h"
 #include "include/core/SkSerialProcs.h"
+#include "include/core/SkStream.h"
 #include "include/core/SkFontMgr.h"
 #include <cstring>
 #include <map>
