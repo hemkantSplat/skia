@@ -19,7 +19,7 @@ cfsk_status cfsk_canvas_draw_coverage_mesh(cfsk_canvas* canvas, const float* pos
         SkString("half4 main(float2 coverage) { return half4(coverage.x); }")).effect;
     if (!effect) return cfsk::fail(CFSK_FAILED, "coverage shader unavailable");
     SkPaint paint;
-    paint.setShader(effect->makeShader(SkData::MakeEmpty()));
+    paint.setShader(effect->makeShader(SkData::MakeEmpty(), nullptr, 0));
     if (!paint.getShader()) return cfsk::fail(CFSK_FAILED, "coverage shader creation failed");
     auto vertices = SkVertices::MakeCopy(SkVertices::kTriangles_VertexMode,
         static_cast<int>(vertex_count), points.data(), texcoords.data(), nullptr,

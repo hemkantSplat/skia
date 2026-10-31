@@ -686,6 +686,7 @@ cfsk_status cfsk_image_filter_crop(cfsk_rect rect, uint32_t tile_mode, const cfs
 cfsk_status cfsk_image_filter_runtime(const cfsk_runtime_effect_builder* builder, const cfsk_filter_child* children, size_t child_count, float sample_radius, uint8_t device_resolution, cfsk_image_filter** output);
 /* @cfsk MotionBlurApi.transformBlur => cfsk_image_filter_transform_blur | SkImageFilters::TransformBlur; 2..16 row-major matrices; no TS shutter maths in C */
 /* @cfsk MotionBlurStatics.ImageFilter.MakeTransformBlur => cfsk_image_filter_transform_blur | SkImageFilters::TransformBlur; 2..16 row-major matrices; no TS shutter maths in C */
+/* Valid still/singular source identity: CFSK_OK with a NULL output filter. */
 cfsk_status cfsk_image_filter_transform_blur(const float* matrices44, size_t matrix_count, int32_t minimum_samples, int32_t maximum_samples, const cfsk_image_filter* input, cfsk_image_filter** output);
 /* @cfsk MaskFilterFactory.MakeBlur => cfsk_mask_filter_blur | SkMaskFilter::MakeBlur */
 cfsk_status cfsk_mask_filter_blur(uint32_t style, float sigma, uint8_t respect_ctm, cfsk_mask_filter** output);
