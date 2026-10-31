@@ -203,7 +203,7 @@ cfsk_status cfsk_context_make_vulkan(cfsk_bytes persistent_data, cfsk_context** 
         options.dawn_instance = host->Get();
         options.dawn_device = device.Get();
         options.dawn_queue = queue.Get();
-        options.internal_samples = 1;
+        options.internal_samples = 4;
         options.gpu_budget_bytes = 256 * 1024 * 1024;
         auto status = make_dawn(&options, persistent_data, output);
         if (status != CFSK_OK) return status;
