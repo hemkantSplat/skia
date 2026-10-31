@@ -15,6 +15,7 @@ static_library("cfsk") {
     "cfsk_paragraph.cpp",
     "cfsk_paths.cpp",
     "cfsk_picture.cpp",
+    "cfsk_picture_resources.cpp",
     "cfsk_text.cpp",
     "cfsk_unsupported.cpp",
   ]

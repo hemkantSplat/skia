@@ -165,6 +165,7 @@ typedef struct cfsk_mask_filter cfsk_mask_filter;
 typedef struct cfsk_path_effect cfsk_path_effect;
 typedef struct cfsk_picture cfsk_picture;
 typedef struct cfsk_picture_recorder cfsk_picture_recorder;
+typedef struct cfsk_picture_resources cfsk_picture_resources;
 typedef struct cfsk_font cfsk_font;
 typedef struct cfsk_typeface cfsk_typeface;
 typedef struct cfsk_font_provider cfsk_font_provider;
@@ -812,6 +813,12 @@ cfsk_status cfsk_picture_recorder_begin(cfsk_picture_recorder* recorder, cfsk_re
 cfsk_status cfsk_picture_recorder_finish(cfsk_picture_recorder* recorder, cfsk_picture** output);
 /* @cfsk CanvasKit.MakePicture => cfsk_picture_deserialize | SkPicture::MakeFromData; input borrowed only during call; failure returns NULL output */
 cfsk_status cfsk_picture_deserialize(cfsk_bytes bytes, cfsk_picture** output);
+/* @cfsk Native.SharedPictureResources => cfsk_picture_resources_make | Thread-confined CFIMG1/CFONT1 archive resolver; pictures retain decoded resources */
+cfsk_status cfsk_picture_resources_make(cfsk_bytes directory, cfsk_picture_resources** output);
+/* @cfsk Native.SharedPicture => cfsk_picture_deserialize_shared | Same SkPicture draws with immutable shared archive images/typefaces; missing resources fail closed */
+cfsk_status cfsk_picture_deserialize_shared(cfsk_picture_resources* resources, cfsk_bytes bytes, cfsk_picture** output);
+/* @cfsk Native.SharedPictureResources.delete => cfsk_picture_resources_destroy | Release shared CPU resource cache; NULL allowed */
+void cfsk_picture_resources_destroy(cfsk_picture_resources* value);
 /* @cfsk SkPicture.serialize => cfsk_picture_serialize | SkPicture::serialize; lossless CPU images and embedded typefaces; owned data */
 cfsk_status cfsk_picture_serialize(const cfsk_picture* picture, cfsk_data** output);
 /* @cfsk SkPicture.unref => cfsk_picture_unref | Release owned picture wrapper; NULL allowed; alias of picture_destroy */
