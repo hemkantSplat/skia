@@ -801,6 +801,12 @@ cfsk_status cfsk_picture_recorder_make(cfsk_picture_recorder** output);
 cfsk_status cfsk_picture_recorder_begin(cfsk_picture_recorder* recorder, cfsk_rect bounds, cfsk_canvas** output);
 /* @cfsk PictureRecorder.finishRecordingAsPicture => cfsk_picture_recorder_finish | SkPictureRecorder::finishRecordingAsPicture; invalidates borrowed canvas */
 cfsk_status cfsk_picture_recorder_finish(cfsk_picture_recorder* recorder, cfsk_picture** output);
+/* @cfsk CanvasKit.MakePicture => cfsk_picture_deserialize | SkPicture::MakeFromData; input borrowed only during call; failure returns NULL output */
+cfsk_status cfsk_picture_deserialize(cfsk_bytes bytes, cfsk_picture** output);
+/* @cfsk SkPicture.serialize => cfsk_picture_serialize | SkPicture::serialize; lossless CPU images and embedded typefaces; owned data */
+cfsk_status cfsk_picture_serialize(const cfsk_picture* picture, cfsk_data** output);
+/* @cfsk SkPicture.unref => cfsk_picture_unref | Release owned picture wrapper; NULL allowed; alias of picture_destroy */
+void cfsk_picture_unref(cfsk_picture* value);
 /* @cfsk SkPicture.approximateBytesUsed => cfsk_picture_bytes_used | SkPicture::approximateBytesUsed */
 cfsk_status cfsk_picture_bytes_used(const cfsk_picture* picture, size_t* output_bytes);
 /* @cfsk SkPicture.makeShader => cfsk_picture_make_shader | SkPicture::makeShader */

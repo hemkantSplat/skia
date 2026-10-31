@@ -12,6 +12,7 @@ static_library("cfsk") {
     "cfsk_ordinals.cpp",
     "cfsk_paragraph.cpp",
     "cfsk_paths.cpp",
+    "cfsk_picture.cpp",
     "cfsk_text.cpp",
     "cfsk_unsupported.cpp",
   ]
