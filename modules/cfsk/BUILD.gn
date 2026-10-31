@@ -5,6 +5,7 @@ static_library("cfsk") {
   complete_static_lib = true
   public = [ "cfsk.h" ]
   sources = [
+    "../../tools/graphite/dawn/GraphiteDawnToggles.cpp",
     "cfsk_core.cpp",
     "cfsk_coverage.cpp",
     "cfsk_effects.cpp",
