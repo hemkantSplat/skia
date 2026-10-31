@@ -4,6 +4,12 @@
 #include "include/encode/SkPngEncoder.h"
 
 namespace {
+sk_sp<SkImage> deserialize_image(sk_sp<SkData> data, std::optional<SkAlphaType> alpha_type, void* context) {
+    auto encoded = SkImages::DeferredFromEncodedData(std::move(data), alpha_type);
+    auto image = encoded ? encoded->makeRasterImage() : nullptr;
+    if (!image) *static_cast<bool*>(context) = false;
+    return image;
+}
 sk_sp<const SkData> serialize_image(SkImage* image, void* context) {
     auto data = SkPngEncoder::Encode(nullptr, image, {});
     if (!data) *static_cast<bool*>(context) = false;
@@ -20,8 +26,12 @@ cfsk_status cfsk_picture_deserialize(cfsk_bytes bytes, cfsk_picture** output) {
     CFSK_BEGIN;
     CFSK_OUTPUT(output);
     CFSK_REQUIRE(cfsk::valid(bytes));
-    auto picture = SkPicture::MakeFromData(bytes.data, bytes.length);
-    if (!picture) return cfsk::fail(CFSK_FAILED, "invalid or truncated SkPicture data");
+    bool complete = true;
+    SkDeserialProcs procs;
+    procs.fImageDataProc = deserialize_image;
+    procs.fImageCtx = &complete;
+    auto picture = SkPicture::MakeFromData(bytes.data, bytes.length, &procs);
+    if (!picture || !complete) return cfsk::fail(CFSK_FAILED, "invalid or truncated SkPicture data");
     return cfsk::resource(output, std::move(picture));
 }
 
