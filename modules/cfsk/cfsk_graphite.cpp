@@ -173,6 +173,9 @@ cfsk_status cfsk_context_make_vulkan(cfsk_bytes persistent_data, cfsk_context** 
     CFSK_BEGIN; CFSK_OUTPUT(output); CFSK_REQUIRE(cfsk::valid(persistent_data));
     dawnProcSetProcs(&dawn::native::GetProcs());
     wgpu::InstanceDescriptor descriptor;
+    static constexpr auto timed_wait = wgpu::InstanceFeatureName::TimedWaitAny;
+    descriptor.requiredFeatureCount = 1;
+    descriptor.requiredFeatures = &timed_wait;
     auto instance_toggles = skiatest::graphite::GetInstanceToggles();
     descriptor.nextInChain = &instance_toggles;
     auto host = std::make_unique<dawn::native::Instance>(&descriptor);
