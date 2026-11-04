@@ -6,6 +6,7 @@
  */
 
 #include "src/core/SkBitmapDevice.h"
+#include "src/core/SkMeshRasterPriv.h"
 
 #include "src/core/SkImageFilter_Base.h"
 
@@ -556,8 +557,8 @@ void SkBitmapDevice::drawVertices(const SkVertices* vertices,
     BDDraw(this).drawVertices(vertices, std::move(blender), paint, skipColorXform);
 }
 
-void SkBitmapDevice::drawMesh(const SkMesh&, sk_sp<SkBlender>, const SkPaint&) {
-    // TODO: Implement, maybe with a subclass of BitmapDevice that has SkSL support.
+void SkBitmapDevice::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPaint& paint) {
+    SkMeshRasterPriv::Draw(this, mesh, std::move(blender), paint);
 }
 
 void SkBitmapDevice::drawAtlas(SkSpan<const SkRSXform> xform,

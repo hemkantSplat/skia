@@ -114,6 +114,13 @@ template <typename Source> cfsk_status readback(cfsk_context* context, const Sou
 #define CONTEXT_READY(c) do { auto status = context_ready(c); if (status != CFSK_OK) return status; } while (0)
 #define RECORDER_READY(r) do { auto status = recorder_ready(r); if (status != CFSK_OK) return status; } while (0)
 
+cfsk_status cfsk::mesh_recorder_identity(cfsk_recorder* recorder, const void** output) {
+    if (!recorder) { *output = nullptr; return CFSK_OK; }
+    RECORDER_READY(recorder);
+    *output = recorder->value.get();
+    return CFSK_OK;
+}
+
 static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes persistent_data,
         const std::vector<sk_sp<SkRuntimeEffect>>& known_effects, cfsk_context** output) {
     CFSK_BEGIN;

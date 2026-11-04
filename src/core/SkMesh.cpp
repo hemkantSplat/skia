@@ -18,6 +18,7 @@
 #include "include/private/SkTo.h"
 #include "src/core/SkChecksum.h"
 #include "src/core/SkMeshPriv.h"
+#include "src/core/SkMeshRasterPriv.h"
 #include "src/core/SkRuntimeEffectPriv.h"
 #include "src/core/SkSafeMath.h"
 #include "src/sksl/SkSLAnalysis.h"

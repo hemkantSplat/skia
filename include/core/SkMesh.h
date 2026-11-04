@@ -15,6 +15,7 @@
 #include "include/core/SkString.h"
 #include "include/effects/SkRuntimeEffect.h"
 #include "include/private/SkAPI.h"
+#include "include/private/SkOnce.h"
 #include "include/private/SkTArray.h"
 
 #include <cstddef>
@@ -26,6 +27,7 @@
 
 class GrDirectContext;
 class SkColorSpace;
+struct SkMeshRasterProgram;
 enum SkAlphaType : int;
 
 namespace SkSL { struct Program; }
@@ -194,6 +196,9 @@ public:
 
 private:
     friend struct SkMeshSpecificationPriv;
+    friend struct SkMeshRasterPriv;
+    mutable SkOnce fRasterOnce;
+    mutable std::unique_ptr<const SkMeshRasterProgram> fRasterProgram;
 
     enum class ColorType {
         kNone,

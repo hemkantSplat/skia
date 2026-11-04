@@ -1010,6 +1010,7 @@ void Device::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPain
         return;
     }
 
+    if (mesh.instanceBuffer() && !mesh.instanceCount()) return;
     sk_sp<SkMesh::VertexBuffer> vb = mesh.refVertexBuffer();
     sk_sp<SkMesh::IndexBuffer> ib = mesh.refIndexBuffer();
     size_t vertexOffset = mesh.vertexOffset();
@@ -1032,6 +1033,15 @@ void Device::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPain
         }
     }
 
+    SkMesh::Instances instances{mesh.refInstanceBuffer(), mesh.instanceOffset(), mesh.instanceCount()};
+    if (instances.buffer) {
+        auto* buffer = static_cast<SkMeshPriv::VB*>(instances.buffer.get());
+        instances.buffer = SkMeshPriv::CpuVertexBuffer::Make(
+            SkTAddOffset<const void>(buffer->peek(), instances.offset),
+            instances.count * mesh.spec()->instanceStride());
+        instances.offset = 0;
+    }
+    const auto* instanceData = instances.buffer ? &instances : nullptr;
     SkMesh drawMesh;
     SkSpan<SkMesh::ChildPtr> children(const_cast<SkMesh::ChildPtr*>(mesh.children().data()),
                                       mesh.children().size());
@@ -1046,7 +1056,7 @@ void Device::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPain
                                           indexOffset,
                                           mesh.refUniforms(),
                                           children,
-                                          mesh.bounds());
+                                          mesh.bounds(), instanceData);
         SkASSERT(result.mesh.isValid());
         drawMesh = std::move(result.mesh);
     } else {
@@ -1057,7 +1067,7 @@ void Device::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPain
                                    vertexOffset,
                                    mesh.refUniforms(),
                                    children,
-                                   mesh.bounds());
+                                   mesh.bounds(), instanceData);
         SkASSERT(result.mesh.isValid());
         drawMesh = std::move(result.mesh);
     }

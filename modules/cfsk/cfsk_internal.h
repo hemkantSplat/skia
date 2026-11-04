@@ -3,6 +3,7 @@
 #define CFSK_INTERNAL_H
 #include "cfsk.h"
 #include "include/core/SkCanvas.h"
+#include "include/core/SkMesh.h"
 #include "include/core/SkBlender.h"
 #include "include/core/SkColorFilter.h"
 #include "include/core/SkColorSpace.h"
@@ -63,11 +64,28 @@ struct cfsk_picture { sk_sp<SkPicture> value; };
 struct cfsk_picture_recorder { SkPictureRecorder value; cfsk_canvas canvas; bool active = false; };
 struct cfsk_text_blob { sk_sp<SkTextBlob> value; };
 struct cfsk_vertices { sk_sp<SkVertices> value; };
+struct cfsk_mesh_spec { sk_sp<SkMeshSpecification> value; };
+struct cfsk_mesh_vertex_buffer {
+    sk_sp<SkMesh::VertexBuffer> value;
+    const void* recorder_id = nullptr;
+    std::thread::id owner = std::this_thread::get_id();
+};
+struct cfsk_mesh_index_buffer {
+    sk_sp<SkMesh::IndexBuffer> value;
+    const void* recorder_id = nullptr;
+    std::thread::id owner = std::this_thread::get_id();
+};
+struct cfsk_mesh {
+    SkMesh value;
+    const void* recorder_id = nullptr;
+    std::thread::id owner = std::this_thread::get_id();
+};
 struct cfsk_contour_iter { SkContourMeasureIter value; };
 struct cfsk_contour { sk_sp<SkContourMeasure> value; };
 struct cfsk_width_stroke { sk_sp<SkWidthStroke> value; };
 
 namespace cfsk {
+cfsk_status mesh_recorder_identity(cfsk_recorder*, const void**);
 std::vector<sk_sp<SkRuntimeEffect>> picture_known_effects(const cfsk_picture_resources* resources);
 extern thread_local std::string error;
 inline cfsk_status fail(cfsk_status code, const char* message) { error = message; return code; }

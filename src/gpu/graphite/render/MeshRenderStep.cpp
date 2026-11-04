@@ -157,21 +157,27 @@ void MeshRenderStep::writeVertices(DrawWriter* writer,
     }
 
     DrawWriter::Vertices verts(*writer);
-    verts.reserve(indices ? indexCount : vertexCount);
+    const size_t instanceCount = mesh.instanceBuffer() ? mesh.instanceCount() : 1;
+    verts.reserve((indices ? indexCount : vertexCount) * instanceCount);
+    const uint8_t* instanceData = mesh.instanceBuffer() ? static_cast<const uint8_t*>(
+        static_cast<const SkMeshPriv::VB*>(mesh.instanceBuffer())->peek()) + mesh.instanceOffset() : nullptr;
+    for (size_t instance = 0; instance < instanceCount; ++instance) {
 
-    VertState state(vertexCount, indices, indexCount);
-    VertState::Proc vertProc = state.chooseProc(vertex_mode(mesh.mode()));
-    while (vertProc(&state)) {
-        VertexWriter vertWriter = verts.append(3);
-        for (uint32_t i = 0; i < 3; ++i) {
-            uint32_t vertIndex = i == 0 ? state.f0 : (i == 1 ? state.f1 : state.f2);
-            const uint8_t* vertexDataBase = vertexData + vertIndex * vertexStride;
+        VertState state(vertexCount, indices, indexCount);
+        VertState::Proc vertProc = state.chooseProc(vertex_mode(mesh.mode()));
+        while (vertProc(&state)) {
+            VertexWriter vertWriter = verts.append(3);
+            for (uint32_t i = 0; i < 3; ++i) {
+                uint32_t vertIndex = i == 0 ? state.f0 : (i == 1 ? state.f1 : state.f2);
+                const uint8_t* vertexDataBase = vertexData + vertIndex * vertexStride;
 
-            vertWriter << ssboIndex;
-            for (const SkMeshSpecification::Attribute& attr : spec->attributes()) {
-                vertWriter << VertexWriter::Array(
-                                    vertexDataBase + attr.offset,
-                                    SkMeshSpecificationPriv::AttrTypeByteSize(attr.type));
+                vertWriter << ssboIndex;
+                for (const SkMeshSpecification::Attribute& attr : spec->attributes()) {
+                    vertWriter << VertexWriter::Array(
+                                        (attr.rate == SkMeshSpecification::Attribute::Rate::kInstance ?
+                                            instanceData + instance * spec->instanceStride() : vertexDataBase) + attr.offset,
+                                        SkMeshSpecificationPriv::AttrTypeByteSize(attr.type));
+                }
             }
         }
     }

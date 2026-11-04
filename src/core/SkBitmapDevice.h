@@ -86,7 +86,7 @@ public:
                        SkCanvas::SrcRectConstraint) override;
 
     void drawVertices(const SkVertices*, sk_sp<SkBlender>, const SkPaint&, bool) override;
-    // Implemented in src/sksl/SkBitmapDevice_mesh.cpp
+    // Implemented by SkMeshRasterPriv in src/core/SkMeshRaster.cpp.
     void drawMesh(const SkMesh&, sk_sp<SkBlender>, const SkPaint&) override;
 
     void drawAtlas(SkSpan<const SkRSXform>, SkSpan<const SkRect>, SkSpan<const SkColor>,

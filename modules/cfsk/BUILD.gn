@@ -12,6 +12,7 @@ static_library("cfsk") {
     "cfsk_effects.cpp",
     "cfsk_graphite.cpp",
     "cfsk_internal.h",
+    "cfsk_mesh.cpp",
     "cfsk_ordinals.cpp",
     "cfsk_paragraph.cpp",
     "cfsk_paths.cpp",
