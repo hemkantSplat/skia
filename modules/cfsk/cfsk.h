@@ -222,6 +222,11 @@ typedef struct {
     float strikeout_thickness, strikeout_position; uint32_t flags;
 } cfsk_font_metrics;
 typedef struct { cfsk_string tag; int32_t value; } cfsk_font_feature;
+
+typedef struct {
+    uint32_t glyph, cluster;
+    int32_t x_advance, y_advance, x_offset, y_offset;
+} cfsk_glyph_position;
 typedef struct {
     const cfsk_string* families; size_t family_count; float font_size;
     int32_t weight, width; uint32_t slant, text_align, text_direction;
@@ -771,6 +776,20 @@ cfsk_status cfsk_typeface_units_per_em(const cfsk_typeface* face, int32_t* outpu
  * 5 close; never 3 (conic). A glyph without an outline returns OK with required 0. */
 /* @cfsk HarfBuzz.Font.glyphToJson => cfsk_typeface_glyph_outline | hb_font_draw_glyph at scale upem*64, values / 64; font units, y up */
 cfsk_status cfsk_typeface_glyph_outline(const cfsk_typeface* face, const cfsk_axis_coordinate* coordinates, size_t count, uint16_t glyph, float* output, size_t capacity, size_t* required);
+
+/* Positions are HB integers at upem*64 in output order; clusters are UTF-16 indices. Explicit axes ignore clone values.
+ * Strict UTF-8, default flags/clusters; NULL output/0 queries count, insufficient capacity writes no output. */
+/* direction: 0 guess, 4 LTR, 5 RTL, 6 TTB, 7 BTT; script: 0 guess or ISO 15924 tag; empty language guesses.
+ * Features apply to the whole run; tags must be four printable ASCII bytes. Inputs are borrowed only for the call. */
+/* Unknown/released handles return INVALID_ARGUMENT; concurrent calls retain the face and own independent HB state.
+ * Aliases reused for a later allocation are outside the pointer contract. required is zero on other errors. */
+/* @cfsk HarfBuzz.Buffer.getGlyphPositions => cfsk_typeface_shaped_positions | OT positions, glyphs and clusters */
+cfsk_status cfsk_typeface_shaped_positions(
+    const cfsk_typeface* face,
+    const cfsk_axis_coordinate* coordinates, size_t coordinate_count,
+    const cfsk_font_feature* features, size_t feature_count,
+    cfsk_string utf8, uint32_t direction, uint32_t script, cfsk_string language,
+    cfsk_glyph_position* output, size_t capacity, size_t* required);
 /* @cfsk CanvasKit.Font => cfsk_font_make | SkFont(face,size,scaleX,skewX); face nullable for explicit empty default */
 /* @cfsk ForkBindingsStatics.Font => cfsk_font_make | SkFont(face,size,scaleX,skewX); face nullable for explicit empty default */
 cfsk_status cfsk_font_make(const cfsk_typeface* face, float size, float scale_x, float skew_x, cfsk_font** output);

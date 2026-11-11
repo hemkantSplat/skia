@@ -19,6 +19,7 @@ static_library("cfsk") {
     "cfsk_paths.cpp",
     "cfsk_picture.cpp",
     "cfsk_picture_resources.cpp",
+    "cfsk_shaped_positions.cpp",
     "cfsk_text.cpp",
     "cfsk_unsupported.cpp",
   ]

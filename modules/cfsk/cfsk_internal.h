@@ -58,7 +58,14 @@ struct cfsk_image_filter { sk_sp<SkImageFilter> value; };
 struct cfsk_mask_filter { sk_sp<SkMaskFilter> value; };
 struct cfsk_path_effect { sk_sp<SkPathEffect> value; };
 struct cfsk_data { sk_sp<SkData> value; };
-struct cfsk_typeface { sk_sp<SkTypeface> value; };
+struct cfsk_typeface {
+    explicit cfsk_typeface(sk_sp<SkTypeface> face);
+    ~cfsk_typeface();
+    cfsk_typeface(const cfsk_typeface&) = delete;
+    cfsk_typeface& operator=(const cfsk_typeface&) = delete;
+    static sk_sp<SkTypeface> retain_live(const cfsk_typeface* face);
+    sk_sp<SkTypeface> value;
+};
 struct cfsk_font { SkFont value; };
 struct cfsk_picture { sk_sp<SkPicture> value; };
 struct cfsk_picture_recorder { SkPictureRecorder value; cfsk_canvas canvas; bool active = false; };
