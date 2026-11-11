@@ -119,10 +119,25 @@ cfsk_status cfsk::mesh_recorder_identity(cfsk_recorder* recorder, const void** o
     return CFSK_OK;
 }
 
+static cfsk_status validate_persistent(cfsk_bytes data) {
+    CFSK_REQUIRE(cfsk::valid(data) && data.length <= 64 * 1024 * 1024);
+    if (!data.length) return CFSK_OK;
+    CFSK_REQUIRE(data.length >= 4 && !std::memcmp(data.data, "CFP1", 4));
+    for (size_t offset = 4; offset < data.length;) {
+        CFSK_REQUIRE(data.length - offset >= 4);
+        uint32_t size = 0;
+        for (int shift = 0; shift < 32; shift += 8) size |= uint32_t(data.data[offset++]) << shift;
+        CFSK_REQUIRE(size && size <= data.length - offset);
+        offset += size;
+    }
+    return CFSK_OK;
+}
+
 static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes persistent_data,
         const std::vector<sk_sp<SkRuntimeEffect>>& known_effects, cfsk_context** output) {
     CFSK_BEGIN;
     CFSK_OUTPUT(output);
+    if (auto status = validate_persistent(persistent_data); status != CFSK_OK) return status;
     CFSK_REQUIRE(options && options->dawn_instance && options->dawn_device && options->dawn_queue &&
         (options->internal_samples == 1 || options->internal_samples == 4) &&
         (!options->known_effect_count || options->known_effects));
@@ -177,15 +192,22 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
 cfsk_status cfsk_context_make_dawn(const cfsk_context_options* options, cfsk_context** output) {
     return make_dawn(options, {}, {}, output);
 }
-cfsk_status cfsk_context_make_vulkan(const cfsk_picture_resources* resources, cfsk_bytes persistent_data, cfsk_context** output) {
-    CFSK_BEGIN; CFSK_OUTPUT(output); CFSK_REQUIRE(cfsk::valid(persistent_data));
-    cfsk_dawn_host* host = nullptr;
-    if (auto status = cfsk_dawn_host_make(&host); status != CFSK_OK) return status;
+cfsk_status cfsk_context_make_dawn_persistent(cfsk_dawn_host* host, const cfsk_picture_resources* resources,
+        cfsk_bytes persistent_data, cfsk_context** output) {
+    CFSK_BEGIN; CFSK_OUTPUT(output);
+    if (auto status = cfsk::dawn_host_ready(host); status != CFSK_OK) return status;
     auto options = cfsk::dawn_context_options(host);
     auto known_effects = cfsk::picture_known_effects(resources);
     SkDebugf("CFSK_KNOWN_RUNTIME_EFFECTS %zu\n", known_effects.size());
     auto status = make_dawn(&options, persistent_data, known_effects, output);
     if (status == CFSK_OK) (*output)->native_host = host->native;
+    return status;
+}
+cfsk_status cfsk_context_make_vulkan(const cfsk_picture_resources* resources, cfsk_bytes persistent_data, cfsk_context** output) {
+    CFSK_BEGIN; CFSK_OUTPUT(output); CFSK_REQUIRE(cfsk::valid(persistent_data));
+    cfsk_dawn_host* host = nullptr;
+    if (auto status = cfsk_dawn_host_make(&host); status != CFSK_OK) return status;
+    auto status = cfsk_context_make_dawn_persistent(host, resources, persistent_data, output);
     // Preserve the construction diagnostic while disposing the temporary host wrapper.
     auto diagnostic = cfsk::error;
     cfsk_dawn_host_release(&host);

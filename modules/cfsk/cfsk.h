@@ -290,6 +290,9 @@ cfsk_status cfsk_error_copy(char* output, size_t capacity, size_t* required);
 /* @cfsk CanvasKit.MakeGrContext => cfsk_context_make_dawn | Graphite ContextFactory::MakeDawn; no GL context or Ganesh options */
 /* @cfsk GpuOptionsApi.makeContext => cfsk_context_make_dawn | Graphite ContextFactory::MakeDawn; no GL context or Ganesh options */
 cfsk_status cfsk_context_make_dawn(const cfsk_context_options* options, cfsk_context** output);
+/* @cfsk Native.DawnPersistent => cfsk_context_make_dawn_persistent | CFP1 keys and picture known effects */
+cfsk_status cfsk_context_make_dawn_persistent(cfsk_dawn_host* host, const cfsk_picture_resources* resources,
+                                           cfsk_bytes persistent_data, cfsk_context** output);
 /* @cfsk Native.Vulkan => cfsk_context_make_vulkan | Owned offscreen Dawn host; optional CFP1 persistent keys; no fallback adapter */
 cfsk_status cfsk_context_make_vulkan(const cfsk_picture_resources* resources, cfsk_bytes persistent_data, cfsk_context** output);
 /* @cfsk Graphite.PersistentPipelineStorage => cfsk_context_pipeline_cache | Context::syncPipelineData; owned data copied from storage */
