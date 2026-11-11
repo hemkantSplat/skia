@@ -744,6 +744,15 @@ cfsk_status cfsk_typeface_from_data(cfsk_bytes bytes, int32_t collection_index, 
 cfsk_status cfsk_typeface_variation_axes(const cfsk_typeface* face, cfsk_axis* output, size_t capacity, size_t* required);
 /* @cfsk Typeface.makeVariation => cfsk_typeface_make_variation | SkTypeface::makeClone(SkFontArguments) */
 cfsk_status cfsk_typeface_make_variation(const cfsk_typeface* face, const cfsk_axis_coordinate* coordinates, size_t count, cfsk_typeface** output);
+/* @cfsk HarfBuzz.Face.upem => cfsk_typeface_units_per_em | hb_face_get_upem over the typeface's font bytes (harfbuzzjs face.upem) */
+cfsk_status cfsk_typeface_units_per_em(const cfsk_typeface* face, int32_t* output);
+/* HarfBuzz outline of one glyph in font units, as harfbuzzjs Font.glyphToJson / 64 at scale upem * 64 (hb_font_draw_glyph).
+ * coordinates is the whole variation (hb_font_set_variations): unlisted axes take their default and the typeface's own
+ * makeClone position is ignored. Y points UP (HarfBuzz font space, the opposite of SkPath glyph paths). Copy API with
+ * float commands in the path command encoding: 0 move x y, 1 line x y, 2 quad x1 y1 x y, 4 cubic x1 y1 x2 y2 x y,
+ * 5 close; never 3 (conic). A glyph without an outline returns OK with required 0. */
+/* @cfsk HarfBuzz.Font.glyphToJson => cfsk_typeface_glyph_outline | hb_font_draw_glyph at scale upem*64, values / 64; font units, y up */
+cfsk_status cfsk_typeface_glyph_outline(const cfsk_typeface* face, const cfsk_axis_coordinate* coordinates, size_t count, uint16_t glyph, float* output, size_t capacity, size_t* required);
 /* @cfsk CanvasKit.Font => cfsk_font_make | SkFont(face,size,scaleX,skewX); face nullable for explicit empty default */
 /* @cfsk ForkBindingsStatics.Font => cfsk_font_make | SkFont(face,size,scaleX,skewX); face nullable for explicit empty default */
 cfsk_status cfsk_font_make(const cfsk_typeface* face, float size, float scale_x, float skew_x, cfsk_font** output);

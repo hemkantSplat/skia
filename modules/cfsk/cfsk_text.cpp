@@ -5,6 +5,7 @@
 #include "include/core/SkRSXform.h"
 #include "include/core/SkStream.h"
 #include "src/ports/SkTypeface_FreeType.h"  // nogncheck: explicit CPU font decoder at the pinned fork.
+#include "third_party/externals/harfbuzz/src/hb.h"  // nogncheck: Skia's HarfBuzz, already in the cfsk archive closure.
 
 cfsk_status cfsk_typeface_from_data(cfsk_bytes bytes, int32_t collection_index, cfsk_typeface** output) {
     CFSK_BEGIN;
@@ -37,6 +38,78 @@ cfsk_status cfsk_typeface_make_variation(const cfsk_typeface* face, const cfsk_a
     for (size_t i = 0; i < count; ++i) { CFSK_REQUIRE(cfsk::finite(coordinates[i].value)); values.push_back({coordinates[i].tag, coordinates[i].value}); }
     SkFontArguments args; args.setVariationDesignPosition({values.data(), static_cast<int>(count)});
     return cfsk::resource(output, face->value->makeClone(args));
+}
+
+namespace {
+// A HarfBuzz face over the typeface's own font bytes (copied once per call).
+cfsk_status harfbuzz_face(const cfsk_typeface* face, hb_face_t** output) {
+    int index = 0;
+    std::unique_ptr<SkStreamAsset> stream = face->value->openStream(&index);
+    if (!stream || index < 0) return cfsk::fail(CFSK_UNSUPPORTED, "typeface has no font bytes");
+    if (stream->getLength() > UINT_MAX) return cfsk::fail(CFSK_INVALID_ARGUMENT, "font bytes too large");
+    SkData* data = SkData::MakeFromStream(stream.get(), stream->getLength()).release();
+    if (!data) return cfsk::fail(CFSK_FAILED, "font bytes unreadable");
+    hb_blob_t* blob = hb_blob_create(static_cast<const char*>(data->data()), static_cast<unsigned>(data->size()),
+                                     HB_MEMORY_MODE_READONLY, data, [](void* bytes) { static_cast<SkData*>(bytes)->unref(); });
+    *output = hb_face_create(blob, static_cast<unsigned>(index));
+    hb_blob_destroy(blob);
+    if (!hb_face_get_glyph_count(*output)) { hb_face_destroy(*output); return cfsk::fail(CFSK_FAILED, "HarfBuzz could not read the font"); }
+    return CFSK_OK;
+}
+
+// Commands use the cfsk path command encoding (0 move, 1 line, 2 quad, 4 cubic, 5 close) in font units.
+void push(void* data, std::initializer_list<float> values) { auto& c = *static_cast<std::vector<float>*>(data); c.insert(c.end(), values); }
+void move_to(hb_draw_funcs_t*, void* c, hb_draw_state_t*, float x, float y, void*) { push(c, {0, x / 64.0f, y / 64.0f}); }
+void line_to(hb_draw_funcs_t*, void* c, hb_draw_state_t*, float x, float y, void*) { push(c, {1, x / 64.0f, y / 64.0f}); }
+void quadratic_to(hb_draw_funcs_t*, void* c, hb_draw_state_t*, float cx, float cy, float x, float y, void*) {
+    push(c, {2, cx / 64.0f, cy / 64.0f, x / 64.0f, y / 64.0f});
+}
+void cubic_to(hb_draw_funcs_t*, void* c, hb_draw_state_t*, float c1x, float c1y, float c2x, float c2y, float x, float y, void*) {
+    push(c, {4, c1x / 64.0f, c1y / 64.0f, c2x / 64.0f, c2y / 64.0f, x / 64.0f, y / 64.0f});
+}
+void close_path(hb_draw_funcs_t*, void* c, hb_draw_state_t*, void*) { push(c, {5}); }
+hb_draw_funcs_t* outline_funcs() {
+    static hb_draw_funcs_t* funcs = [] {
+        hb_draw_funcs_t* f = hb_draw_funcs_create();
+        hb_draw_funcs_set_move_to_func(f, move_to, nullptr, nullptr);
+        hb_draw_funcs_set_line_to_func(f, line_to, nullptr, nullptr);
+        hb_draw_funcs_set_quadratic_to_func(f, quadratic_to, nullptr, nullptr);
+        hb_draw_funcs_set_cubic_to_func(f, cubic_to, nullptr, nullptr);
+        hb_draw_funcs_set_close_path_func(f, close_path, nullptr, nullptr);
+        hb_draw_funcs_make_immutable(f);
+        return f;
+    }();
+    return funcs;
+}
+}  // namespace
+
+cfsk_status cfsk_typeface_units_per_em(const cfsk_typeface* face, int32_t* output) {
+    CFSK_BEGIN;
+    CFSK_REQUIRE(face && output);
+    hb_face_t* hb = nullptr;
+    if (cfsk_status status = harfbuzz_face(face, &hb); status != CFSK_OK) return status;
+    *output = static_cast<int32_t>(hb_face_get_upem(hb));
+    hb_face_destroy(hb);
+    return CFSK_OK;
+}
+
+cfsk_status cfsk_typeface_glyph_outline(const cfsk_typeface* face, const cfsk_axis_coordinate* coordinates, size_t count, uint16_t glyph, float* output, size_t capacity, size_t* required) {
+    CFSK_BEGIN;
+    CFSK_REQUIRE(face && required && (!capacity || output) && count <= INT_MAX && (!count || coordinates));
+    std::vector<hb_variation_t> variations;
+    for (size_t i = 0; i < count; ++i) { CFSK_REQUIRE(cfsk::finite(coordinates[i].value)); variations.push_back({coordinates[i].tag, coordinates[i].value}); }
+    hb_face_t* hb = nullptr;
+    if (cfsk_status status = harfbuzz_face(face, &hb); status != CFSK_OK) return status;
+    // The TS reference (harfbuzzjs) draws at scale upem * 64 and divides by 64; both steps are exact in float.
+    int scale = static_cast<int>(hb_face_get_upem(hb)) * 64;
+    hb_font_t* font = hb_font_create(hb);
+    hb_face_destroy(hb);
+    hb_font_set_scale(font, scale, scale);
+    hb_font_set_variations(font, variations.data(), static_cast<unsigned>(variations.size()));
+    std::vector<float> commands;
+    hb_font_draw_glyph(font, glyph, outline_funcs(), &commands);
+    hb_font_destroy(font);
+    return cfsk::copy(commands.data(), commands.size(), sizeof(float), output, capacity, required);
 }
 
 cfsk_status cfsk_font_make(const cfsk_typeface* face, float size, float scale_x, float skew_x, cfsk_font** output) {
