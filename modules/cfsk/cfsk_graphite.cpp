@@ -11,9 +11,7 @@
 #include "include/gpu/graphite/dawn/DawnBackendContext.h"
 #include "include/gpu/graphite/dawn/DawnGraphiteTypes.h"
 #include "include/gpu/graphite/PersistentPipelineStorage.h"
-#include "dawn/native/DawnNative.h"
-#include "dawn/dawn_proc.h"
-#include "tools/graphite/dawn/GraphiteDawnToggles.h"
+#include "cfsk_dawn_host.h"
 #include "tools/graphite/GraphiteToolUtils.h"
 #include <cstring>
 #include <atomic>
@@ -28,7 +26,7 @@ public:
     void store(const SkData& value) override { data = SkData::MakeWithCopy(value.data(), value.size()); }
 };
 struct cfsk_context {
-    std::unique_ptr<dawn::native::Instance> native_host;
+    std::shared_ptr<cfsk::DawnDevice> native_host;
     PipelineStorage storage;
     uint32_t inline_count = 0, precompiled_count = 0, unkeyable_count = 0;
     std::mutex pipeline_mutex;
@@ -181,51 +179,18 @@ cfsk_status cfsk_context_make_dawn(const cfsk_context_options* options, cfsk_con
 }
 cfsk_status cfsk_context_make_vulkan(const cfsk_picture_resources* resources, cfsk_bytes persistent_data, cfsk_context** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); CFSK_REQUIRE(cfsk::valid(persistent_data));
-    dawnProcSetProcs(&dawn::native::GetProcs());
-    wgpu::InstanceDescriptor descriptor;
-    static constexpr auto timed_wait = wgpu::InstanceFeatureName::TimedWaitAny;
-    descriptor.requiredFeatureCount = 1;
-    descriptor.requiredFeatures = &timed_wait;
-    auto instance_toggles = skiatest::graphite::GetInstanceToggles();
-    descriptor.nextInChain = &instance_toggles;
-    auto host = std::make_unique<dawn::native::Instance>(&descriptor);
-    wgpu::RequestAdapterOptions request;
-    request.backendType = wgpu::BackendType::Vulkan;
-    request.powerPreference = wgpu::PowerPreference::HighPerformance;
-    request.featureLevel = wgpu::FeatureLevel::Core;
-    auto toggles = skiatest::graphite::GetAdapterToggles();
-    request.nextInChain = &toggles;
-    for (auto& adapter : host->EnumerateAdapters(&request)) {
-        wgpu::Adapter api_adapter = adapter.Get();
-        wgpu::AdapterInfo info;
-        api_adapter.GetInfo(&info);
-        if (info.backendType != wgpu::BackendType::Vulkan || info.adapterType == wgpu::AdapterType::CPU) continue;
-        std::vector<wgpu::FeatureName> features;
-        skiatest::graphite::AddPreferredFeatures(api_adapter, features);
-        wgpu::Limits limits;
-        api_adapter.GetLimits(&limits);
-        wgpu::DeviceDescriptor config;
-        config.requiredFeatureCount = features.size();
-        config.requiredFeatures = features.data();
-        config.requiredLimits = &limits;
-        config.nextInChain = &toggles;
-        auto device = wgpu::Device::Acquire(adapter.CreateDevice(&config));
-        if (!device) return cfsk::fail(CFSK_FAILED, "hardware Dawn Vulkan device creation failed");
-        auto queue = device.GetQueue();
-        cfsk_context_options options{};
-        options.dawn_instance = host->Get();
-        options.dawn_device = device.Get();
-        options.dawn_queue = queue.Get();
-        options.internal_samples = 4;
-        options.gpu_budget_bytes = 256 * 1024 * 1024;
-        auto known_effects = cfsk::picture_known_effects(resources);
-        SkDebugf("CFSK_KNOWN_RUNTIME_EFFECTS %zu\n", known_effects.size());
-        auto status = make_dawn(&options, persistent_data, known_effects, output);
-        if (status != CFSK_OK) return status;
-        (*output)->native_host = std::move(host);
-        return CFSK_OK;
-    }
-    return cfsk::unsupported("no hardware Dawn Vulkan adapter present");
+    cfsk_dawn_host* host = nullptr;
+    if (auto status = cfsk_dawn_host_make(&host); status != CFSK_OK) return status;
+    auto options = cfsk::dawn_context_options(host);
+    auto known_effects = cfsk::picture_known_effects(resources);
+    SkDebugf("CFSK_KNOWN_RUNTIME_EFFECTS %zu\n", known_effects.size());
+    auto status = make_dawn(&options, persistent_data, known_effects, output);
+    if (status == CFSK_OK) (*output)->native_host = host->native;
+    // Preserve the construction diagnostic while disposing the temporary host wrapper.
+    auto diagnostic = cfsk::error;
+    cfsk_dawn_host_release(&host);
+    cfsk::error = std::move(diagnostic);
+    return status;
 }
 cfsk_status cfsk_context_pipeline_cache(cfsk_context* context, cfsk_data** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); CONTEXT_READY(context);

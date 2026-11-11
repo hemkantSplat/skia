@@ -9,6 +9,7 @@ static_library("cfsk") {
     "../../tools/graphite/GraphiteToolUtils.cpp",
     "cfsk_core.cpp",
     "cfsk_coverage.cpp",
+    "cfsk_dawn_host.cpp",
     "cfsk_effects.cpp",
     "cfsk_graphite.cpp",
     "cfsk_internal.h",

@@ -146,6 +146,7 @@ enum {
 };
 typedef struct cfsk_canvas cfsk_canvas;
 typedef struct cfsk_context cfsk_context;
+typedef struct cfsk_dawn_host cfsk_dawn_host;
 typedef struct cfsk_recorder cfsk_recorder;
 typedef struct cfsk_recording cfsk_recording;
 typedef struct cfsk_submission cfsk_submission;
@@ -268,6 +269,20 @@ typedef struct { uint32_t start, count, batch; } cfsk_stroke_chunk;
 typedef struct { uint32_t start, count; } cfsk_stroke_range;
 
 /* Graphite lifecycle and CPU surfaces */
+/* @cfsk Native.DawnHost => cfsk_dawn_host_make | Owned headless hardware Vulkan host; shared device policy */
+cfsk_status cfsk_dawn_host_make(cfsk_dawn_host** output);
+/* @cfsk Native.DawnHostWin32 => cfsk_dawn_host_make_win32 | Win32 host; borrowed HWND; Linux unsupported */
+cfsk_status cfsk_dawn_host_make_win32(void* hinstance, void* hwnd, cfsk_dawn_host** output);
+/* @cfsk Native.DawnConfigure => cfsk_dawn_host_configure | Opaque/Fifo unorm; zero size suspends with PENDING */
+cfsk_status cfsk_dawn_host_configure(cfsk_dawn_host* host, uint32_t width, uint32_t height);
+/* @cfsk Native.DawnAcquire => cfsk_dawn_host_acquire | Borrow texture for surface_wrap_texture until present */
+cfsk_status cfsk_dawn_host_acquire(cfsk_dawn_host* host, void** texture, cfsk_image_info* info);
+/* @cfsk Native.DawnPresent => cfsk_dawn_host_present | Present and release the acquired texture after caller submits */
+cfsk_status cfsk_dawn_host_present(cfsk_dawn_host* host);
+/* @cfsk Native.DawnRelease => cfsk_dawn_host_release | Release and clear handle; contexts retain device */
+cfsk_status cfsk_dawn_host_release(cfsk_dawn_host** host);
+/* Host methods use the creating thread. Destroy wrapped surfaces before present/configure/release.
+ * No adapter: UNSUPPORTED; zero-size/outdated/timeout: PENDING; surface/device lost: DEVICE_LOST. */
 /* @cfsk CanvasKit.buildIdentity => cfsk_abi_version | Linked header/library version; CanvasKit build handshake replacement */
 cfsk_status cfsk_abi_version(uint32_t* version);
 /* @cfsk CanvasKit.error => cfsk_error_copy | Copy diagnostic from failed CanvasKit/Skia operation */
