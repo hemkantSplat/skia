@@ -88,7 +88,14 @@ struct cfsk_mesh {
     std::thread::id owner = std::this_thread::get_id();
 };
 struct cfsk_contour_iter { SkContourMeasureIter value; };
-struct cfsk_contour { sk_sp<SkContourMeasure> value; };
+struct cfsk_contour {
+    explicit cfsk_contour(sk_sp<SkContourMeasure> contour);
+    ~cfsk_contour();
+    cfsk_contour(const cfsk_contour&) = delete;
+    cfsk_contour& operator=(const cfsk_contour&) = delete;
+    static sk_sp<SkContourMeasure> retain_live(const cfsk_contour* contour);
+    sk_sp<SkContourMeasure> value;
+};
 struct cfsk_width_stroke { sk_sp<SkWidthStroke> value; };
 
 namespace cfsk {

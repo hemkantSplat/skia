@@ -579,6 +579,14 @@ cfsk_status cfsk_contour_length(const cfsk_contour* contour, float* output);
 cfsk_status cfsk_contour_is_closed(const cfsk_contour* contour, uint8_t* output);
 /* @cfsk ContourMeasure.getPosTan => cfsk_contour_pos_tan | SkContourMeasure::getPosTan */
 cfsk_status cfsk_contour_pos_tan(const cfsk_contour* contour, float distance, cfsk_point* position, cfsk_point* tangent);
+/* @cfsk ContourMeasure.getPosTanBatch => cfsk_contour_pos_tan_batch | Ordered SkContourMeasure::getPosTan batch */
+/* Arrays: distances[n], positions[2*n], tangents[2*n], success[n]; disjoint caller-owned storage. */
+/* force_closed is resolved by the iterator; 1 requires a closed measure, 0 also accepts natural closure. */
+/* count <= INT_MAX; zero accepts NULL arrays. Invalid arguments leave all outputs untouched. */
+/* Per-sample failure (including nonfinite distance): success=0, position/tangent unchanged; batch returns OK. */
+cfsk_status cfsk_contour_pos_tan_batch(
+    const cfsk_contour* contour, const float* distances, size_t count,
+    uint8_t force_closed, float* positions, float* tangents, uint8_t* success);
 /* @cfsk ContourMeasure.getSegment => cfsk_contour_segment | SkContourMeasure::getSegment into builder, detach */
 cfsk_status cfsk_contour_segment(const cfsk_contour* contour, float start, float stop, uint8_t start_with_move, cfsk_path** output);
 
