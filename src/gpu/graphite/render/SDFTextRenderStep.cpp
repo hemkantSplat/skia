@@ -79,22 +79,26 @@ SDFTextRenderStep::SDFTextRenderStep(Layout layout)
                       {"ssboIndex", VertexAttribType::kUInt, SkSLType::kUInt}}},
                      /*storageUniforms=*/{},
                      /*varyings=*/
-                     {{{"unormTexCoords", SkSLType::kFloat2},
+                     {{{"atlasOrigin", SkSLType::kFloat2, Interpolation::kFlat},
+                      {"glyphSize", SkSLType::kFloat2, Interpolation::kFlat},
+                      {"unormTexCoords", SkSLType::kFloat2},
                       {"textureCoords", SkSLType::kFloat2},
-                      {"texIndex", SkSLType::kFloat}}}) {}
+                      {"texIndex", SkSLType::kFloat, Interpolation::kFlat}}}) {}
 
 SDFTextRenderStep::~SDFTextRenderStep() {}
 
 std::string SDFTextRenderStep::vertexSkSL(const RootNodesInfo&) const {
     // Returns the body of a vertex function, which must define a float4 devPosition variable and
     // must write to an already-defined float2 stepLocalCoords variable.
-    return "texIndex = half(indexAndFlags.x);"
+    return "glyphSize = float2(size);"
+           "atlasOrigin = float2(uvPos) * atlasSizeInv;"
+           "texIndex = half(indexAndFlags.x);"
            "float4 devPosition = text_vertex_fn(float2(sk_VertexID >> 1, sk_VertexID & 1), "
                                                "maskToDevice, "
                                                "localToDevice, "
                                                "atlasSizeInv, "
                                                "float2(size), "
-                                               "float2(uvPos), "
+                                               "float2(0.0), "
                                                "xyPos, "
                                                "strikeToSourceScale, "
                                                "depth, "
@@ -125,14 +129,16 @@ const char* SDFTextRenderStep::fragmentCoverageSkSL() const {
     // TODO: Need to add 565 support.
     // TODO: Need aliased and possibly sRGB support.
     static_assert(kNumSDFAtlasTextures == 4);
-    return "outputCoverage = sdf_text_coverage_fn(sample_indexed_atlas(textureCoords, "
-                                                                      "int(texIndex), "
-                                                                      "sdf_atlas_0, "
-                                                                      "sdf_atlas_1, "
-                                                                      "sdf_atlas_2, "
-                                                                      "sdf_atlas_3).r, "
-                                                 "gammaParams, "
-                                                 "unormTexCoords);";
+    return "float2 texel = clamp(textureCoords / atlasSizeInv - 0.5, float2(0.0), glyphSize - 1.0);"
+           "float2 cell = floor(texel);"
+           "half2 weight = half2(texel - cell);"
+           "float2 origin = (cell + 0.5) * atlasSizeInv + atlasOrigin;"
+           "half4 c00 = sample_indexed_atlas(origin, int(texIndex), sdf_atlas_0, sdf_atlas_1, sdf_atlas_2, sdf_atlas_3);"
+           "half4 c10 = sample_indexed_atlas(origin + float2(atlasSizeInv.x, 0.0), int(texIndex), sdf_atlas_0, sdf_atlas_1, sdf_atlas_2, sdf_atlas_3);"
+           "half4 c01 = sample_indexed_atlas(origin + float2(0.0, atlasSizeInv.y), int(texIndex), sdf_atlas_0, sdf_atlas_1, sdf_atlas_2, sdf_atlas_3);"
+           "half4 c11 = sample_indexed_atlas(origin + atlasSizeInv, int(texIndex), sdf_atlas_0, sdf_atlas_1, sdf_atlas_2, sdf_atlas_3);"
+           "half4 texColor = mix(mix(c00, c10, weight.x), mix(c01, c11, weight.x), weight.y);"
+           "outputCoverage = sdf_text_coverage_fn(texColor.r, gammaParams, unormTexCoords);";
 }
 
 void SDFTextRenderStep::writeVertices(DrawWriter* dw,
@@ -193,11 +199,11 @@ void SDFTextRenderStep::writeUniformsAndTextures(const DrawParams& params,
 
     // write textures and samplers
     for (unsigned int i = 0; i < numProxies; ++i) {
-        gatherer->add(SK_UNSAFE_TODO(proxies[i]), {SkFilterMode::kLinear, SkTileMode::kClamp});
+        gatherer->add(SK_UNSAFE_TODO(proxies[i]), {SkFilterMode::kNearest, SkTileMode::kClamp});
     }
     // If the atlas has less than 4 active proxies we still need to set up samplers for the shader.
     for (unsigned int i = numProxies; i < kNumSDFAtlasTextures; ++i) {
-        gatherer->add(proxies[0], {SkFilterMode::kLinear, SkTileMode::kClamp});
+        gatherer->add(proxies[0], {SkFilterMode::kNearest, SkTileMode::kClamp});
     }
 }
 

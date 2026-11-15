@@ -1265,8 +1265,8 @@ float4 analytic_rrect_blur_vertex_fn(int4 gridAndBevel,
     float2 position = float2(posX, posY);
 
     float3x3 localToDevice = float3x3(localToDevice0, localToDevice1, localToDevice2);
-    float4 devPosition = float4((localToDevice * float3(position, 1.0)).xy, 0.0, 1.0);
-    devPosition.z = depth;
+    float3 devPos = localToDevice * float3(position, 1.0);
+    float4 devPosition = float4(devPos.xy, depth * devPos.z, devPos.z);
     stepLocalCoords = position;
     scaledShapeCoords = position;
 

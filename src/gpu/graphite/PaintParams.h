@@ -83,6 +83,14 @@ public:
     PaintParams makeWithPrimitiveColor(const SkBlender* primitiveBlender,
                                        const SkColor4f& primitiveColorOverride) const;
 
+    // The caller keeps these transformed shader resources alive during the draw.
+    PaintParams makeWithShader(const SkShader* shader, const SimpleImage* imageShader) const {
+        PaintParams transformed = *this;
+        transformed.fShader = shader;
+        transformed.fImageShader = imageShader;
+        return transformed;
+    }
+
     const SkColor4f& color() const { return fColor; }
     const SkShader* shader() const { return fShader; }
     const SimpleImage* imageShader() const { return fImageShader; }

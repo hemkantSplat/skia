@@ -2167,6 +2167,21 @@ static void add_image_to_key(const KeyContext& keyContext,
                              SkTileMode tileModeX,
                              SkTileMode tileModeY,
                              bool isRaw) {
+    // Match the raster image shader's resolved mipmap policy. SkMipmapAccessor
+    // cannot decompose a perspective inverse into a single mip scale, and samples
+    // the base image in that case. Resolve this at the final shader matrix, after
+    // retained-picture replay has supplied the device transform.
+    if (sampling.mipmap != SkMipmapMode::kNone) {
+        SkMatrix total = keyContext.local2Dev().asM33();
+        if (keyContext.localMatrix()) {
+            total.preConcat(*keyContext.localMatrix());
+        }
+        SkMatrix inverse;
+        SkSize scale;
+        if (!total.invert(&inverse) || !inverse.decomposeScale(&scale, nullptr)) {
+            sampling = SkSamplingOptions(sampling.filter, SkMipmapMode::kNone);
+        }
+    }
     auto [ imageToDraw, newSampling ] = GetGraphiteBacked(keyContext.recorder(),
                                                           image,
                                                           sampling);

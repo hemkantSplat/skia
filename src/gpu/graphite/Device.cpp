@@ -1680,11 +1680,36 @@ void Device::drawGeometry(const Transform& localToDevice,
     // issues).
     if (geometry.isShape() && localToDevice.type() == Transform::Type::kPerspective &&
         !is_simple_shape(geometry.shape(), localToDevice, style.getStyle())) {
-        SkPath devicePath = geometry.shape().asPath().makeTransform(localToDevice.matrix().asM33());
+        const SkMatrix ctm = localToDevice.matrix().asM33();
+        SkPath sourcePath = geometry.shape().asPath();
+        // Stroke and dash dimensions are specified in source coordinates. Expand the
+        // stroke before projection; a hairline remains a device-space hairline.
+        SkPathBuilder stroked;
+        if (style.applyToPath(&stroked, sourcePath)) {
+            sourcePath = stroked.detach();
+            style.setFillStyle();
+        }
+        SkPath devicePath = sourcePath.makeTransform(ctm);
         devicePath.setIsVolatile(true);
-        // TODO(b/452415460): This fallback breaks perspective interpolation for local coords and
-        // it causes strokes to render in device space.
-        this->drawGeometry(Transform::Identity(), Geometry(Shape(devicePath)), paint, style);
+
+        // The path renderer now emits device coordinates. Preserve the original
+        // shader coordinates by composing its local matrix with the projection.
+        sk_sp<SkShader> shader = paint.shader()
+                ? paint.shader()->makeWithLocalMatrix(ctm) : nullptr;
+        PaintParams::SimpleImage imageShader;
+        SkMatrix imageMatrix;
+        const PaintParams::SimpleImage* image = nullptr;
+        if (paint.imageShader()) {
+            imageShader = *paint.imageShader();
+            imageMatrix = ctm;
+            if (imageShader.fLocalMatrix) {
+                imageMatrix.preConcat(*imageShader.fLocalMatrix);
+            }
+            imageShader.fLocalMatrix = &imageMatrix;
+            image = &imageShader;
+        }
+        const PaintParams projectedPaint = paint.makeWithShader(shader.get(), image);
+        this->drawGeometry(Transform::Identity(), Geometry(Shape(devicePath)), projectedPaint, style);
         return;
     }
 

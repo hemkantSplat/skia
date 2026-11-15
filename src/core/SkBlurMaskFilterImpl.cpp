@@ -118,7 +118,11 @@ SkScalar SkBlurMaskFilterImpl::computeXformedDeviceSigma(const SkMatrix& ctm) co
 }
 
 SkV2 SkBlurMaskFilterImpl::computeXformedLocalSigma(const SkMatrix& ctm) const {
-    SkV2 localSigma;
+    // A perspective matrix has no single decomposed scale. For a CTM-respecting
+    // blur the authored sigma is already in local coordinates, just as in the
+    // image-filter implementation. Never pass uninitialized blur dimensions to
+    // Graphite's analytic rounded-rectangle renderer.
+    SkV2 localSigma = {fSigma, fSigma};
     SkSize scale;
     if (ctm.decomposeScale(&scale, nullptr)) {
         if (this->ignoreXform()) {
@@ -133,6 +137,13 @@ SkV2 SkBlurMaskFilterImpl::computeXformedLocalSigma(const SkMatrix& ctm) const {
             localSigma.x = std::min(fSigma, kMaxBlurDeviceSigma / scale.width());
             localSigma.y = std::min(fSigma, kMaxBlurDeviceSigma / scale.height());
         }
+    } else if (this->ignoreXform()) {
+        // Match asAImageFilter's axis-wise conversion for device-space blurs
+        // when perspective prevents a global scale decomposition.
+        const float sigma = std::min(fSigma, kMaxBlurDeviceSigma);
+        const float xScaleFactor = sigma / ctm.mapVector(sigma, 0.f).length();
+        const float yScaleFactor = sigma / ctm.mapVector(0.f, sigma).length();
+        localSigma = {sigma * xScaleFactor, sigma * yScaleFactor};
     }
     return localSigma;
 }
