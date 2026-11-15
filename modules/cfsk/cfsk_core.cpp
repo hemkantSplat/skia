@@ -126,22 +126,6 @@ cfsk_status cfsk_canvas_restore_to_count(cfsk_canvas* canvas, int32_t count) {
     return CFSK_OK;
 }
 
-cfsk_status cfsk_canvas_concat(cfsk_canvas* canvas, const float matrix[9]) {
-    CFSK_BEGIN;
-    if (canvas && canvas->owner != std::this_thread::get_id()) return cfsk::fail(CFSK_WRONG_THREAD, "canvas owner mismatch");
-    CFSK_REQUIRE(canvas && cfsk::finite(matrix, 9));
-    canvas->value->concat(cfsk::matrix(matrix));
-    return CFSK_OK;
-}
-
-cfsk_status cfsk_canvas_concat44(cfsk_canvas* canvas, const float matrix[16]) {
-    CFSK_BEGIN;
-    if (canvas && canvas->owner != std::this_thread::get_id()) return cfsk::fail(CFSK_WRONG_THREAD, "canvas owner mismatch");
-    CFSK_REQUIRE(canvas && cfsk::finite(matrix, 16));
-    canvas->value->concat(SkM44::RowMajor(matrix));
-    return CFSK_OK;
-}
-
 cfsk_status cfsk_canvas_get_matrix(cfsk_canvas* canvas, float matrix[9]) {
     CFSK_BEGIN;
     if (canvas && canvas->owner != std::this_thread::get_id()) return cfsk::fail(CFSK_WRONG_THREAD, "canvas owner mismatch");
@@ -164,47 +148,6 @@ cfsk_status cfsk_canvas_get_device_clip_bounds(cfsk_canvas* canvas, cfsk_irect* 
     CFSK_REQUIRE(canvas && bounds);
     auto r = canvas->value->getDeviceClipBounds();
     *bounds = {r.left(), r.top(), r.right(), r.bottom()};
-    return CFSK_OK;
-}
-
-cfsk_status cfsk_canvas_translate(cfsk_canvas* canvas, float dx, float dy) {
-    CFSK_BEGIN;
-    if (canvas && canvas->owner != std::this_thread::get_id()) return cfsk::fail(CFSK_WRONG_THREAD, "canvas owner mismatch");
-    CFSK_REQUIRE(cfsk::finite(dx));
-    CFSK_REQUIRE(cfsk::finite(dy));
-    CFSK_REQUIRE(canvas);
-    canvas->value->translate(dx, dy);
-    return CFSK_OK;
-}
-
-cfsk_status cfsk_canvas_scale(cfsk_canvas* canvas, float scale_x, float scale_y) {
-    CFSK_BEGIN;
-    if (canvas && canvas->owner != std::this_thread::get_id()) return cfsk::fail(CFSK_WRONG_THREAD, "canvas owner mismatch");
-    CFSK_REQUIRE(cfsk::finite(scale_x));
-    CFSK_REQUIRE(cfsk::finite(scale_y));
-    CFSK_REQUIRE(canvas);
-    canvas->value->scale(scale_x, scale_y);
-    return CFSK_OK;
-}
-
-cfsk_status cfsk_canvas_skew(cfsk_canvas* canvas, float skew_x, float skew_y) {
-    CFSK_BEGIN;
-    if (canvas && canvas->owner != std::this_thread::get_id()) return cfsk::fail(CFSK_WRONG_THREAD, "canvas owner mismatch");
-    CFSK_REQUIRE(cfsk::finite(skew_x));
-    CFSK_REQUIRE(cfsk::finite(skew_y));
-    CFSK_REQUIRE(canvas);
-    canvas->value->skew(skew_x, skew_y);
-    return CFSK_OK;
-}
-
-cfsk_status cfsk_canvas_rotate(cfsk_canvas* canvas, float degrees, float pivot_x, float pivot_y) {
-    CFSK_BEGIN;
-    if (canvas && canvas->owner != std::this_thread::get_id()) return cfsk::fail(CFSK_WRONG_THREAD, "canvas owner mismatch");
-    CFSK_REQUIRE(cfsk::finite(degrees));
-    CFSK_REQUIRE(cfsk::finite(pivot_x));
-    CFSK_REQUIRE(cfsk::finite(pivot_y));
-    CFSK_REQUIRE(canvas);
-    canvas->value->rotate(degrees, pivot_x, pivot_y);
     return CFSK_OK;
 }
 

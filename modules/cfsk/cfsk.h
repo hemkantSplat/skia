@@ -376,6 +376,15 @@ cfsk_status cfsk_canvas_get_save_count(cfsk_canvas* canvas, int32_t* save_count)
 cfsk_status cfsk_canvas_restore(cfsk_canvas* canvas);
 /* @cfsk Canvas.restoreToCount => cfsk_canvas_restore_to_count | SkCanvas::restoreToCount */
 cfsk_status cfsk_canvas_restore_to_count(cfsk_canvas* canvas, int32_t count);
+enum {
+    CFSK_TRANSFORM_CONCAT9 = 0, CFSK_TRANSFORM_CONCAT44 = 1, CFSK_TRANSFORM_TRANSLATE = 2,
+    CFSK_TRANSFORM_SCALE = 3, CFSK_TRANSFORM_SKEW = 4, CFSK_TRANSFORM_ROTATE = 5
+};
+/* Borrow 16 input/output floats; only required inputs are finite-checked. ROTATE uses degrees, px, py.
+ * Errors preserve state/output. Buffers may alias; finite overflow keeps the legacy mutation result. */
+/* @cfsk Native.CanvasTransform => cfsk_canvas_transform | SkCanvas mutation + getLocalToDevice row-major output */
+cfsk_status cfsk_canvas_transform(cfsk_canvas* canvas, uint32_t operation,
+    const float parameters[16], float resulting_matrix[16]);
 /* @cfsk Canvas.concat => cfsk_canvas_concat | SkCanvas::concat(SkMatrix) */
 cfsk_status cfsk_canvas_concat(cfsk_canvas* canvas, const float matrix[9]);
 /* @cfsk Canvas.getTotalMatrix => cfsk_canvas_get_matrix | SkCanvas::getTotalMatrix */
