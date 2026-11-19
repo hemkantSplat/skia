@@ -53,7 +53,8 @@ protected:
     // for some such draws in our unit tests on GLES. However, the iPhone 11 still fails and so
     // we are using -.475. They do not at -.48. All other GPUs passed tests with -.499. Though, at
     // this time the bias is not implemented in the MSL codegen and so iOS/Metal was not tested.
-    static constexpr float kSharpenTexturesBias = -.475f;
+    // CourseForge: -.499 keeps GPU levels within 0.001 of raster's -.5 (SkMipmap::ComputeLevel).
+    static constexpr float kSharpenTexturesBias = -.499f;
 
     const Program& fProgram;
     Context fContext;

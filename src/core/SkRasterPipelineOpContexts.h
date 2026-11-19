@@ -141,6 +141,12 @@ struct MipmapCtx {
     float scaleY;
 
     float lowerWeight;
+
+    // Perspective: the weight is per pixel, log2 of the inverse's derivative scale at the pixel (`inv`, device to
+    // base image, row-major) plus `levelOffset` (the centre's weight less its log2 scale), clamped to the pair.
+    bool perPixel;
+    float levelOffset;
+    float inv[9];
 };
 
 struct CoordClampCtx {

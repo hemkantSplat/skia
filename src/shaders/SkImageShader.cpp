@@ -470,6 +470,32 @@ struct MipLevelHelper {
 
 }  // namespace
 
+// SkMipmapAccessor reads one level pair from an affine inverse. Under perspective it is the pair of the inverse's
+// derivative at the draw's device centre (or the image centre's device point); mipmap_linear_finish weighs it per pixel.
+static SkMatrix mip_level_inverse(const SkMatrix& inv, const SkRect& dstBounds, const SkImage* image) {
+    SkPoint device = dstBounds.center();
+    if (dstBounds.isEmpty()) {
+        SkMatrix forward;
+        if (!inv.invert(&forward)) {
+            return inv;
+        }
+        device = forward.mapPoint({image->width() * 0.5f, image->height() * 0.5f});
+    }
+    const float x = inv[SkMatrix::kMScaleX] * device.fX + inv[SkMatrix::kMSkewX] * device.fY + inv[SkMatrix::kMTransX];
+    const float y = inv[SkMatrix::kMSkewY] * device.fX + inv[SkMatrix::kMScaleY] * device.fY + inv[SkMatrix::kMTransY];
+    const float w = inv[SkMatrix::kMPersp0] * device.fX + inv[SkMatrix::kMPersp1] * device.fY + inv[SkMatrix::kMPersp2];
+    if (!(w > 0) || !SkIsFinite(x, y, w)) {
+        return inv;
+    }
+    const float ww = w * w;
+    return SkMatrix::MakeAll(
+            (inv[SkMatrix::kMScaleX] * w - x * inv[SkMatrix::kMPersp0]) / ww,
+            (inv[SkMatrix::kMSkewX] * w - x * inv[SkMatrix::kMPersp1]) / ww, 0,
+            (inv[SkMatrix::kMSkewY] * w - y * inv[SkMatrix::kMPersp0]) / ww,
+            (inv[SkMatrix::kMScaleY] * w - y * inv[SkMatrix::kMPersp1]) / ww, 0,
+            0, 0, 1);
+}
+
 static SkSamplingOptions tweak_sampling(SkSamplingOptions sampling, const SkMatrix& matrix) {
     SkFilterMode filter = sampling.filter;
 
@@ -508,7 +534,10 @@ bool SkImageShader::appendStages(const SkStageRec& rec, const SkShaders::MatrixR
     }
 
     SkASSERT(!sampling.useCubic || sampling.mipmap == SkMipmapMode::kNone);
-    auto* access = SkMipmapAccessor::Make(alloc, fImage.get(), baseInv, sampling.mipmap);
+    const bool projected = baseInv.hasPerspective() && sampling.mipmap != SkMipmapMode::kNone;
+    const SkMatrix levelInv =
+            projected ? mip_level_inverse(baseInv, rec.fDstBounds, fImage.get()) : baseInv;
+    auto* access = SkMipmapAccessor::Make(alloc, fImage.get(), levelInv, sampling.mipmap);
     if (!access) {
         return false;
     }
@@ -540,6 +569,15 @@ bool SkImageShader::appendStages(const SkStageRec& rec, const SkShaders::MatrixR
         mipmapCtx->lowerWeight = lowerWeight;
         mipmapCtx->scaleX = static_cast<float>(lower.pm.width()) / upper.pm.width();
         mipmapCtx->scaleY = static_cast<float>(lower.pm.height()) / upper.pm.height();
+        // Under perspective the two levels come from the draw centre; each pixel weighs them by its own level.
+        SkSize centre;
+        mipmapCtx->perPixel = projected && !levelInv.hasPerspective() &&
+                              levelInv.decomposeScale(&centre, nullptr);
+        if (mipmapCtx->perPixel) {
+            mipmapCtx->levelOffset =
+                    lowerWeight - SkScalarLog2(std::max(centre.width(), centre.height()));
+            baseInv.get9(mipmapCtx->inv);
+        }
 
         lower.allocAndInit(alloc, sampling, fTileModeX, fTileModeY);
 

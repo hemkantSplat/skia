@@ -622,15 +622,14 @@ static std::unique_ptr<GrFragmentProcessor> make_shader_fp(const SkImageShader* 
     const SkRect shaderSubset = shader->subset();
     const SkRect* subset = needs_subset(shader->image(), shaderSubset) ? &shaderSubset : nullptr;
     // V3-WEB-GPU-RASTER: match the raster image shader's resolved mipmap policy (as the fork's Graphite
-    // KeyHelpers does): SkMipmapAccessor cannot decompose a perspective inverse into one mip scale and
-    // samples the base image, so a perspective (or singular) total matrix samples without mips here too.
-    // An unknown total matrix (a runtime-effect child) reads the base level in raster as well.
+    // KeyHelpers does): an unknown total matrix (a runtime-effect child) or a singular one reads the base
+    // level in raster; a perspective one keeps mips (raster weighs the draw centre's level pair per pixel).
     SkSamplingOptions sampling = shader->sampling();
     if (sampling.mipmap != SkMipmapMode::kNone) {
         SkMatrix inverse;
         SkSize scale;
         if (!mRec.totalMatrixIsValid() || !mRec.totalMatrix().invert(&inverse) ||
-            !inverse.decomposeScale(&scale, nullptr)) {
+            (!inverse.hasPerspective() && !inverse.decomposeScale(&scale, nullptr))) {
             sampling = SkSamplingOptions(sampling.filter, SkMipmapMode::kNone);
         }
     }

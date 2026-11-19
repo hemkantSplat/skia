@@ -4185,10 +4185,29 @@ HIGHP_STAGE(mipmap_linear_update, SkRasterPipelineContexts::MipmapCtx* ctx) {
 }
 
 HIGHP_STAGE(mipmap_linear_finish, SkRasterPipelineContexts::MipmapCtx* ctx) {
-    r = lerp(sk_unaligned_load<F>(ctx->r), r, F_(ctx->lowerWeight));
-    g = lerp(sk_unaligned_load<F>(ctx->g), g, F_(ctx->lowerWeight));
-    b = lerp(sk_unaligned_load<F>(ctx->b), b, F_(ctx->lowerWeight));
-    a = lerp(sk_unaligned_load<F>(ctx->a), a, F_(ctx->lowerWeight));
+    F weight = F_(ctx->lowerWeight);
+    if (ctx->perPixel) {
+        // This pixel's level relative to the draw centre's: log2 of the longer derivative column there.
+        static constexpr float iota[] = {
+            0.5f, 1.5f, 2.5f, 3.5f, 4.5f, 5.5f, 6.5f, 7.5f,
+            8.5f, 9.5f,10.5f,11.5f,12.5f,13.5f,14.5f,15.5f,
+        };
+        static_assert(std::size(iota) >= SkRasterPipelineContexts::kMaxStride_highp);
+        const float* m = ctx->inv;
+        F x = cast(U32_(dx)) + sk_unaligned_load<F>(iota),
+          y = cast(U32_(dy)) + 0.5f;
+        F X = mad(x, m[0], mad(y, m[1], m[2])),
+          Y = mad(x, m[3], mad(y, m[4], m[5])),
+          W = mad(x, m[6], mad(y, m[7], m[8]));
+        F ux = W * m[0] - X * m[6], vx = W * m[3] - Y * m[6],
+          uy = W * m[1] - X * m[7], vy = W * m[4] - Y * m[7];
+        F longest = max(ux * ux + vx * vx, uy * uy + vy * vy) / (W * W * W * W);
+        weight = clamp_01_(0.5f * approx_log2(longest) + ctx->levelOffset);
+    }
+    r = lerp(sk_unaligned_load<F>(ctx->r), r, weight);
+    g = lerp(sk_unaligned_load<F>(ctx->g), g, weight);
+    b = lerp(sk_unaligned_load<F>(ctx->b), b, weight);
+    a = lerp(sk_unaligned_load<F>(ctx->a), a, weight);
 }
 
 HIGHP_STAGE(callback, SkRasterPipelineContexts::CallbackCtx* c) {
