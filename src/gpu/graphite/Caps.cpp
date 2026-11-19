@@ -415,9 +415,9 @@ DstReadStrategy Caps::getDstReadStrategy() const {
 sktext::gpu::SubRunControl Caps::getSubRunControl(bool useSDFTForSmallText) const {
 #if !defined(SK_DISABLE_SDF_TEXT)
     return sktext::gpu::SubRunControl{
-            this->shaderCaps()->supportsDistanceFieldText(),
+            false, /*ableToUseSDFT: glyphs draw as masks or paths, as raster does*/
             useSDFTForSmallText,
-            true, /*ableToUsePerspectiveSDFT*/
+            false, /*ableToUsePerspectiveSDFT*/
             this->minDistanceFieldFontSize(),
             this->glyphsAsPathsFontSize(),
             true, /*forcePathAA*/

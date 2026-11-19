@@ -552,6 +552,10 @@ void Device::drawImageQuadDirect(const SkImage* image,
         TiledTextureUtils::CanDisableMipmap(ctm, srcToDst, sharpenMM)) {
         sampling = SkSamplingOptions(sampling.filter);
     }
+    // V3-WEB-GPU-RASTER: raster's mipmap policy (see make_shader_fp): no mips under a perspective image matrix.
+    if (sampling.mipmap != SkMipmapMode::kNone && SkMatrix::Concat(ctm, srcToDst).hasPerspective()) {
+        sampling = SkSamplingOptions(sampling.filter);
+    }
 
     this->drawEdgeAAImage(image,
                           src,
