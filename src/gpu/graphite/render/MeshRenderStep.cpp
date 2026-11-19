@@ -86,7 +86,8 @@ std::string MeshRenderStep::vertexSkSL(const RootNodesInfo& roots) const {
     return SkSL::String::printf("%s\n"
                                 "Varyings varyings = %s(attributes);\n"
                                 "float4 devPosition"
-                                "       = localToDevice * float4(varyings.position, depth, 1.0);\n"
+                                "       = localToDevice * float4(varyings.position, 0.0, 1.0);\n"
+                                "devPosition.z = depth;\n"
                                 "stepLocalCoords = varyings.position;\n"
                                 "%s", attrs.c_str(), kMeshVSMainName,
                                 varyingAssignments.c_str());

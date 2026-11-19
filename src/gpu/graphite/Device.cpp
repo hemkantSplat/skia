@@ -1074,6 +1074,10 @@ void Device::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPain
 
     SkBlender* primitiveBlender =
         (blender && SkMeshSpecificationPriv::HasColors(*drawMesh.spec())) ? blender.get() : nullptr;
+    // Preserve single-sample coverage for instanced meshes after a multisampled draw.
+    if (mesh.instanceBuffer() && fDC->pendingRequiresMSAA()) {
+        this->internalFlush();
+    }
     this->drawGeometry(this->localToDeviceTransform(),
                        Geometry(drawMesh),
                        PaintParams(paint, primitiveBlender).makeWithMesh(mesh),

@@ -44,9 +44,12 @@
 #include "src/core/SkWriteBuffer.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <utility>
+
+sk_sp<SkImageFilter> SkMakeDeviceMaskBlur(float sigma);
 
 static constexpr SkScalar kMaxBlurDeviceSigma = SkIntToScalar(128);
 
@@ -76,23 +79,14 @@ bool SkBlurMaskFilterImpl::asABlur(BlurRec* rec) const {
 
 std::pair<sk_sp<SkImageFilter>, bool> SkBlurMaskFilterImpl::asImageFilter(const SkMatrix& ctm,
                                                                           const SkPaint&) const {
-    // Mask filters apply a uniform blur in either local or device space. Depending on the scale
-    // factors of the `ctm`, the actual blur radii can end up non-uniform.
-    SkV2 sigma = {fSigma, fSigma};
-    if (this->ignoreXform()) {
-        // This is analogous to computeXformedSigma(), but it might be more correct to wrap the
-        // blur image filter in a local matrix with ctm^-1, or to control the skif::Mapping when
-        // the mask filter layer is restored. It calculates new blur radii such that transforming
-        // these to the layer space of the image filter will match the original device-space fSigma.
-        // This can be inaccurate when 'ctm' has skew or perspective. A full fix requires layers
-        // having flexible operating coordinate spaces (e.g. parent or root canvas).
-        const float xScaleFactor = fSigma / ctm.mapVector(fSigma, 0.f).length();
-        const float yScaleFactor = fSigma / ctm.mapVector(0.f, fSigma).length();
-        sigma = {fSigma * xScaleFactor, fSigma * yScaleFactor};
+    float sigma = this->computeXformedDeviceSigma(ctm);
+    if (sigma >= 2.f) {
+        // Match the variance of the raster mask filter's three integer-width box passes.
+        const float window = std::floor(sigma * 1.87997120597f + 0.5f);
+        const float last = (static_cast<int>(window) & 1) ? window : window + 1.f;
+        sigma = std::sqrt((2.f * window * window + last * last - 3.f) / 12.f);
     }
-
-    // The null input image filter will be bound to the original coverage mask.
-    sk_sp<SkImageFilter> filter = SkImageFilters::Blur(sigma.x, sigma.y, nullptr);
+    sk_sp<SkImageFilter> filter = SkMakeDeviceMaskBlur(sigma);
     // Combine the original coverage mask (src) and the blurred coverage mask (dst)
     switch(fBlurStyle) {
         case kInner_SkBlurStyle: //  dst = dst * src

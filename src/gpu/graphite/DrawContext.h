@@ -70,6 +70,7 @@ public:
     const SkSurfaceProps& surfaceProps() const { return fSurfaceProps; }
 
     int pendingRenderSteps() const { return fPendingDraws->renderStepCount(); }
+    bool pendingRequiresMSAA() const { return fPendingDraws->drawsRequireMSAA(); }
 
     bool modifiesTarget() const { return fPendingDraws->modifiesTarget(); }
 

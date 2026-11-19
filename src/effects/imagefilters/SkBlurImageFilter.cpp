@@ -39,12 +39,21 @@ public:
             , fSigma(sigma)
             , fLegacyTileMode(legacyTileMode) {}
 
+    SkBlurImageFilter(float deviceSigma, sk_sp<SkImageFilter> input)
+            : SkImageFilter_Base(&input, 1)
+            , fSigma{SkSize{deviceSigma, deviceSigma}}
+            , fDeviceSpace{true} {}
+
     SkRect computeFastBounds(const SkRect&) const override;
 
 protected:
     void flatten(SkWriteBuffer&) const override;
 
 private:
+    MatrixCapability onGetCTMCapability() const override {
+        return fDeviceSpace ? MatrixCapability::kComplex : MatrixCapability::kScaleTranslate;
+    }
+
     bool onSupportsRasterF16() const override {
 #if defined(SK_USE_LEGACY_BLUR_RASTER)
         return false;
@@ -81,6 +90,7 @@ private:
     // tiling occurs when there's no provided crop rect, and should be deleted once clients create
     // their filters with defined tiling geometry.
     SkTileMode fLegacyTileMode = SkTileMode::kDecal;
+    bool fDeviceSpace = false;
 };
 
 } // end namespace
@@ -116,6 +126,10 @@ sk_sp<SkImageFilter> SkImageFilters::Blur(
         filter = SkImageFilters::Crop(*cropRect, SkTileMode::kDecal, std::move(filter));
     }
     return filter;
+}
+
+sk_sp<SkImageFilter> SkMakeDeviceMaskBlur(float sigma) {
+    return sk_make_sp<SkBlurImageFilter>(sigma, nullptr);
 }
 
 void SkRegisterBlurImageFilterFlattenable() {
@@ -204,7 +218,10 @@ skif::FilterResult SkBlurImageFilter::onFilterImage(const skif::Context& ctx) co
 }
 
 skif::LayerSpace<SkSize> SkBlurImageFilter::mapSigma(const skif::Mapping& mapping) const {
-    skif::LayerSpace<SkSize> sigma = mapping.paramToLayer(fSigma);
+    skif::LayerSpace<SkSize> sigma = fDeviceSpace
+            ? skif::LayerSpace<SkMatrix>(mapping.deviceToLayer().asM33())
+                      .mapSize(skif::LayerSpace<SkSize>(SkSize(fSigma)))
+            : mapping.paramToLayer(fSigma);
     // Clamp to the maximum sigma
     sigma = skif::LayerSpace<SkSize>({std::min(sigma.width(), kMaxSigma),
                                       std::min(sigma.height(), kMaxSigma)});
