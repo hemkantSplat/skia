@@ -55,6 +55,14 @@ SkCanvas* SkPictureRecorder::getRecordingCanvas() {
 }
 
 sk_sp<SkPicture> SkPictureRecorder::finishRecordingAsPicture() {
+    return this->finish(true);
+}
+
+sk_sp<SkPicture> SkPictureRecorder::finishRecordingAsPictureVerbatim() {
+    return this->finish(false);
+}
+
+sk_sp<SkPicture> SkPictureRecorder::finish(bool optimize) {
     fActivelyRecording = false;
     fRecorder->restoreToCount(1);  // If we were missing any restores, add them now.
 
@@ -63,7 +71,9 @@ sk_sp<SkPicture> SkPictureRecorder::finishRecordingAsPicture() {
     }
 
     // TODO: delay as much of this work until just before first playback?
-    SkRecordOptimize(fRecord.get());
+    if (optimize) {
+        SkRecordOptimize(fRecord.get());
+    }
 
     SkDrawableList* drawableList = fRecorder->getDrawableList();
     std::unique_ptr<SkSnapshotArray> pictList{drawableList ? drawableList->newDrawableSnapshot()

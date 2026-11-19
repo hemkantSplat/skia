@@ -447,62 +447,33 @@ DEF_TEST(pathdata_transform, reporter) {
 }
 
 /*
- *  This tests how convexity is tracked under transformation
- *  1. unknown stays unknown (we don't actively compute convexity)
- *  2. concave stays concave
- *  3. convex ... may stay convex -- it depends if we feel it is (numerically) safe.
- *     See SkPathPriv::TransformConvexity() for the current heuristics.
- *  4. The (above) helper is shared with SkPath::transform(), so it and SkPathData
- *     should handle transforms + convexity the same.
+ *  A transform never inherits the source's convexity: it is a lazy cache, so inheriting it would
+ *  make the result depend on whether the source was queried. The result computes its own.
  */
 DEF_TEST(pathdata_transform_convexity, reporter) {
     const SkPoint pts[] = {
         {0, 0}, {100, 0}, {200, 0}, {200, 200},
     };
-    // needed late for our assumpts about convexity preservation
-    REPORTER_ASSERT(reporter, SkPathPriv::IsAxisAligned(pts));
-
     auto src = SkPathData::Polygon(pts, true);
-    auto convexity = SkPathPriv::GetConvexityOrUnknown(*src);
-
-    // don't do any work we didn't ask for
-    REPORTER_ASSERT(reporter, convexity == SkPathConvexity::kUnknown);
     auto raw = src->raw(SkPathFillType::kDefault, SkResolveConvexity::kNo);
+    // don't do any work we didn't ask for
     REPORTER_ASSERT(reporter, raw.fConvexity == SkPathConvexity::kUnknown);
-    // now ask for it
-    raw = src->raw(SkPathFillType::kDefault, SkResolveConvexity::kYes);
-    REPORTER_ASSERT(reporter, raw.isKnownToBeConvex());
 
-    // For these matrices, given that our points are axis-aligned, we should be able
-    // to preserve whatever convexity our src has.
-
-    const SkMatrix safeMatrices[] = {
-        SkMatrix(), SkMatrix::Translate(1, 2), SkMatrix::Scale(2, 3),
+    const SkMatrix matrices[] = {
+        SkMatrix::Translate(1, 2), SkMatrix::Scale(2, 3), SkMatrix::RotateDeg(30),
     };
     const SkPathConvexity convexities[] = {
         SkPathConvexity::kUnknown,
         SkPathConvexity::kConvex_CW,    // matches our test data
         SkPathConvexity::kConcave,
     };
-    for (const auto& mx : safeMatrices) {
+    for (const auto& mx : matrices) {
         for (auto conv : convexities) {
             raw.fConvexity = conv;
             auto dst = SkPathData::MakeTransform(raw, mx);
-            convexity = SkPathPriv::GetConvexityOrUnknown(*dst);
-            REPORTER_ASSERT(reporter, convexity == conv);
+            REPORTER_ASSERT(reporter,
+                            SkPathPriv::GetConvexityOrUnknown(*dst) == SkPathConvexity::kUnknown);
         }
-    }
-
-    // for this matrix, we do not expect to preserve convexity
-    // (since we don't choose to actually compute convexity at this stage)
-    SkMatrix mx = SkMatrix::RotateDeg(30);
-    for (auto conv : convexities) {
-        raw.fConvexity = conv;
-        auto dst = SkPathData::MakeTransform(raw, mx);
-        convexity = SkPathPriv::GetConvexityOrUnknown(*dst);
-        auto expected = SkPathConvexity_IsConvex(conv) ? SkPathConvexity::kUnknown
-                                                       : conv;
-        REPORTER_ASSERT(reporter, convexity == expected);
     }
 }
 

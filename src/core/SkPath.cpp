@@ -719,7 +719,8 @@ SkPath SkPath::RRect(const SkRect& r, SkScalar rx, SkScalar ry, SkPathDirection 
 }
 
 SkPathFirstDirection SkPathPriv::ComputeFirstDirection(const SkPath& path) {
-    auto convexity = path.getConvexityOrUnknown();
+    // Resolved, not the lazy cache: the answer must not depend on whether convexity was queried before.
+    auto convexity = path.getConvexity();
     if (SkPathConvexity_IsConvex(convexity)) {
         // Note, this can return kUnknown. That is valid. If we've determined that the
         // path is convex, then we've already tried to compute its first-direction. If

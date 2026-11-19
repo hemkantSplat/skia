@@ -874,6 +874,8 @@ cfsk_status cfsk_picture_recorder_make(cfsk_picture_recorder** output);
 cfsk_status cfsk_picture_recorder_begin(cfsk_picture_recorder* recorder, cfsk_rect bounds, cfsk_canvas** output);
 /* @cfsk PictureRecorder.finishRecordingAsPicture => cfsk_picture_recorder_finish | SkPictureRecorder::finishRecordingAsPicture; invalidates borrowed canvas */
 cfsk_status cfsk_picture_recorder_finish(cfsk_picture_recorder* recorder, cfsk_picture** output);
+/* @cfsk Native.PictureRecorderFinishVerbatim => cfsk_picture_recorder_finish_verbatim | SkPictureRecorder::finishRecordingAsPictureVerbatim; replays exactly the recorded calls; invalidates borrowed canvas */
+cfsk_status cfsk_picture_recorder_finish_verbatim(cfsk_picture_recorder* recorder, cfsk_picture** output);
 /* @cfsk CanvasKit.MakePicture => cfsk_picture_deserialize | SkPicture::MakeFromData; input borrowed only during call; failure returns NULL output */
 cfsk_status cfsk_picture_deserialize(cfsk_bytes bytes, cfsk_picture** output);
 /* @cfsk Native.SharedPictureResources => cfsk_picture_resources_make | Thread-confined CFIMG1/CFONT1 archive resolver; pictures retain decoded resources */

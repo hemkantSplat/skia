@@ -35,16 +35,6 @@ static inline bool SkPathConvexity_IsConvex(SkPathConvexity cv) {
         || cv == SkPathConvexity::kConvex_Degenerate;
 }
 
-static inline SkPathConvexity SkPathConvexity_OppositeConvexDirection(SkPathConvexity cv) {
-    SkASSERT(SkPathConvexity_IsConvex(cv));
-    switch (cv) {
-        case SkPathConvexity::kConvex_CW:  cv = SkPathConvexity::kConvex_CCW; break;
-        case SkPathConvexity::kConvex_CCW: cv = SkPathConvexity::kConvex_CW;  break;
-        default: break;
-    }
-    return cv;
-}
-
 enum class SkPathFirstDirection {
     kCW,         // == SkPathDirection::kCW
     kCCW,        // == SkPathDirection::kCCW

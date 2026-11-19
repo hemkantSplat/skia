@@ -282,8 +282,8 @@ sk_sp<SkPathData> SkPathData::MakeTransform(const SkPathRaw& src, const SkMatrix
         return nullptr;
     }
 
-    result->setConvexity(SkPathPriv::TransformConvexity(mx, src.fPoints, src.fConvexity));
-
+    // The source's convexity is a lazy cache, so inheriting it would make the result (and its
+    // rasterization) depend on whether the source was queried earlier; compute from our points.
     return result;
 }
 

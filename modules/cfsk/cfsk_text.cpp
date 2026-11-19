@@ -262,13 +262,22 @@ cfsk_status cfsk_picture_recorder_begin(cfsk_picture_recorder* recorder, cfsk_re
     return CFSK_OK;
 }
 
-cfsk_status cfsk_picture_recorder_finish(cfsk_picture_recorder* recorder, cfsk_picture** output) {
+static cfsk_status finish_recording(cfsk_picture_recorder* recorder, bool verbatim, cfsk_picture** output) {
     CFSK_BEGIN;
     CFSK_OUTPUT(output);
     CFSK_REQUIRE(recorder && recorder->active);
-    auto result = recorder->value.finishRecordingAsPicture();
+    auto result = verbatim ? recorder->value.finishRecordingAsPictureVerbatim()
+                           : recorder->value.finishRecordingAsPicture();
     recorder->active = false; recorder->canvas.value = nullptr;
     return cfsk::resource(output, std::move(result));
+}
+
+cfsk_status cfsk_picture_recorder_finish(cfsk_picture_recorder* recorder, cfsk_picture** output) {
+    return finish_recording(recorder, false, output);
+}
+
+cfsk_status cfsk_picture_recorder_finish_verbatim(cfsk_picture_recorder* recorder, cfsk_picture** output) {
+    return finish_recording(recorder, true, output);
 }
 
 cfsk_status cfsk_picture_bytes_used(const cfsk_picture* picture, size_t* output_bytes) {

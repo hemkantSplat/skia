@@ -68,6 +68,12 @@ public:
     sk_sp<SkPicture> finishRecordingAsPicture();
 
     /**
+     *  Same as finishRecordingAsPicture(), but the record is not optimized: playback issues
+     *  exactly the recorded calls, so it draws the pixels those calls draw directly.
+     */
+    sk_sp<SkPicture> finishRecordingAsPictureVerbatim();
+
+    /**
      *  Signal that the caller is done recording, and update the cull rect to use for bounding
      *  box hierarchy (BBH) generation. The behavior is the same as calling
      *  finishRecordingAsPicture(), except that this method updates the cull rect initially passed
@@ -92,6 +98,7 @@ public:
 
 private:
     void reset();
+    sk_sp<SkPicture> finish(bool optimize);
 
     /** Replay the current (partially recorded) operation stream into
         canvas. This call doesn't close the current recording.

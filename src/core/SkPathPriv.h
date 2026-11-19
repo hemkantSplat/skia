@@ -59,9 +59,6 @@ public:
                                             SkSpan<const SkPathVerb> verbs,
                                             SkSpan<const float> conicWeights);
 
-    static SkPathConvexity TransformConvexity(const SkMatrix&, SkSpan<const SkPoint>,
-                                              SkPathConvexity);
-
     static uint8_t ComputeSegmentMask(SkSpan<const SkPathVerb>);
 
     /* Note: does NOT use convexity in the raw, so it need not be resolved,
