@@ -90,6 +90,7 @@ SK_MAKE_BITFIELD_CLASS_OPS(GpuStatsFlags)
 struct GpuStats {
     uint64_t elapsedTime = 0;
     uint64_t numOcclusionPassSamples = 0;
+    GpuStatsFlags validFlags = GpuStatsFlags::kNone;
 };
 
 } // namespace skgpu

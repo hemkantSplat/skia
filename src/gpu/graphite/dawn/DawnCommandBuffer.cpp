@@ -167,6 +167,7 @@ std::optional<GpuStats> DawnCommandBuffer::gpuStats() {
     }
     GpuStats stats;
     stats.elapsedTime = SK_UNSAFE_TODO(results[1]) - results[0];
+    stats.validFlags = GpuStatsFlags::kElapsedTime;
     return stats;
 }
 

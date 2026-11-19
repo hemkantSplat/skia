@@ -25,7 +25,7 @@ static_library("cfsk") {
     "cfsk_text.cpp",
     "cfsk_unsupported.cpp",
   ]
-  include_dirs = [ "../.." ]
+  include_dirs = [ "../..", "//third_party/externals/vulkan-headers/include" ]
   deps = [
     "//:pathops",
     "//:skia",

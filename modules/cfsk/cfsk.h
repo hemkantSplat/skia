@@ -274,6 +274,27 @@ typedef struct { uint32_t start, count, batch; } cfsk_stroke_chunk;
 typedef struct { uint32_t start, count; } cfsk_stroke_range;
 
 /* Graphite lifecycle and CPU surfaces */
+/* Dawn hardware Vulkan adapter identity. Fixed strings are UTF-8 and NUL terminated.
+ * kind uses 1 for discrete, 2 for integrated, 0 for other. id is an opaque selector. */
+typedef struct {
+    uint32_t kind, vendor_id, device_id;
+    char name[256];
+    char driver[256];
+    char id[48];
+} cfsk_dawn_adapter_info;
+/* A zero-capacity query returns the required size. A short output returns BUFFER_TOO_SMALL. */
+cfsk_status cfsk_dawn_adapters(cfsk_dawn_adapter_info* output, size_t capacity, size_t* required);
+/* Empty choice prefers discrete, then the first eligible hardware adapter. */
+cfsk_status cfsk_dawn_host_make_selected(cfsk_bytes choice, cfsk_dawn_host** output);
+cfsk_status cfsk_dawn_host_make_win32_selected(void* hinstance, void* hwnd, cfsk_bytes choice,
+                                              cfsk_dawn_host** output);
+cfsk_status cfsk_dawn_host_adapter(cfsk_dawn_host* host, cfsk_dawn_adapter_info* output);
+cfsk_status cfsk_dawn_host_poll(cfsk_dawn_host* host);
+/* Exclusively transfer a newly created headless host before creating any contexts or surfaces. */
+cfsk_status cfsk_dawn_host_adopt(cfsk_dawn_host* host);
+/* The new host owns only the surface and shares the same device/queue as device_host. */
+cfsk_status cfsk_dawn_host_bind_win32(cfsk_dawn_host* device_host, void* hinstance, void* hwnd,
+                                     cfsk_dawn_host** output);
 /* @cfsk Native.DawnHost => cfsk_dawn_host_make | Owned headless hardware Vulkan host; shared device policy */
 cfsk_status cfsk_dawn_host_make(cfsk_dawn_host** output);
 /* @cfsk Native.DawnHostWin32 => cfsk_dawn_host_make_win32 | Win32 host; borrowed HWND; Linux unsupported */
@@ -336,6 +357,10 @@ cfsk_status cfsk_context_set_cache_limit(cfsk_context* context, size_t bytes);
 /* @cfsk ProgramCacheApi.precompile => cfsk_context_precompile | PrecompileContext::precompile(serializedPipeline); GLSL key/data format is retired */
 /* @cfsk ForkGrDirectContext.precompileShader => cfsk_context_precompile | PrecompileContext::precompile(serializedPipeline); GLSL key/data format is retired */
 cfsk_status cfsk_context_precompile(cfsk_context* context, cfsk_bytes serialized_pipeline);
+/* A null output begins a capture; a non-null output ends it and returns the observed CFP1 keys. */
+cfsk_status cfsk_context_capture_pipelines(cfsk_context* context, cfsk_data** output);
+/* Copy and precompile CFP1 keys on a single worker. Pending means the previous batch is still active. */
+cfsk_status cfsk_context_precompile_deferred(cfsk_context* context, cfsk_bytes keys);
 /* @cfsk Graphite.Context.pipelineCachingCallback => cfsk_context_take_pipeline | Drain one owned serialized pipeline captured internally; OK/NULL if empty */
 cfsk_status cfsk_context_take_pipeline(cfsk_context* context, cfsk_data** output);
 /* @cfsk CanvasKit.MakeSurface => cfsk_surface_make_raster | SkSurfaces::Raster; host presentation stays Rust */

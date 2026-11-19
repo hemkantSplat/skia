@@ -14,11 +14,15 @@
 #include "cfsk_dawn_host.h"
 #include "tools/graphite/GraphiteToolUtils.h"
 #include <cstring>
+#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace graphite = skgpu::graphite;
+constexpr size_t kPipelineKeyBudget = 64 * 1024 * 1024;
 class PipelineStorage final : public graphite::PersistentPipelineStorage {
 public:
     sk_sp<SkData> data;
@@ -31,10 +35,19 @@ struct cfsk_context {
     uint32_t inline_count = 0, precompiled_count = 0, unkeyable_count = 0;
     std::mutex pipeline_mutex;
     std::deque<sk_sp<SkData>> pipelines;
+    size_t queued_key_bytes = 0, indexed_key_bytes = 0;
+    std::unordered_multimap<uint32_t, sk_sp<SkData>> keys_by_hash;
+    std::unordered_set<uint32_t> captured_hashes;
+    std::vector<sk_sp<SkData>> captured_keys;
+    std::atomic<bool> capturing{false};
+    std::atomic<bool> precompile_busy{false}, precompile_stop{false};
+    std::thread precompile_worker;
     std::thread::id owner = std::this_thread::get_id();
     graphite::DawnBackendContext dawn;
     std::unique_ptr<graphite::Context> value;
     ~cfsk_context() {
+        precompile_stop.store(true);
+        if (precompile_worker.joinable()) precompile_worker.join();
         if (value) value->submit(skgpu::graphite::SyncToCpu::kYes);
         // Destroy Graphite before the pipeline callback storage and Dawn references.
         value.reset();
@@ -85,6 +98,8 @@ void finished(void* opaque, skgpu::CallbackResult result, const skgpu::GpuStats&
     std::unique_ptr<std::shared_ptr<Completion>> state(static_cast<std::shared_ptr<Completion>*>(opaque));
     (*state)->status = result == skgpu::CallbackResult::kSuccess ? CFSK_OK : CFSK_FAILED;
     (*state)->result.complete = 1;
+    (*state)->result.has_gpu_time =
+            stats.validFlags & skgpu::GpuStatsFlags::kElapsedTime;
     (*state)->result.gpu_time_ns = stats.elapsedTime;
     (*state)->complete.store(true, std::memory_order_release);
 }
@@ -161,13 +176,42 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
     policy.fPersistentPipelineStorage = &context->storage;
     policy.fPipelineCallbackContext = context.get();
     policy.fPipelineCachingCallback = [](void* opaque, graphite::ContextOptions::PipelineCacheOp op,
-            const std::string&, uint32_t, bool from_precompile, sk_sp<SkData> data) {
-        if (op != graphite::ContextOptions::PipelineCacheOp::kAddingPipeline) return;
+            const std::string&, uint32_t hash, bool from_precompile, sk_sp<SkData> data) {
         auto owner = static_cast<cfsk_context*>(opaque);
+        const bool adding = op == graphite::ContextOptions::PipelineCacheOp::kAddingPipeline;
+        const bool capture = owner->capturing.load(std::memory_order_relaxed) &&
+                             owner->owner == std::this_thread::get_id();
+        if (!adding && !capture) return;
         std::lock_guard<std::mutex> lock(owner->pipeline_mutex);
-        if (from_precompile) ++owner->precompiled_count;
-        else { ++owner->inline_count; if (!data) ++owner->unkeyable_count; }
-        if (data) owner->pipelines.push_back(std::move(data));
+        if (adding) {
+            if (from_precompile) ++owner->precompiled_count;
+            else { ++owner->inline_count; if (!data) ++owner->unkeyable_count; }
+            if (data) {
+                if (data->size() <= kPipelineKeyBudget) {
+                    while (owner->queued_key_bytes + data->size() > kPipelineKeyBudget) {
+                        owner->queued_key_bytes -= owner->pipelines.front()->size();
+                        owner->pipelines.pop_front();
+                    }
+                    owner->queued_key_bytes += data->size();
+                    owner->pipelines.push_back(data);
+                }
+                auto [first, last] = owner->keys_by_hash.equal_range(hash);
+                auto same = [&](const auto& item) {
+                    return item.second->size() == data->size() &&
+                           !std::memcmp(item.second->data(), data->data(), data->size());
+                };
+                if (std::find_if(first, last, same) == last &&
+                    owner->indexed_key_bytes + data->size() <= kPipelineKeyBudget) {
+                    owner->indexed_key_bytes += data->size();
+                    owner->keys_by_hash.emplace(hash, data);
+                    if (capture && owner->captured_hashes.count(hash)) owner->captured_keys.push_back(data);
+                }
+            }
+        }
+        if (capture && owner->captured_hashes.insert(hash).second) {
+            auto [first, last] = owner->keys_by_hash.equal_range(hash);
+            for (; first != last; ++first) owner->captured_keys.push_back(first->second);
+        }
     };
     context->value = graphite::ContextFactory::MakeDawn(context->dawn, policy);
     if (!context->value) return cfsk::fail(CFSK_FAILED, "Graphite MakeDawn failed");
@@ -248,7 +292,6 @@ cfsk_status cfsk_context_insert(cfsk_context* context, cfsk_recording** recordin
     if (gpu_time && !(context->value->supportedGpuStats() & skgpu::GpuStatsFlags::kElapsedTime))
         return cfsk::unsupported("GPU elapsed-time statistics unavailable on this device");
     auto state = std::make_shared<Completion>();
-    state->result.has_gpu_time = gpu_time;
     auto ticket = new (std::nothrow) cfsk_submission{state, context};
     auto callback = new (std::nothrow) std::shared_ptr<Completion>(state);
     if (!ticket || !callback) { delete ticket; delete callback; return cfsk::fail(CFSK_OUT_OF_MEMORY, "submission allocation failed"); }
@@ -290,6 +333,57 @@ cfsk_status cfsk_context_cache_usage(cfsk_context* context, cfsk_cache_usage* ou
 cfsk_status cfsk_context_set_cache_limit(cfsk_context* context, size_t bytes) {
     CFSK_BEGIN; CONTEXT_READY(context); context->value->setMaxBudgetedBytes(bytes); return CFSK_OK;
 }
+cfsk_status cfsk_context_capture_pipelines(cfsk_context* context, cfsk_data** output) {
+    CFSK_BEGIN; CONTEXT_READY(context);
+    std::lock_guard<std::mutex> lock(context->pipeline_mutex);
+    context->capturing.store(!output, std::memory_order_relaxed);
+    cfsk_status status = CFSK_OK;
+    if (output) {
+        *output = nullptr;
+        std::vector<uint8_t> bytes{'C', 'F', 'P', '1'};
+        for (const auto& key : context->captured_keys) {
+            if (key->size() + bytes.size() + 4 > 64 * 1024 * 1024) break;
+            for (int shift = 0; shift < 32; shift += 8) bytes.push_back(uint8_t(key->size() >> shift));
+            const auto* data = static_cast<const uint8_t*>(key->data());
+            bytes.insert(bytes.end(), data, data + key->size());
+        }
+        status = cfsk::resource(output, SkData::MakeWithCopy(bytes.data(), bytes.size()));
+    }
+    context->captured_hashes.clear();
+    context->captured_keys.clear();
+    return status;
+}
+
+cfsk_status cfsk_context_precompile_deferred(cfsk_context* context, cfsk_bytes keys) {
+    CFSK_BEGIN; CONTEXT_READY(context); CFSK_REQUIRE(cfsk::valid(keys));
+    if (!keys.length) return CFSK_OK;
+    CFSK_REQUIRE(keys.length >= 4 && keys.length <= 64 * 1024 * 1024 &&
+                 !std::memcmp(keys.data, "CFP1", 4));
+    if (context->precompile_busy.load()) return CFSK_PENDING;
+    std::vector<sk_sp<SkData>> work;
+    for (size_t offset = 4; offset < keys.length;) {
+        CFSK_REQUIRE(keys.length - offset >= 4);
+        uint32_t size = 0;
+        for (int shift = 0; shift < 32; shift += 8) size |= uint32_t(keys.data[offset++]) << shift;
+        CFSK_REQUIRE(size && size <= keys.length - offset);
+        work.push_back(SkData::MakeWithCopy(keys.data + offset, size));
+        offset += size;
+    }
+    if (work.empty()) return CFSK_OK;
+    if (context->precompile_worker.joinable()) context->precompile_worker.join();
+    auto precompile = context->value->makePrecompileContext();
+    if (!precompile) return cfsk::unsupported("Graphite precompile is unavailable");
+    context->precompile_busy.store(true);
+    context->precompile_worker = std::thread([context, work = std::move(work), pc = std::move(precompile)] {
+        for (const auto& key : work) {
+            if (context->precompile_stop.load()) break;
+            pc->precompile(key);
+        }
+        context->precompile_busy.store(false);
+    });
+    return CFSK_OK;
+}
+
 cfsk_status cfsk_context_precompile(cfsk_context* context, cfsk_bytes serialized_pipeline) {
     CFSK_BEGIN; CONTEXT_READY(context); CFSK_REQUIRE(cfsk::valid(serialized_pipeline) && serialized_pipeline.length);
     auto precompile = context->value->makePrecompileContext();
@@ -302,7 +396,10 @@ cfsk_status cfsk_context_take_pipeline(cfsk_context* context, cfsk_data** output
     std::lock_guard<std::mutex> lock(context->pipeline_mutex);
     if (context->pipelines.empty()) return CFSK_OK;
     auto status = cfsk::resource(output, context->pipelines.front());
-    if (status == CFSK_OK) context->pipelines.pop_front();
+    if (status == CFSK_OK) {
+        context->queued_key_bytes -= context->pipelines.front()->size();
+        context->pipelines.pop_front();
+    }
     return status;
 }
 cfsk_status cfsk_surface_make_graphite(cfsk_recorder* recorder, const cfsk_image_info* info, uint8_t mipmapped, cfsk_surface** output) {

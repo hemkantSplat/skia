@@ -12,6 +12,7 @@ struct DawnDevice {
     std::shared_ptr<DawnErrors> errors = std::make_shared<DawnErrors>();
     std::unique_ptr<dawn::native::Instance> instance;
     wgpu::Adapter adapter;
+    cfsk_dawn_adapter_info info{};
     wgpu::Device device;
     wgpu::Queue queue;
 };
@@ -20,6 +21,9 @@ struct cfsk_dawn_host {
     std::shared_ptr<cfsk::DawnDevice> native;
     std::thread::id owner = std::this_thread::get_id();
     wgpu::Surface surface;
+    void* hinstance = nullptr;
+    void* hwnd = nullptr;
+    bool surface_lost = false;
     wgpu::Texture texture;
     wgpu::SurfaceConfiguration config;
     bool suspended = true, suboptimal = false;
