@@ -341,6 +341,18 @@ cfsk_status cfsk_dawn_host_configure(cfsk_dawn_host* host, uint32_t width, uint3
 #if defined(_WIN32)
     if (host->surface_lost) {
         host->surface = nullptr;
+        // Dawn defers Vulkan swapchain destruction until the next queue serial completes.
+        auto& queue = host->native->queue;
+        queue.Submit(0, nullptr);
+        auto done = queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly,
+                [](wgpu::QueueWorkDoneStatus, wgpu::StringView) {});
+        wgpu::Instance instance(host->native->instance->Get());
+        if (instance.WaitAny(done, 5'000'000'000) != wgpu::WaitStatus::Success) {
+            return cfsk::fail(CFSK_FAILED, "could not retire lost Dawn swapchain");
+        }
+        // Tick best-effort deletions after the user-visible fence has completed.
+        queue.Submit(0, nullptr);
+        if (auto status = cfsk::dawn_host_ready(host); status != CFSK_OK) return status;
         if (auto status = make_surface(host, host->hinstance, host->hwnd); status != CFSK_OK) return status;
         if (auto status = surface_policy(host); status != CFSK_OK) return status;
         host->surface_lost = false;
