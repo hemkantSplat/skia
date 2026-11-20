@@ -191,6 +191,11 @@ SkISize SkMipmap::ComputeLevelSize(int baseWidth, int baseHeight, int level) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+// FedRateStepAnnotations and EveryPhotoBackedUp: round both mip log operands from double.
+float SkMipmap::LevelLog2(float scale) {
+    return static_cast<float>(std::log2(static_cast<double>(scale)));
+}
+
 // Returns fractional level value. floor(level) is the index of the larger level.
 // < 0 means failure.
 float SkMipmap::ComputeLevel(SkSize scaleSize) {
@@ -211,7 +216,7 @@ float SkMipmap::ComputeLevel(SkSize scaleSize) {
     }
 
     // The -0.5 bias here is to emulate GPU's sharpen mipmap option.
-    float L = std::max(-SkScalarLog2(scale) - 0.5f, 0.f);
+    float L = std::max(-LevelLog2(scale) - 0.5f, 0.f);
     if (!SkIsFinite(L)) {
         return -1;
     }

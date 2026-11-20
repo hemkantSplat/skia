@@ -24,6 +24,7 @@
 #include "src/core/SkColorSpaceXformSteps.h"
 #include "src/core/SkEffectPriv.h"
 #include "src/core/SkImageInfoPriv.h"
+#include "src/core/SkMipmap.h"
 #include "src/core/SkMipmapAccessor.h"
 #include "src/core/SkPicturePriv.h"
 #include "src/core/SkRasterPipeline.h"
@@ -575,7 +576,7 @@ bool SkImageShader::appendStages(const SkStageRec& rec, const SkShaders::MatrixR
                               levelInv.decomposeScale(&centre, nullptr);
         if (mipmapCtx->perPixel) {
             mipmapCtx->levelOffset =
-                    lowerWeight - SkScalarLog2(std::max(centre.width(), centre.height()));
+                    lowerWeight - SkMipmap::LevelLog2(std::max(centre.width(), centre.height()));
             baseInv.get9(mipmapCtx->inv);
         }
 

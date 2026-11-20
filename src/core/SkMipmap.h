@@ -60,6 +60,8 @@ public:
         return ComputeLevelSize(s.width(), s.height(), level);
     }
 
+    static float LevelLog2(float scale);
+
     // Computes the fractional level based on the scaling in X and Y.
     static float ComputeLevel(SkSize scaleSize);
 
