@@ -120,7 +120,10 @@ void DrawContext::clear(const SkColor4f& clearColor) {
 
 void DrawContext::discard() {
     this->resetForClearOrDiscard();
-    fPendingDraws->reset(LoadOp::kDiscard);
+    // A draw can overwrite the logical device while leaving the backing texture's padding
+    // untouched. Give filter sampling a defined border even when the texture is reused.
+    const bool hasPadding = fTarget.proxy()->dimensions() != this->imageInfo().dimensions();
+    fPendingDraws->reset(hasPadding ? LoadOp::kClear : LoadOp::kDiscard);
 }
 
 void DrawContext::resetForClearOrDiscard() {

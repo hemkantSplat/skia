@@ -11,6 +11,8 @@
 #include "include/core/SkShader.h"
 #include "src/core/SkBlendModeBlender.h"
 #include "src/core/SkBlenderBase.h"
+#include "src/core/SkKnownRuntimeEffects.h"
+#include "src/core/SkRuntimeEffectPriv.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "src/core/SkImageInfoPriv.h"
 #include "src/core/SkMeshPriv.h"
@@ -72,14 +74,19 @@ SkEnumBitMask<DstUsage> get_dst_usage(const Caps* caps,
                                       const SkShader* clipShader,
                                       const NonMSAAClip& nonMSAAClip) {
     SkEnumBitMask<DstUsage> dstUsage = DstUsage::kDependsOnDst;
+    const bool hasAnalyticClip = clipShader || !nonMSAAClip.isEmpty();
+    const Coverage effectiveCoverage = rendererCoverage == Coverage::kNone && hasAnalyticClip
+                                               ? Coverage::kSingleChannel
+                                               : rendererCoverage;
     if (paint.finalBlender()) {
-        dstUsage |= DstUsage::kDstReadRequired;
-    } else {
-        const bool hasAnalyticClip = clipShader || !nonMSAAClip.isEmpty();
-        Coverage effectiveCoverage = rendererCoverage;
-        if (effectiveCoverage == Coverage::kNone && hasAnalyticClip) {
-            effectiveCoverage = Coverage::kSingleChannel;
+        const SkRuntimeEffect* effect = as_BB(paint.finalBlender())->asRuntimeEffect();
+        const bool unclampedAdd = effect && SkRuntimeEffectPriv::StableKey(*effect) ==
+                static_cast<uint32_t>(SkKnownRuntimeEffects::StableKey::kAdd);
+        if (!unclampedAdd || targetFormat != TextureFormat::kRGBA16F ||
+            effectiveCoverage == Coverage::kLCD) {
+            dstUsage |= DstUsage::kDstReadRequired;
         }
+    } else {
 
         const SkBlendMode finalBlendMode = paint.finalBlendMode();
         if (!CanUseHardwareBlending(caps, targetFormat, finalBlendMode, effectiveCoverage)) {

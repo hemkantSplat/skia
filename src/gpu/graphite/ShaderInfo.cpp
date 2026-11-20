@@ -9,6 +9,7 @@
 
 #include "include/core/SkMesh.h"
 #include "include/private/SkAttributes.h"
+#include "src/core/SkKnownRuntimeEffects.h"
 #include "src/core/SkMeshPriv.h"
 #include "src/gpu/BlendFormula.h"
 #include "src/gpu/graphite/ContextUtils.h"
@@ -1225,8 +1226,16 @@ void ShaderInfo::generateFragmentSkSL(const Caps* caps,
         finalBlendRootSnippetId >= kFixedBlendIDOffset) {
         finalBlendMode = static_cast<SkBlendMode>(finalBlendRootSnippetId - kFixedBlendIDOffset);
     }
-    if (finalBlendMode.has_value() &&
-        CanUseHardwareBlending(caps, targetFormat, *finalBlendMode, finalCoverage)) {
+    // The known Add effect is an unclamped sum. Fixed-function blending also lets
+    // overlapping primitives see earlier writes from the same draw.
+    const bool unclampedAdd =
+            finalBlendRootSnippetId == static_cast<int32_t>(SkKnownRuntimeEffects::StableKey::kAdd) &&
+            targetFormat == TextureFormat::kRGBA16F && finalCoverage != Coverage::kLCD;
+    if (unclampedAdd) {
+        finalBlendMode = SkBlendMode::kPlus;
+    }
+    if (unclampedAdd || (finalBlendMode.has_value() &&
+        CanUseHardwareBlending(caps, targetFormat, *finalBlendMode, finalCoverage))) {
         // If we can use hardware blending, update the dstReadStrategy to be kNoneRequired to ensure
         // that ShaderInfo properly informs PipelineInfo of the pipeline's dst read requirement.
         fDstReadStrategy = DstReadStrategy::kNoneRequired;
