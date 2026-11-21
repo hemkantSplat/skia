@@ -20,6 +20,7 @@
 #include "src/core/SkImageFilterTypes.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkReadBuffer.h"
+#include "src/core/SkRectPriv.h"
 #include "src/core/SkWriteBuffer.h"
 
 #include <algorithm>
@@ -27,6 +28,9 @@
 #include <utility>
 
 namespace {
+
+// Ordinary and legacy blurs retain their original tile-mode tags.
+constexpr uint32_t kDeviceSpaceBlurTag = static_cast<uint32_t>(SkTileMode::kLastTileMode) + 1;
 
 class SkBlurImageFilter final : public SkImageFilter_Base {
 public:
@@ -50,6 +54,11 @@ protected:
     void flatten(SkWriteBuffer&) const override;
 
 private:
+    bool onAffectsTransparentBlack() const override {
+        // Skia also uses this hook to decide whether CTM-independent bounds are available.
+        return fDeviceSpace;
+    }
+
     MatrixCapability onGetCTMCapability() const override {
         return fDeviceSpace ? MatrixCapability::kComplex : MatrixCapability::kScaleTranslate;
     }
@@ -141,7 +150,18 @@ sk_sp<SkFlattenable> SkBlurImageFilter::CreateProc(SkReadBuffer& buffer) {
     SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 1);
     SkScalar sigmaX = buffer.readScalar();
     SkScalar sigmaY = buffer.readScalar();
-    SkTileMode tileMode = buffer.read32LE(SkTileMode::kLastTileMode);
+    const auto tag = buffer.read32LE(kDeviceSpaceBlurTag);
+    if (!buffer.isValid()) {
+        return nullptr;
+    }
+    if (tag == kDeviceSpaceBlurTag) {
+        if (!buffer.validate(SkIsFinite(sigmaX) && sigmaX >= 0.f && sigmaX == sigmaY &&
+                             !common.cropRect())) {
+            return nullptr;
+        }
+        return sk_make_sp<SkBlurImageFilter>(sigmaX, common.getInput(0));
+    }
+    const auto tileMode = static_cast<SkTileMode>(tag);
 
     // NOTE: For new SKPs, 'tileMode' holds the "legacy" tile mode; any originally specified tile
     // mode with valid tiling geometry is handled in the SkCropImageFilters that wrap the blur.
@@ -159,7 +179,7 @@ void SkBlurImageFilter::flatten(SkWriteBuffer& buffer) const {
 
     buffer.writeScalar(SkSize(fSigma).fWidth);
     buffer.writeScalar(SkSize(fSigma).fHeight);
-    buffer.writeInt(static_cast<int>(fLegacyTileMode));
+    buffer.writeUInt(fDeviceSpace ? kDeviceSpaceBlurTag : static_cast<uint32_t>(fLegacyTileMode));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -260,6 +280,10 @@ std::optional<skif::LayerSpace<SkIRect>> SkBlurImageFilter::onGetOutputLayerBoun
 }
 
 SkRect SkBlurImageFilter::computeFastBounds(const SkRect& src) const {
+    if (fDeviceSpace) {
+        // No finite local outset can cover a device-space kernel at every scale.
+        return SkRectPriv::MakeLargest();
+    }
     SkRect bounds = this->getInput(0) ? this->getInput(0)->computeFastBounds(src) : src;
     bounds.outset(SkSize(fSigma).width() * 3, SkSize(fSigma).height() * 3);
     return bounds;

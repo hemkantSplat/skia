@@ -1074,10 +1074,6 @@ void Device::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPain
 
     SkBlender* primitiveBlender =
         (blender && SkMeshSpecificationPriv::HasColors(*drawMesh.spec())) ? blender.get() : nullptr;
-    // Preserve single-sample coverage for instanced meshes after a multisampled draw.
-    if (mesh.instanceBuffer() && fDC->pendingRequiresMSAA()) {
-        this->internalFlush();
-    }
     this->drawGeometry(this->localToDeviceTransform(),
                        Geometry(drawMesh),
                        PaintParams(paint, primitiveBlender).makeWithMesh(mesh),
@@ -1838,15 +1834,25 @@ void Device::drawGeometry(const Transform& localToDevice,
     DstReadStrategy dstReadStrategy = shading.dstReadRequired() ?
                                       fDC->dstReadStrategy() : DstReadStrategy::kNoneRequired;
     // TODO (thomsmit): Adjust this when the draw limit is removed.
-    const bool needsFlush = this->needsFlushBeforeDraw(numNewRenderSteps, dstReadStrategy);
+    const bool instancedMesh = geometry.isMesh() && geometry.mesh().instanceBuffer();
+    const bool needsMSAAClip = !clipElements.empty();
+    const bool drawRequiresMSAA = needsMSAAClip || (renderer && renderer->requiresMSAA()) ||
+                                  styleType == SkStrokeRec::kStrokeAndFill_Style;
+    const bool isolateMesh = (drawRequiresMSAA && fPendingSingleSampleMesh) ||
+                             (instancedMesh && !drawRequiresMSAA &&
+                              (fPendingMSAAClip || fDC->pendingRequiresMSAA()));
+    const bool regularFlush = this->needsFlushBeforeDraw(numNewRenderSteps, dstReadStrategy);
+    const bool needsFlush = isolateMesh || regularFlush;
     if (needsFlush) {
         if (pathAtlas != nullptr) {
             // We need to flush work for all devices associated with the current Recorder.
             // Otherwise we may end up with outstanding draws that depend on past atlas state.
             fRecorder->priv().flushTrackedDevices(
                     SK_DUMP_TASKS_CODE("Device::drawGeometry Flush Before Draw"));
-        } else {
+        } else if (regularFlush) {
             this->flushPendingWork(/*drawContext=*/nullptr);
+        } else {
+            this->internalFlush();
         }
     }
 
@@ -1890,6 +1896,7 @@ void Device::drawGeometry(const Transform& localToDevice,
                                      clipElements.empty() &&
                                      clip.scissor().contains(this->bounds());
     if (overwritesAllPixels) {
+        fPendingSingleSampleMesh = false;
         if (std::optional<SkColor4f> color = extract_paint_color(paint, fDC->colorInfo())) {
             // Fullscreen clear, so nothing has to be rendered at all
             fDC->clear(*color);
@@ -1956,6 +1963,8 @@ void Device::drawGeometry(const Transform& localToDevice,
 
     // Update the clip stack after issuing a flush (if it was needed). A draw will be recorded after
     // this point.
+    fPendingSingleSampleMesh |= instancedMesh && !drawRequiresMSAA;
+    fPendingMSAAClip |= needsMSAAClip;
     DrawOrder order(fCurrentDepth.next());
     auto [clipOrder, clipLayer] = fClip.updateClipStateForDraw(
             clip, clipElements, fColorDepthBoundsManager.get(), order.depth());
@@ -2444,6 +2453,8 @@ void Device::internalFlush() {
 
     // Flush all pending items to the internal task list and reset Device tracking state
     fDC->flush(fRecorder);
+    fPendingSingleSampleMesh = false;
+    fPendingMSAAClip = false;
 
     fColorDepthBoundsManager->reset();
     fDisjointStencilSet->reset();

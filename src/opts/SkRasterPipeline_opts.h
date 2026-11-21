@@ -4201,8 +4201,13 @@ HIGHP_STAGE(mipmap_linear_finish, SkRasterPipelineContexts::MipmapCtx* ctx) {
           W = mad(x, m[6], mad(y, m[7], m[8]));
         F ux = W * m[0] - X * m[6], vx = W * m[3] - Y * m[6],
           uy = W * m[1] - X * m[7], vy = W * m[4] - Y * m[7];
-        F longest = max(ux * ux + vx * vx, uy * uy + vy * vy) / (W * W * W * W);
-        weight = clamp_01_(0.5f * approx_log2(longest) + ctx->levelOffset);
+        // At a projective horizon the inverse scale diverges, selecting the lower mip.
+        F w4 = W * W * W * W;
+        auto atHorizon = w4 == 0.0f;
+        F longest = max(ux * ux + vx * vx, uy * uy + vy * vy) /
+                    if_then_else(atHorizon, 1.0f, w4);
+        weight = if_then_else(atHorizon, 1.0f,
+                             clamp_01_(0.5f * approx_log2(longest) + ctx->levelOffset));
     }
     r = lerp(sk_unaligned_load<F>(ctx->r), r, weight);
     g = lerp(sk_unaligned_load<F>(ctx->g), g, weight);

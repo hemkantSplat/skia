@@ -311,6 +311,9 @@ cfsk_status cfsk_dawn_host_release(cfsk_dawn_host** host);
  * No adapter: UNSUPPORTED; zero-size/outdated/timeout: PENDING; surface/device lost: DEVICE_LOST. */
 /* @cfsk CanvasKit.buildIdentity => cfsk_abi_version | Linked header/library version; CanvasKit build handshake replacement */
 cfsk_status cfsk_abi_version(uint32_t* version);
+/* Process-wide CPU cache budgets, in bytes. */
+void cfsk_set_cpu_resource_cache_limit(size_t bytes);
+void cfsk_set_cpu_font_cache_limit(size_t bytes);
 /* @cfsk CanvasKit.error => cfsk_error_copy | Copy diagnostic from failed CanvasKit/Skia operation */
 cfsk_status cfsk_error_copy(char* output, size_t capacity, size_t* required);
 /* @cfsk CanvasKit.MakeGrContext => cfsk_context_make_dawn | Graphite ContextFactory::MakeDawn; no GL context or Ganesh options */

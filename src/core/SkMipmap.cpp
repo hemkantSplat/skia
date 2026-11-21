@@ -15,6 +15,8 @@
 #include "src/core/SkMathPriv.h"
 #include "src/core/SkMipmapBuilder.h"
 
+#include <bit>
+#include <limits>
 #include <new>
 
 //
@@ -191,9 +193,36 @@ SkISize SkMipmap::ComputeLevelSize(int baseWidth, int baseHeight, int level) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-// FedRateStepAnnotations and EveryPhotoBackedUp: round both mip log operands from double.
 float SkMipmap::LevelLog2(float scale) {
-    return static_cast<float>(std::log2(static_cast<double>(scale)));
+    uint32_t bits = std::bit_cast<uint32_t>(scale);
+    if ((bits << 1) == 0) {
+        return -std::numeric_limits<float>::infinity();
+    }
+    if (bits >= 0x7f800000) {
+        return bits == 0x7f800000 ? scale : std::numeric_limits<float>::quiet_NaN();
+    }
+
+    int exponent = static_cast<int>(bits >> 23) - 127;
+    if (exponent == -127) {
+        // Normalize a subnormal by shifting its leading bit into the hidden-bit position.
+        const int shift = std::countl_zero(bits) - 8;
+        bits <<= shift;
+        exponent = -126 - shift;
+    }
+    double mantissa = std::bit_cast<float>((bits & 0x007fffff) | 0x3f800000);
+    if (mantissa > 0x1.6a09e667f3bcdp+0) {
+        mantissa *= 0.5;
+        ++exponent;
+    }
+
+    // log2(m) = 2/ln(2) * atanh(y), with |y| <= 0.172 after range reduction.
+    const double y = (mantissa - 1.0) / (mantissa + 1.0);
+    const double y2 = y * y;
+    double polynomial = 1.0 / 21;
+    for (int term = 19; term >= 3; term -= 2) {
+        polynomial = 1.0 / term + y2 * polynomial;
+    }
+    return static_cast<float>(exponent + 0x1.71547652b82fep+1 * y * (1.0 + y2 * polynomial));
 }
 
 // Returns fractional level value. floor(level) is the index of the larger level.

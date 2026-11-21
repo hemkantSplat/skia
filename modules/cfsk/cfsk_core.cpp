@@ -1,5 +1,7 @@
 /* C ABI validation and ownership stay at the boundary; Skia owns rendering. */
+#include "modules/cfsk/cfsk.h"
 #include "cfsk_internal.h"
+#include "include/core/SkGraphics.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkRSXform.h"
 #include "include/codec/SkCodec.h"
@@ -14,6 +16,14 @@ cfsk_status cfsk_abi_version(uint32_t* version) {
     CFSK_REQUIRE(version);
     *version = CFSK_ABI_VERSION;
     return CFSK_OK;
+}
+
+void cfsk_set_cpu_resource_cache_limit(size_t bytes) {
+    SkGraphics::SetResourceCacheTotalByteLimit(bytes);
+}
+
+void cfsk_set_cpu_font_cache_limit(size_t bytes) {
+    SkGraphics::SetFontCacheLimit(bytes);
 }
 
 cfsk_status cfsk_error_copy(char* output, size_t capacity, size_t* required) {

@@ -385,6 +385,8 @@ private:
 
     // The max depth value sent to the DrawContext, incremented so each draw has a unique value.
     PaintersDepth fCurrentDepth;
+    bool fPendingSingleSampleMesh = false;
+    bool fPendingMSAAClip = false;
 
     // Even when MSAA is supported, small paths may be sent to the atlas for higher quality and to
     // avoid triggering MSAA overhead on a render pass. However, the number of paths is capped

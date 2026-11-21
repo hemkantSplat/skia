@@ -12,7 +12,9 @@
 #include "include/gpu/graphite/dawn/DawnGraphiteTypes.h"
 #include "include/gpu/graphite/PersistentPipelineStorage.h"
 #include "cfsk_dawn_host.h"
-#include "tools/graphite/GraphiteToolUtils.h"
+#include "include/core/SkTiledImageUtils.h"
+#include "include/gpu/graphite/ImageProvider.h"
+#include "src/core/SkLRUCache.h"
 #include <cstring>
 #include <algorithm>
 #include <atomic>
@@ -20,6 +22,13 @@
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
+#include "src/core/SkScopeExit.h"
+#if defined(_WIN32)
+#include <process.h>
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
 
 namespace graphite = skgpu::graphite;
 constexpr size_t kPipelineKeyBudget = 64 * 1024 * 1024;
@@ -29,6 +38,60 @@ public:
     sk_sp<SkData> load() override { return data; }
     void store(const SkData& value) override { data = SkData::MakeWithCopy(value.data(), value.size()); }
 };
+namespace {
+// The archive disables C++ exceptions, so thread creation must return failure explicitly.
+class PrecompileThread {
+public:
+    template <typename Work>
+    bool start(Work* work) {
+#if defined(_WIN32)
+        fHandle = reinterpret_cast<HANDLE>(_beginthreadex(
+                nullptr, 0, &Run<Work>, work, 0, nullptr));
+        return fHandle != nullptr;
+#else
+        fStarted = pthread_create(&fHandle, nullptr, &Run<Work>, work) == 0;
+        return fStarted;
+#endif
+    }
+
+    void join() {
+#if defined(_WIN32)
+        if (fHandle) {
+            WaitForSingleObject(fHandle, INFINITE);
+            CloseHandle(fHandle);
+            fHandle = nullptr;
+        }
+#else
+        if (fStarted) {
+            pthread_join(fHandle, nullptr);
+            fStarted = false;
+        }
+#endif
+    }
+
+private:
+#if defined(_WIN32)
+    using Exit = unsigned;
+    HANDLE fHandle = nullptr;
+#else
+    using Exit = void*;
+    pthread_t fHandle{};
+    bool fStarted = false;
+#endif
+
+    template <typename Work>
+#if defined(_WIN32)
+    static Exit __stdcall Run(void* data) {
+#else
+    static Exit Run(void* data) {
+#endif
+        std::unique_ptr<Work> work(static_cast<Work*>(data));
+        (*work)();
+        return Exit{};
+    }
+};
+}  // namespace
+
 struct cfsk_context {
     std::shared_ptr<cfsk::DawnDevice> native_host;
     PipelineStorage storage;
@@ -41,13 +104,13 @@ struct cfsk_context {
     std::vector<sk_sp<SkData>> captured_keys;
     std::atomic<bool> capturing{false};
     std::atomic<bool> precompile_busy{false}, precompile_stop{false};
-    std::thread precompile_worker;
+    PrecompileThread precompile_worker;
     std::thread::id owner = std::this_thread::get_id();
     graphite::DawnBackendContext dawn;
     std::unique_ptr<graphite::Context> value;
     ~cfsk_context() {
         precompile_stop.store(true);
-        if (precompile_worker.joinable()) precompile_worker.join();
+        precompile_worker.join();
         if (value) value->submit(skgpu::graphite::SyncToCpu::kYes);
         // Destroy Graphite before the pipeline callback storage and Dawn references.
         value.reset();
@@ -169,6 +232,8 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
     context->dawn.fQueue = wgpu::Queue(static_cast<WGPUQueue>(options->dawn_queue));
     graphite::ContextOptions policy;
     policy.fRequireOrderedRecordings = true;
+    // Match raster strike selection for large outline glyphs.
+    policy.fGlyphsAsPathsFontSize = 256;
     policy.fInternalMultisampleCount = graphite::ToSampleCount(options->internal_samples);
     policy.fGpuBudgetInBytes = options->gpu_budget_bytes;
     policy.fUserDefinedKnownRuntimeEffects = SkSpan<sk_sp<SkRuntimeEffect>>(effects);
@@ -242,7 +307,6 @@ cfsk_status cfsk_context_make_dawn_persistent(cfsk_dawn_host* host, const cfsk_p
     if (auto status = cfsk::dawn_host_ready(host); status != CFSK_OK) return status;
     auto options = cfsk::dawn_context_options(host);
     auto known_effects = cfsk::picture_known_effects(resources);
-    SkDebugf("CFSK_KNOWN_RUNTIME_EFFECTS %zu\n", known_effects.size());
     auto status = make_dawn(&options, persistent_data, known_effects, output);
     if (status == CFSK_OK) (*output)->native_host = host->native;
     return status;
@@ -272,9 +336,87 @@ cfsk_status cfsk_context_pipeline_stats(cfsk_context* context, uint32_t* inline_
     *unkeyable_count = context->unkeyable_count;
     return CFSK_OK;
 }
+namespace {
+class RecorderImageProvider : public skgpu::graphite::ImageProvider {
+public:
+    RecorderImageProvider() : fCache(kDefaultNumCachedImages) {}
+
+    sk_sp<SkImage> findOrCreate(skgpu::graphite::Recorder* recorder,
+                                const SkImage* image,
+                                SkImage::RequiredProperties requiredProps) override {
+        if (!requiredProps.fMipmapped) {
+            // If no mipmaps are required, check to see if we have a mipmapped version anyway -
+            // since it can be used in that case.
+            ImageKey mipMappedKey(image, /* mipmapped= */ true);
+            auto result = fCache.find(mipMappedKey);
+            if (result) {
+                return *result;
+            }
+        }
+
+        ImageKey key(image, requiredProps.fMipmapped);
+
+        auto result = fCache.find(key);
+        if (result) {
+            return *result;
+        }
+
+        sk_sp<SkImage> newImage = SkImages::TextureFromImage(recorder, image, requiredProps);
+        if (!newImage) {
+            return nullptr;
+        }
+
+        result = fCache.insert(key, std::move(newImage));
+        SkASSERT(result);
+
+        return *result;
+    }
+
+private:
+    static constexpr int kDefaultNumCachedImages = 256;
+
+    class ImageKey {
+    public:
+        ImageKey(const SkImage* image, bool mipmapped) {
+            uint32_t flags = mipmapped ? 0x1 : 0x0;
+            SkTiledImageUtils::GetImageKeyValues(image, &fValues[1]);
+            fValues[kNumValues - 1] = flags;
+            fValues[0] = SkChecksum::Hash32(&fValues[1], (kNumValues - 1) * sizeof(uint32_t));
+        }
+
+        uint32_t hash() const { return fValues[0]; }
+
+        bool operator==(const ImageKey& other) const {
+            for (int i = 0; i < kNumValues; ++i) {
+                if (fValues[i] != other.fValues[i]) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        bool operator!=(const ImageKey& other) const { return !(*this == other); }
+
+    private:
+        static const int kNumValues = SkTiledImageUtils::kNumImageKeyValues + 2;
+
+        uint32_t fValues[kNumValues];
+    };
+
+    struct ImageHash {
+        size_t operator()(const ImageKey& key) const { return key.hash(); }
+    };
+
+    SkLRUCache<ImageKey, sk_sp<SkImage>, ImageHash> fCache;
+};
+
+}  // namespace
+
 cfsk_status cfsk_context_make_recorder(cfsk_context* context, cfsk_recorder** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); CONTEXT_READY(context);
-    auto recorder = context->value->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
+    graphite::RecorderOptions options;
+    options.fImageProvider = sk_make_sp<RecorderImageProvider>();
+    auto recorder = context->value->makeRecorder(options);
     if (!recorder) return cfsk::fail(CFSK_FAILED, "makeRecorder failed");
     *output = new (std::nothrow) cfsk_recorder{std::move(recorder), context, {}};
     return *output ? CFSK_OK : cfsk::fail(CFSK_OUT_OF_MEMORY, "recorder allocation failed");
@@ -370,17 +512,23 @@ cfsk_status cfsk_context_precompile_deferred(cfsk_context* context, cfsk_bytes k
         offset += size;
     }
     if (work.empty()) return CFSK_OK;
-    if (context->precompile_worker.joinable()) context->precompile_worker.join();
+    context->precompile_worker.join();
     auto precompile = context->value->makePrecompileContext();
     if (!precompile) return cfsk::unsupported("Graphite precompile is unavailable");
-    context->precompile_busy.store(true);
-    context->precompile_worker = std::thread([context, work = std::move(work), pc = std::move(precompile)] {
+    auto run = [context, work = std::move(work), pc = std::move(precompile)] {
+        SK_AT_SCOPE_EXIT(context->precompile_busy.store(false));
         for (const auto& key : work) {
             if (context->precompile_stop.load()) break;
             pc->precompile(key);
         }
+    };
+    auto task = std::make_unique<decltype(run)>(std::move(run));
+    context->precompile_busy.store(true);
+    if (!context->precompile_worker.start(task.get())) {
         context->precompile_busy.store(false);
-    });
+        return cfsk::fail(CFSK_FAILED, "could not start Graphite precompile worker");
+    }
+    task.release();
     return CFSK_OK;
 }
 
