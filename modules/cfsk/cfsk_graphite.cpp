@@ -234,6 +234,7 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
     policy.fRequireOrderedRecordings = true;
     // Match raster strike selection for large outline glyphs.
     policy.fGlyphsAsPathsFontSize = 256;
+    policy.fMinimumPathSizeForMSAA = SK_ScalarInfinity;
     policy.fInternalMultisampleCount = graphite::ToSampleCount(options->internal_samples);
     policy.fGpuBudgetInBytes = options->gpu_budget_bytes;
     policy.fUserDefinedKnownRuntimeEffects = SkSpan<sk_sp<SkRuntimeEffect>>(effects);

@@ -141,21 +141,19 @@ skgpu::UniqueKey GeneratePathMaskKey(const Shape& shape,
     skgpu::UniqueKey maskKey;
     {
         static const skgpu::UniqueKey::Domain kDomain = skgpu::UniqueKey::GenerateDomain();
-        uint16_t styleKeySize = 7;
-        if (!strokeRec.isHairlineStyle() && !strokeRec.isFillStyle()) {
-            // Add space for width and miter if needed
-            styleKeySize += 2;
-        }
+        constexpr int kStyleIndex = 11;
+        const bool hasStrokeWidth = !strokeRec.isHairlineStyle() && !strokeRec.isFillStyle();
+        const uint16_t styleKeySize = kStyleIndex + 1 + (hasStrokeWidth ? 2 : 0);
         skgpu::UniqueKey::Builder builder(&maskKey, kDomain, styleKeySize + shape.keySize(),
                                           "Raster Path Mask");
         builder[0] = maskOrigin.x() | (maskOrigin.y() << 16);
         builder[1] = maskSize.x() | (maskSize.y() << 16);
 
-        // Add transform key and get packed fractional translation bits
-        uint32_t fracBits = add_transform_key(&builder, 2, transform);
-        // Distinguish between path styles. For anything but fill, we also need to include
-        // the cap. (SW grows hairlines by 0.5 pixel with round and square caps). For stroke
-        // or fill-and-stroke we need to include the join, width, and miter.
+        // Raster masks depend on the full transform and can be reused across recordings.
+        const SkMatrix matrix = transform.matrix().asM33();
+        for (int i = 0; i < 9; ++i) {
+            builder[2 + i] = SkFloat2Bits(matrix[i]);
+        }
         static_assert(SkStrokeRec::kStyleCount <= (1 << 2));
         static_assert(SkPaint::kCapCount <= (1 << 2));
         static_assert(SkPaint::kJoinCount <= (1 << 2));
@@ -163,12 +161,12 @@ skgpu::UniqueKey GeneratePathMaskKey(const Shape& shape,
         if (!strokeRec.isFillStyle()) {
             styleBits |= (strokeRec.getCap() << 2);
         }
-        if (!strokeRec.isHairlineStyle() && !strokeRec.isFillStyle()) {
+        if (hasStrokeWidth) {
             styleBits |= (strokeRec.getJoin() << 4);
-            builder[6] = SkFloat2Bits(strokeRec.getWidth());
-            builder[7] = SkFloat2Bits(strokeRec.getMiter());
+            builder[kStyleIndex + 1] = SkFloat2Bits(strokeRec.getWidth());
+            builder[kStyleIndex + 2] = SkFloat2Bits(strokeRec.getMiter());
         }
-        builder[styleKeySize-1] = fracBits | (styleBits << 16);
+        builder[kStyleIndex] = styleBits;
         shape.writeKey(&builder[styleKeySize], /*includeInverted=*/false);
     }
     return maskKey;

@@ -13,13 +13,17 @@
 #include "include/private/SkMalloc.h"
 #include "include/private/SkTemplates.h"
 #include "modules/skcms/skcms.h"
+#include "src/core/SkMipmap.h"
 #include "src/core/SkRasterPipeline.h"
 #include "src/core/SkRasterPipelineContextUtils.h"
 #include "src/core/SkUtils.h"  // unaligned_{load,store}
 #include "src/shaders/SkPerlinNoiseShaderType.h"
 #include "src/sksl/tracing/SkSLTraceHook.h"
 
+#include <array>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 // Every function in this file should be marked static and inline using SI.
@@ -4201,13 +4205,41 @@ HIGHP_STAGE(mipmap_linear_finish, SkRasterPipelineContexts::MipmapCtx* ctx) {
           W = mad(x, m[6], mad(y, m[7], m[8]));
         F ux = W * m[0] - X * m[6], vx = W * m[3] - Y * m[6],
           uy = W * m[1] - X * m[7], vy = W * m[4] - Y * m[7];
-        // At a projective horizon the inverse scale diverges, selecting the lower mip.
         F w4 = W * W * W * W;
-        auto atHorizon = w4 == 0.0f;
+        auto nearHorizon = w4 <= std::numeric_limits<float>::min();
         F longest = max(ux * ux + vx * vx, uy * uy + vy * vy) /
-                    if_then_else(atHorizon, 1.0f, w4);
-        weight = if_then_else(atHorizon, 1.0f,
-                             clamp_01_(0.5f * approx_log2(longest) + ctx->levelOffset));
+                    if_then_else(nearHorizon, 1.0f, w4);
+        weight = clamp_01_(0.5f * approx_log2(longest) + ctx->levelOffset);
+        if (any(nearHorizon)) {
+            const auto small = sk_bit_cast<std::array<int32_t, N>>(cond_to_mask(nearHorizon));
+            const auto xs = sk_bit_cast<std::array<float, N>>(X);
+            const auto ys = sk_bit_cast<std::array<float, N>>(Y);
+            const auto ws = sk_bit_cast<std::array<float, N>>(W);
+            auto weights = sk_bit_cast<std::array<float, N>>(weight);
+            for (size_t lane = 0; lane < N; ++lane) {
+                if (!small[lane]) {
+                    continue;
+                }
+                double w = ws[lane], sx = xs[lane], sy = ys[lane];
+                double dux = w * m[0] - sx * m[6], dvx = w * m[3] - sy * m[6];
+                double duy = w * m[1] - sx * m[7], dvy = w * m[4] - sy * m[7];
+                double numerator = std::max(dux * dux + dvx * dvx, duy * duy + dvy * dvy);
+                // Zero derivative selects the upper mip. A nonzero derivative at W=0
+                // diverges and selects the lower mip.
+                if (numerator == 0.0 || w == 0.0) {
+                    weights[lane] = numerator == 0.0 ? 0.0f : 1.0f;
+                    continue;
+                }
+                // Divide mantissas so even an extreme ratio stays representable.
+                int numExp, denExp;
+                double numFrac = std::frexp(numerator, &numExp);
+                double denFrac = std::frexp((w * w) * (w * w), &denExp);
+                float logScale = SkMipmap::LevelLog2(static_cast<float>(numFrac / denFrac)) +
+                                 (numExp - denExp);
+                weights[lane] = std::clamp(0.5f * logScale + ctx->levelOffset, 0.0f, 1.0f);
+            }
+            weight = sk_bit_cast<F>(weights);
+        }
     }
     r = lerp(sk_unaligned_load<F>(ctx->r), r, weight);
     g = lerp(sk_unaligned_load<F>(ctx->g), g, weight);

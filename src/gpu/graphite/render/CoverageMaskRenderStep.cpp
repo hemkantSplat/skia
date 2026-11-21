@@ -36,9 +36,7 @@
 
 namespace skgpu::graphite {
 
-// The device origin is applied *before* the maskToDeviceRemainder matrix so that it can be
-// combined with the mask atlas origin. This is necessary so that the mask bounds can be inset or
-// outset for clamping w/o affecting the alignment of the mask sampling.
+// The device origin is applied before the maskToDeviceRemainder matrix.
 static skvx::float2 get_device_translation(const SkM44& localToDevice) {
     float m00 = localToDevice.rc(0,0), m01 = localToDevice.rc(0,1);
     float m10 = localToDevice.rc(1,0), m11 = localToDevice.rc(1,1);
@@ -67,16 +65,14 @@ CoverageMaskRenderStep::CoverageMaskRenderStep(Layout layout)
                                              | Flags::kInverseFillsScissor
                                              | Flags::kNoSelfIntersections
                                              | Flags::kAppendInstances,
-                     /*uniforms=*/{{"maskToDeviceRemainder", SkSLType::kFloat3x3}},
+                     /*uniforms=*/{{"maskToDeviceRemainder", SkSLType::kFloat3x3},
+                                   {"inverseTextureSize", SkSLType::kFloat2}},
                      PrimitiveType::kTriangleStrip,
                      /*stencilSettings=*/{},
                      /*staticAttrs=*/ {},
                      /*appendAttrs=*/
-                     // Draw bounds and mask bounds are in normalized relative to the mask texture,
-                     // but 'drawBounds' is stored in float since the coords may map outside of
-                     // [0,1] for inverse-filled masks. 'drawBounds' is relative to the logical mask
-                     // entry's origin, while 'maskBoundsIn' is atlas-relative. Inverse fills swap
-                     // the order in 'maskBoundsIn' to be RBLT.
+                     // Draw bounds are in texels, while mask bounds are normalized.
+                     // Inverse fills store mask bounds in RBLT order.
                      {{{"drawBounds", VertexAttribType::kFloat4 , SkSLType::kFloat4},  // ltrb
                       {"maskBoundsIn", VertexAttribType::kUShort4_norm, SkSLType::kFloat4},
                       // Remaining translation extracted from actual 'maskToDevice' transform.
@@ -106,7 +102,8 @@ std::string CoverageMaskRenderStep::vertexSkSL(const RootNodesInfo&) const {
                     "float2(sk_VertexID >> 1, sk_VertexID & 1), "
                     "maskToDeviceRemainder, drawBounds, maskBoundsIn, deviceOrigin, "
                     "depth, float3x3(mat0, mat1, mat2), "
-                    "maskBounds, textureCoords, invert, stepLocalCoords);\n";
+                    "maskBounds, textureCoords, invert, stepLocalCoords);\n"
+           "textureCoords *= inverseTextureSize;\n";
 }
 
 std::string CoverageMaskRenderStep::texturesAndSamplersSkSL(
@@ -192,13 +189,10 @@ void CoverageMaskRenderStep::writeVertices(DrawWriter* dw,
     drawBounds += textureOrigin.xyxy();
     deviceOrigin -= textureOrigin;
 
-    // Normalize drawBounds and maskBounds after possibly correcting drawBounds for inverse fills.
-    // The maskToDevice matrix uniform will handle de-normalizing drawBounds for vertex positions.
+    // Keep vertex positions in texels so texture size cannot round device coordinates.
     auto atlasSizeInv = skvx::float2{1.f / proxy->dimensions().width(),
                                      1.f / proxy->dimensions().height()};
-    drawBounds *= atlasSizeInv.xyxy();
     maskBounds *= atlasSizeInv.xyxy();
-    deviceOrigin *= atlasSizeInv;
 
     // Since the mask bounds define normalized texels of the texture, we can encode them as
     // ushort_norm without losing precision to save space.
@@ -230,16 +224,13 @@ void CoverageMaskRenderStep::writeUniformsAndTextures(const DrawParams& params,
     SkMatrix maskToDeviceRemainder = coverageMask.maskToDevice().asM33();
     maskToDeviceRemainder.preTranslate(-deviceOrigin.x(), -deviceOrigin.y());
 
-    // Check pixel alignment before we fold in coord normalization scaling
+    // Integer device translations only need nearest sampling.
     const bool pixelAligned = maskToDeviceRemainder.isIdentity() &&
                               all(deviceOrigin == floor(deviceOrigin + SK_ScalarNearlyZero));
 
-    // The mask coordinates in the vertex shader will be normalized, so scale by the proxy size
-    // to get back to Skia's texel-based coords.
-    maskToDeviceRemainder.preScale(proxy->dimensions().width(), proxy->dimensions().height());
-
     // Write uniforms:
     gatherer->write(maskToDeviceRemainder);
+    gatherer->write(SkV2{1.f / proxy->dimensions().width(), 1.f / proxy->dimensions().height()});
 
     // Write textures and samplers:
     gatherer->add(sk_ref_sp(proxy), {pixelAligned ? SkFilterMode::kNearest : SkFilterMode::kLinear,

@@ -81,14 +81,9 @@ SkISize AtlasConfig::atlasDimensions(MaskFormat type) const {
 SkISize AtlasConfig::plotDimensions(MaskFormat type) const {
     if (MaskFormat::kA8 == type) {
         SkISize atlasDimensions = this->atlasDimensions(type);
-        // For A8 we want to grow the plots at larger texture sizes to accept more of the
-        // larger SDF glyphs. Since the largest SDF glyph can be 170x170 with padding, this
-        // allows us to pack 3 in a 512x256 plot, or 9 in a 512x512 plot.
-
-        // This will give us 512x256 plots for 2048x1024, 512x512 plots for 2048x2048,
-        // and 256x256 plots otherwise.
-        int plotWidth = atlasDimensions.width() >= 2048 ? 512 : 256;
-        int plotHeight = atlasDimensions.height() >= 2048 ? 512 : 256;
+        // Match the large A8 direct mask admission in SkGlyphDigest.
+        int plotWidth = std::min(512, atlasDimensions.width());
+        int plotHeight = std::min(512, atlasDimensions.height());
 
         return {plotWidth, plotHeight};
     } else {

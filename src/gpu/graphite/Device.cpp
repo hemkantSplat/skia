@@ -928,8 +928,14 @@ void Device::drawRect(const SkRect& r, const SkPaint& paint) {
             style.setStrokeStyle(strokeWidth, strokeAndFill);
         }
     }
-    this->drawGeometryWithPathEffect(this->localToDeviceTransform(),
-                                     Geometry(Shape(rectToDraw)),
+    const Transform& transform = this->localToDeviceTransform();
+    // Transformed antialiased fills use raster rectangle coverage.
+    const bool rasterCoverage = fRecorder->priv().caps()->minPathSizeForMSAA() == SK_ScalarInfinity &&
+                                style.isFillStyle() && paint.isAntiAlias() &&
+                                transform.type() > Transform::Type::kIdentity;
+    Shape shape = rasterCoverage ? Shape(SkPath::Rect(rectToDraw.asSkRect())) : Shape(rectToDraw);
+    this->drawGeometryWithPathEffect(transform,
+                                     Geometry(std::move(shape)),
                                      PaintParams(paint),
                                      style,
                                      paint.getPathEffect());
@@ -2233,6 +2239,11 @@ std::pair<const Renderer*, PathAtlas*> Device::chooseRenderer(const Transform& l
     }
 
     const Shape& shape = geometry.shape();
+    if (fRecorder->priv().caps()->minPathSizeForMSAA() == SK_ScalarInfinity &&
+        (shape.isPath() || !style.isFillStyle())) {
+        // An unbounded minimum keeps every path in raster coverage.
+        return {nullptr, fRecorder->priv().getOrCreateAtlasProvider()->getRasterPathAtlas()};
+    }
     if (is_simple_shape(shape, localToDevice, type)) {
         SkASSERT(type != SkStrokeRec::kStrokeAndFill_Style); // stroke+fill is *not* simple
         // For pixel-aligned rects, use the the non-AA bounds renderer to avoid triggering any

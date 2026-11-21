@@ -7,11 +7,19 @@
 #include "include/core/SkSurface.h"
 #include "include/effects/SkImageFilters.h"
 #include "src/core/SkMipmap.h"
+#include "src/core/SkOpts.h"
 #include "src/core/SkRasterPipeline.h"
 #include "src/core/SkRasterPipelineOpContexts.h"
 #include "src/core/SkRasterPipelineOpList.h"
 
+#if defined(CFSK_TEST_SCALAR_RASTER)
+#define SKRP_CPU_SCALAR
+#define SK_OPTS_NS cfsk_test_scalar
+#include "src/opts/SkRasterPipeline_opts.h"
+#endif
+
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cfenv>
 #include <cmath>
@@ -73,6 +81,77 @@ static bool test_horizon() {
     return result.fR == 1.f && result.fA == 1.f && !exceptions;
 }
 
+static bool test_mip_strip(const std::array<float, 9>& matrix,
+                           const std::array<float, 17>& expected) {
+    SkRasterPipelineContexts::MipmapCtx mip{};
+    std::copy(matrix.begin(), matrix.end(), mip.inv);
+    std::fill_n(mip.a, std::size(mip.a), 1.f);
+    mip.perPixel = true;
+    mip.levelOffset = 0.5f;
+    std::array<SkColor4f, 17> result{};
+    SkRasterPipelineContexts::MemoryCtx out{result.data(), result.size()};
+
+#if defined(CFSK_TEST_SCALAR_RASTER)
+    using namespace cfsk_test_scalar;
+    static_assert(N == 1);
+    SkRasterPipelineContexts::UniformColorCtx color{};
+    color.r = color.a = 1.f;
+    SkRasterPipelineStage stages[] = {
+        {(SkOpts::StageFn)uniform_color, &color},
+        {(SkOpts::StageFn)mipmap_linear_finish, &mip},
+        {(SkOpts::StageFn)store_f32, &out},
+        {(SkOpts::StageFn)just_return, nullptr},
+    };
+    std::feclearexcept(FE_ALL_EXCEPT);
+    start_pipeline(0, 0, result.size(), 1, stages, {}, nullptr);
+#else
+    SkSTArenaAlloc<256> alloc;
+    SkRasterPipeline pipeline(&alloc);
+    pipeline.appendConstantColor(&alloc, SkColor4f{1, 0, 0, 1});
+    pipeline.append(SkRasterPipelineOp::mipmap_linear_finish, &mip);
+    pipeline.appendStore(kRGBA_F32_SkColorType, &out);
+    std::feclearexcept(FE_ALL_EXCEPT);
+    pipeline.run(0, 0, result.size(), 1);
+#endif
+
+    const int exceptions = std::fetestexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+    unsigned differences = 0;
+    for (size_t i = 0; i < result.size(); ++i) {
+        differences += result[i] != SkColor4f{expected[i], 0, 0, 1};
+    }
+    std::printf("W=(%a,%a,%a) first=%g middle=%g differences=%u exceptions=%d\n",
+                matrix[6], matrix[7], matrix[8], result.front().fR, result[8].fR,
+                differences, exceptions);
+    return differences == 0 && !exceptions;
+}
+
+static bool test_mip_divisor() {
+    std::array<float, 17> expected{};
+    bool passed = true;
+    for (float sign : {1.f, -1.f}) {
+        const float zero = std::copysign(0.f, sign);
+        expected.fill(0.f);
+        passed &= test_mip_strip({0, 0, 0, 0, 0, 0, zero, zero, zero}, expected);
+        for (float magnitude : {std::numeric_limits<float>::denorm_min(),
+                                0x1p-38f, 0x1p-37f, 0x1p-32f}) {
+            const float w = std::copysign(magnitude, sign);
+            expected.fill(0.f);
+            passed &= test_mip_strip({0, 0, 0, 0, 0, 0, 0, 0, w}, expected);
+            expected.fill(0.5f);
+            passed &= test_mip_strip({magnitude, 0, 0, 0, 0, 0, 0, 0, w}, expected);
+        }
+    }
+    // For x measured from the horizon, the longer derivative is 1/|x|
+    // at every nonzero integer in the strip. W == 0 selects the lower mip.
+    expected.fill(0.f);
+    expected[7] = expected[9] = 0.5f;
+    expected[8] = 1.f;
+    constexpr float slope = 0x1p-40f;
+    passed &= test_mip_strip({0, 0, 0.5f * slope, 0, slope, 0, slope, 0, -8.5f * slope},
+                             expected);
+    return passed;
+}
+
 static bool test_log2() {
     constexpr uint32_t kInfinity = 0x7f800000;
     uint32_t differences = 0;
@@ -99,7 +178,11 @@ int main(int argc, char** argv) {
     if (argc == 2 && std::string_view(argv[1]) == "log2") {
         return !test_log2();
     }
+    if (argc == 2 && std::string_view(argv[1]) == "mip") {
+        return !test_mip_divisor();
+    }
     const bool blur = test_blur();
     const bool horizon = test_horizon();
-    return !(blur && horizon);
+    const bool divisor = test_mip_divisor();
+    return !(blur && horizon && divisor);
 }

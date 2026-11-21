@@ -645,7 +645,14 @@ void SkGlyphDigest::setActionFor(skglyph::ActionType actionType,
         GlyphAction action = GlyphAction::kReject;
         switch (actionType) {
             case kDirectMask: {
-                if (this->fitsInAtlasDirect()) {
+#if defined(SK_GRAPHITE) && !defined(SK_GANESH)
+                // Keep tall accented glyphs in the same direct mask path as raster.
+                const bool fitsLargeAlphaMask = this->maskFormat() == SkMask::kA8_Format &&
+                                                this->maxDimension() <= 512;
+#else
+                constexpr bool fitsLargeAlphaMask = false;
+#endif
+                if (this->fitsInAtlasDirect() || fitsLargeAlphaMask) {
                     action = GlyphAction::kAccept;
                 }
                 break;
