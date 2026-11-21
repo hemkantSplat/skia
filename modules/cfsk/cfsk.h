@@ -638,6 +638,10 @@ cfsk_status cfsk_image_decode(cfsk_bytes encoded, cfsk_image** output);
 /* @cfsk CanvasKit.MakeImageFromCanvasImageSource => cfsk_image_from_pixels | SkImages::RasterFromPixmapCopy; Rust host materializes source pixels */
 /* @cfsk CanvasKit.MakeLazyImageFromTextureSource => cfsk_image_from_pixels | SkImages::RasterFromPixmapCopy; Rust host materializes source pixels */
 cfsk_status cfsk_image_from_pixels(const cfsk_image_info* info, cfsk_bytes pixels, size_t row_bytes, cfsk_image** output);
+
+/* The fill runs once with writable uninitialized pixels. Returning 0 discards the image. */
+typedef uint8_t (*cfsk_pixel_fill)(uint8_t*, size_t, void*);
+cfsk_status cfsk_image_from_pixel_fill(const cfsk_image_info* info, cfsk_pixel_fill fill, void* context, cfsk_image** output);
 /* @cfsk Surface.makeImageFromImage => cfsk_image_upload | SkImages::TextureFromImage(recorder, source, RequiredProperties{mipmapped}) */
 cfsk_status cfsk_image_upload(cfsk_recorder* recorder, const cfsk_image* source, uint8_t mipmapped, cfsk_image** output);
 /* @cfsk Surface.makeImageFromTexture => cfsk_image_import_texture | SkImages::WrapTexture with retained Dawn BackendTexture; no GL ids */

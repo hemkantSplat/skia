@@ -494,6 +494,22 @@ cfsk_status cfsk_image_from_pixels(const cfsk_image_info* info, cfsk_bytes pixel
     return cfsk::resource(output, SkImages::RasterFromPixmapCopy(SkPixmap(target, pixels.data, row_bytes)));
 }
 
+cfsk_status cfsk_image_from_pixel_fill(const cfsk_image_info* info,
+        cfsk_pixel_fill fill, void* context, cfsk_image** output) {
+    CFSK_BEGIN;
+    CFSK_OUTPUT(output);
+    CFSK_REQUIRE(cfsk::valid(info) && fill);
+    const auto target = cfsk::image_info(*info);
+    const size_t row_bytes = target.minRowBytes();
+    const size_t length = target.computeByteSize(row_bytes);
+    CFSK_REQUIRE(length && cfsk::extent(target, row_bytes, length));
+    auto pixels = SkData::MakeUninitialized(length);
+    if (!pixels) return cfsk::fail(CFSK_FAILED, "raster allocation failed");
+    if (!fill(static_cast<uint8_t*>(pixels->writable_data()), length, context))
+        return cfsk::fail(CFSK_INVALID_ARGUMENT, "prepared raster checksum mismatch");
+    return cfsk::resource(output, SkImages::RasterFromData(target, std::move(pixels), row_bytes));
+}
+
 cfsk_status cfsk_image_get_info(const cfsk_image* image, cfsk_image_info* output) {
     CFSK_BEGIN;
     CFSK_REQUIRE(image && output);
