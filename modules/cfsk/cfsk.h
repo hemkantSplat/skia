@@ -341,6 +341,10 @@ cfsk_status cfsk_context_insert(cfsk_context* context, cfsk_recording** recordin
 cfsk_status cfsk_context_submit(cfsk_context* context, uint8_t wait_for_cpu);
 /* @cfsk BindingsApi.checkAsyncWorkCompletion => cfsk_context_poll | Context::checkAsyncWorkCompletion and Dawn progress */
 /* @cfsk ForkGrDirectContext.checkAsyncWorkCompletion => cfsk_context_poll | Context::checkAsyncWorkCompletion and Dawn progress */
+/* Native Dawn queue fence for bounded waits. The fence belongs to this context. */
+cfsk_status cfsk_context_submit_fenced(cfsk_context* context, uint64_t* fence);
+cfsk_status cfsk_context_wait_fence(cfsk_context* context, uint64_t fence, uint64_t timeout_ns);
+void cfsk_context_abandon(cfsk_context* context);
 cfsk_status cfsk_context_poll(cfsk_context* context);
 /* @cfsk FlushOptions.onFinished => cfsk_submission_poll | Poll internal InsertRecordingInfo completion; no Rust callback; PENDING until ready */
 cfsk_status cfsk_submission_poll(cfsk_submission* submission, cfsk_completion* output);

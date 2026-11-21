@@ -459,6 +459,30 @@ cfsk_status cfsk_context_submit(cfsk_context* context, uint8_t wait_for_cpu) {
         return cfsk::fail(context->value->isDeviceLost() ? CFSK_DEVICE_LOST : CFSK_FAILED, "Graphite submit failed");
     return CFSK_OK;
 }
+#if !defined(__EMSCRIPTEN__)
+extern "C" cfsk_status cfsk_context_submit_fenced(cfsk_context* context, uint64_t* fence) {
+    CFSK_BEGIN; CONTEXT_READY(context); CFSK_REQUIRE(fence);
+    if (auto status = cfsk_context_submit(context, 0); status != CFSK_OK) return status;
+    *fence = context->dawn.fQueue.OnSubmittedWorkDone(
+        wgpu::CallbackMode::AllowProcessEvents, [](wgpu::QueueWorkDoneStatus, wgpu::StringView) {}).id;
+    return CFSK_OK;
+}
+extern "C" cfsk_status cfsk_context_wait_fence(cfsk_context* context, uint64_t fence, uint64_t timeout_ns) {
+    CFSK_BEGIN; CONTEXT_READY(context); CFSK_REQUIRE(fence);
+    wgpu::FutureWaitInfo info{};
+    info.future.id = fence;
+    switch (context->dawn.fInstance.WaitAny(1, &info, timeout_ns)) {
+        case wgpu::WaitStatus::Success: return progress(context);
+        case wgpu::WaitStatus::TimedOut: return CFSK_PENDING;
+        default: return cfsk::fail(CFSK_FAILED, "Dawn completion wait failed");
+    }
+}
+extern "C" void cfsk_context_abandon(cfsk_context* context) {
+    if (context && context->owner == std::this_thread::get_id()) {
+        context->dawn.fDevice.Destroy();
+    }
+}
+#endif
 cfsk_status cfsk_context_poll(cfsk_context* context) { CFSK_BEGIN; return progress(context); }
 cfsk_status cfsk_submission_poll(cfsk_submission* submission, cfsk_completion* output) {
     CFSK_BEGIN; CFSK_REQUIRE(submission && output);
