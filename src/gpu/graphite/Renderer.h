@@ -82,7 +82,8 @@ enum class Coverage { kNone, kSingleChannel, kLCD };
         M2(Vertices,         PosColorTexCoords) \
         M1(Mesh)                                \
         M1(EndCap)                              \
-        M1(WideTile)
+        M1(WideTile)                            \
+        M1(ParticleMesh)
 
 /**
  * The actual technique for rasterizing a high-level draw recorded in a DrawList is handled by a
@@ -271,7 +272,7 @@ public:
     enum class RenderStepID : uint32_t {
         SKGPU_RENDERSTEP_TYPES(ENUM1, ENUM2)
 
-        kLast = kWideTile,
+        kLast = kParticleMesh,
     };
 #undef ENUM1
 #undef ENUM2

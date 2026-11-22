@@ -7,6 +7,7 @@
 
 #include "src/gpu/graphite/render/MeshRenderStep.h"
 
+#include "src/gpu/graphite/BufferManager.h"
 #include "src/gpu/graphite/PaintParamsKey.h"
 
 #include "include/private/SkAssert.h"
@@ -28,6 +29,7 @@
 #include "src/gpu/graphite/render/CommonDepthStencilSettings.h"
 
 #include <cstdint>
+#include <cstring>
 
 namespace skgpu::graphite {
 
@@ -47,18 +49,69 @@ static SkVertices::VertexMode vertex_mode(SkMesh::Mode mode) {
 
 // NOTE: Mesh geometry can emit triangles that self intersect, but it *wants* those to produce
 // double blending, so we always add Flags::kAllowSelfIntersection.
-MeshRenderStep::MeshRenderStep(Layout layout)
+static constexpr float kCorners[] = {0, 0, 1, 0, 0, 1, 1, 1};
+static constexpr uint16_t kIndices[] = {0, 1, 2, 2, 1, 3};
+static constexpr Attribute kCorner = {"corner", VertexAttribType::kFloat2, SkSLType::kFloat2};
+
+MeshRenderStep::MeshRenderStep(Layout layout, StaticBufferManager* buffers)
         : RenderStep(layout,
-                     RenderStep::RenderStepID::kMesh,
-                     Flags::kPerformsShading | Flags::kAppendVertices
+                     buffers ? RenderStepID::kParticleMesh : RenderStepID::kMesh,
+                     Flags::kPerformsShading | (buffers ? Flags::kAppendInstances
+                                                         : Flags::kAppendVertices)
                                              | Flags::kEmitsPrimitiveColor
                                              | Flags::kAllowsSelfIntersection,
                      kStepUniforms,
                      PrimitiveType::kTriangles,
                      /*stencilSettings=*/{},
-                     /*staticAttrs=*/{},
+                     buffers ? SkSpan<const Attribute>(&kCorner, 1) : SkSpan<const Attribute>{},
                      /*appendAttrs=*/{{"ssboIndex", VertexAttribType::kUInt, SkSLType::kUInt}},
-                     /*storageUniforms=*/{}) {}
+                     /*storageUniforms=*/{}) {
+    if (buffers) {
+        auto corners = buffers->getVertexWriter(4, sizeof(float) * 2, &fCorners);
+        auto indices = buffers->getIndexWriter(sizeof(kIndices), &fIndices);
+        if (corners && indices) {
+            corners << VertexWriter::Array(kCorners, std::size(kCorners));
+            indices << VertexWriter::Array(kIndices, std::size(kIndices));
+        }
+    }
+}
+
+bool MeshRenderStep::CanInstance(const SkMesh& mesh) {
+    if (!mesh.instanceBuffer() || mesh.mode() != SkMesh::Mode::kTriangles ||
+        mesh.indexCount() != std::size(kIndices) ||
+        !mesh.indexBuffer() || mesh.spec()->stride() != sizeof(float) * 2) {
+        return false;
+    }
+
+    using Attr = SkMeshSpecification::Attribute;
+    size_t cornerCount = 0;
+    for (const auto& attr : mesh.spec()->attributes()) {
+        if (attr.rate != Attr::Rate::kInstance) {
+            if (!attr.name.equals("corner") || attr.type != Attr::Type::kFloat2 || attr.offset != 0) {
+                return false;
+            }
+            ++cornerCount;
+        }
+    }
+    const auto* corners = static_cast<const SkMeshPriv::VB*>(mesh.vertexBuffer())->peek();
+    const auto* indices = static_cast<const SkMeshPriv::IB*>(mesh.indexBuffer())->peek();
+    if (cornerCount != 1 || !corners || !indices) {
+        return false;
+    }
+    const auto* vertices = static_cast<const uint8_t*>(corners) + mesh.vertexOffset();
+    const auto* elements = static_cast<const uint8_t*>(indices) + mesh.indexOffset();
+    // The particle adapter can supply either indexed or deindexed corners.
+    for (size_t i = 0; i < std::size(kIndices); ++i) {
+        uint16_t index;
+        std::memcpy(&index, elements + i * sizeof(index), sizeof(index));
+        if (index >= mesh.vertexCount() ||
+            std::memcmp(vertices + index * mesh.spec()->stride(),
+                        kCorners + kIndices[i] * 2, sizeof(float) * 2) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
 
 MeshRenderStep::~MeshRenderStep() {}
 
@@ -141,6 +194,24 @@ void MeshRenderStep::writeVertices(DrawWriter* writer,
                                    uint32_t ssboIndex) const {
     const SkMesh& mesh = params.geometry().mesh();
     const SkMeshSpecification* spec = mesh.spec();
+
+    if (!this->appendsVertices()) {
+        const auto* records = static_cast<const uint8_t*>(
+                static_cast<const SkMeshPriv::VB*>(mesh.instanceBuffer())->peek());
+        records += mesh.instanceOffset();
+        DrawWriter::Instances instances(*writer, fCorners, fIndices, std::size(kIndices));
+        auto instanceWriter = instances.append(mesh.instanceCount());
+        for (size_t i = 0; i < mesh.instanceCount(); ++i, records += spec->instanceStride()) {
+            instanceWriter << ssboIndex;
+            for (const auto& attr : spec->attributes()) {
+                if (attr.rate == SkMeshSpecification::Attribute::Rate::kInstance) {
+                    instanceWriter << VertexWriter::Array(
+                            records + attr.offset, SkMeshSpecificationPriv::AttrTypeByteSize(attr.type));
+                }
+            }
+        }
+        return;
+    }
 
     SkASSERT(mesh.vertexBuffer()); // SkMesh::isValid() should catch this in Device::drawMesh().
     auto* cpuVertexBuffer = static_cast<const SkMeshPriv::CpuVertexBuffer*>(mesh.vertexBuffer());
@@ -228,7 +299,10 @@ size_t MeshRenderStep::appendDataStride(const DrawParams& params) const {
     const SkMeshSpecification* spec = params.geometry().mesh().spec();
     size_t stride = this->RenderStep::appendDataStride(params);
     for (const auto& attr : spec->attributes()) {
-        stride += Attribute::MakeFromSkMeshAttribute(attr).sizeAlign4();
+        if (this->appendsVertices() ||
+            attr.rate == SkMeshSpecification::Attribute::Rate::kInstance) {
+            stride += Attribute::MakeFromSkMeshAttribute(attr).sizeAlign4();
+        }
     }
     return stride;
 }

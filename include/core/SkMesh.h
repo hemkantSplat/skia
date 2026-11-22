@@ -396,6 +396,7 @@ public:
     bool isValid() const;
 
 private:
+    friend struct SkMeshInstancePriv;
     std::tuple<bool, SkString> validate() const;
 
     sk_sp<SkMeshSpecification> fSpec;

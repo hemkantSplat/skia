@@ -1,5 +1,7 @@
 /* Mesh handles retain inputs; Graphite snapshots CPU staging at each draw before later updates. */
 #include "cfsk_internal.h"
+#include "cfsk_particle.h"
+#include "src/core/SkMeshInstancePriv.h"
 #include "src/core/SkMeshPriv.h"
 #include "src/core/SkMeshRasterPriv.h"
 
@@ -203,6 +205,29 @@ cfsk_status cfsk_canvas_draw_mesh(cfsk_canvas* canvas, const cfsk_mesh* mesh,
         if (!program.error.empty()) return cfsk::fail(CFSK_UNSUPPORTED, program.error.c_str());
     }
     canvas->value->drawMesh(mesh->value, SkBlender::Mode(static_cast<SkBlendMode>(blend_mode)), paint->value);
+    return CFSK_OK;
+}
+
+cfsk_status cfsk_canvas_draw_mesh_instances(cfsk_canvas* canvas, const cfsk_mesh* mesh,
+        const cfsk_mesh_vertex_buffer* records, size_t count, cfsk_rect bounds,
+        uint32_t blend_mode, const cfsk_paint* paint) {
+    CFSK_BEGIN;
+    CFSK_REQUIRE(canvas && canvas->value && mesh && paint && blend_mode <= 28);
+    if (canvas->owner != std::this_thread::get_id() || mesh->owner != std::this_thread::get_id())
+        return cfsk::fail(CFSK_WRONG_THREAD, "canvas or mesh owner mismatch");
+    if (auto status = ready(records); status != CFSK_OK) return status;
+    const auto* recorder = canvas->value->recorder();
+    CFSK_REQUIRE(recorder && (!mesh->recorder_id || mesh->recorder_id == recorder));
+    CFSK_REQUIRE(!records->recorder_id || records->recorder_id == recorder);
+    const size_t stride = mesh->value.spec()->instanceStride();
+    const size_t vertices = mesh->value.indexBuffer() ? mesh->value.indexCount()
+                                                     : mesh->value.vertexCount();
+    CFSK_REQUIRE(stride && count && count <= records->value->size() / stride &&
+                 vertices && count <= INT32_MAX / vertices && valid_indices(mesh->value));
+    CFSK_REQUIRE(cfsk::finite(bounds) && !cfsk::rect(bounds).isEmpty());
+    auto draw = SkMeshInstancePriv::WithRecords(mesh->value, records->value, count,
+                                               cfsk::rect(bounds));
+    canvas->value->drawMesh(draw, SkBlender::Mode(static_cast<SkBlendMode>(blend_mode)), paint->value);
     return CFSK_OK;
 }
 

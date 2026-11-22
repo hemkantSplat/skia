@@ -197,6 +197,9 @@ RendererProvider::RendererProvider(const Caps* caps, StaticBufferManager* buffer
     }
 
     initFromStep(&fMesh, std::make_unique<MeshRenderStep>(layout), DrawTypeFlags::kDrawMesh);
+    initFromStep(&fParticleMesh,
+                 std::make_unique<MeshRenderStep>(layout, bufferManager),
+                 DrawTypeFlags::kDrawMesh);
 
     // The tessellating path renderers that use stencil can share the cover steps.
     auto coverFill = CoverBoundsRenderStep::StencilCover(layout, /*inverseFill=*/false);

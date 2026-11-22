@@ -48,7 +48,9 @@
 #include "src/core/SkBlenderBase.h"
 #include "src/core/SkImageFilterTypes.h"  // IWYU pragma: keep
 #include "src/core/SkLatticeIter.h"
+#include "src/core/SkMeshInstancePriv.h"
 #include "src/core/SkMeshPriv.h"
+#include "src/gpu/graphite/render/MeshRenderStep.h"
 #include "src/core/SkPaintPriv.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkRRectPriv.h"
@@ -1017,6 +1019,21 @@ void Device::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPain
     }
 
     if (mesh.instanceBuffer() && !mesh.instanceCount()) return;
+    if (MeshRenderStep::CanInstance(mesh)) {
+        const auto* buffer = static_cast<const SkMeshPriv::VB*>(mesh.instanceBuffer());
+        // The fixed corners and indices are resident in the render step.
+        auto records = SkMeshPriv::CpuVertexBuffer::Make(
+                SkTAddOffset<const void>(buffer->peek(), mesh.instanceOffset()),
+                mesh.instanceCount() * mesh.spec()->instanceStride());
+        SkMesh draw = SkMeshInstancePriv::WithRecords(mesh, std::move(records),
+                                                       mesh.instanceCount(), mesh.bounds());
+        SkBlender* primitiveBlender =
+                SkMeshSpecificationPriv::HasColors(*mesh.spec()) ? blender.get() : nullptr;
+        this->drawGeometry(this->localToDeviceTransform(), Geometry(draw),
+                           PaintParams(paint, primitiveBlender).makeWithMesh(mesh),
+                           DefaultFillStyle());
+        return;
+    }
     sk_sp<SkMesh::VertexBuffer> vb = mesh.refVertexBuffer();
     sk_sp<SkMesh::IndexBuffer> ib = mesh.refIndexBuffer();
     size_t vertexOffset = mesh.vertexOffset();
@@ -2206,7 +2223,7 @@ std::pair<const Renderer*, PathAtlas*> Device::chooseRenderer(const Transform& l
         SkVerticesPriv info(geometry.vertices()->priv());
         return {renderers->vertices(info.hasColors(), info.hasTexCoords()), nullptr};
     } else if (geometry.isMesh()) {
-        return {renderers->mesh(), nullptr};
+        return {renderers->mesh(MeshRenderStep::CanInstance(geometry.mesh())), nullptr};
     } else if (geometry.isCoverageMaskShape()) {
         // drawCoverageMask() passes in CoverageMaskShapes that reference a provided texture.
         // The CoverageMask renderer can also be chosen later on if the shape is assigned to

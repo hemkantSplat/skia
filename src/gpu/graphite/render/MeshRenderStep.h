@@ -16,6 +16,7 @@
 namespace skgpu::graphite {
 
 class DrawParams;
+class StaticBufferManager;
 class DrawWriter;
 struct RootNodesInfo;
 class PipelineDataGatherer;
@@ -26,7 +27,8 @@ public:
     static constexpr char kMeshFSMainName[] = "drawMeshFSMain";
     static constexpr char kMeshVaryingMangleSuffix[] = "_SkMeshSpecificationUniform";
 
-    explicit MeshRenderStep(Layout);
+    explicit MeshRenderStep(Layout, StaticBufferManager* = nullptr);
+    static bool CanInstance(const SkMesh&);
     ~MeshRenderStep() override;
 
     std::string vertexSkSL(const RootNodesInfo&) const override;
@@ -39,6 +41,10 @@ public:
                        uint32_t ssboIndex) const override;
     void writeUniformsAndTextures(const DrawParams&, PipelineDataGatherer*) const override;
     size_t appendDataStride(const DrawParams& params) const override;
+
+private:
+    BindBufferInfo fCorners;
+    BindBufferInfo fIndices;
 };
 
 }  // namespace skgpu::graphite

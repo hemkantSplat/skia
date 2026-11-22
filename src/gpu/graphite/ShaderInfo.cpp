@@ -968,7 +968,8 @@ struct ShaderInfo::SharedGeneratorData {
         if (fRootsInfo.fMeshSpec) {
             SkASSERT(fHasStepUniforms);
             SkASSERT(fRootsInfo.fMeshShader);
-            SkASSERT(step->renderStepID() == RenderStep::RenderStepID::kMesh);
+            SkASSERT(step->renderStepID() == RenderStep::RenderStepID::kMesh ||
+                     step->renderStepID() == RenderStep::RenderStepID::kParticleMesh);
             SkSpan<const Uniform> converted = ShaderCodeDictionary::ConvertRuntimeEffectUniforms(
                                                     fRootsInfo.fMeshSpec->uniforms(), alloc);
             for (const Uniform& u : converted) {
@@ -1091,7 +1092,10 @@ std::unique_ptr<ShaderInfo> ShaderInfo::Make(const Caps* caps,
     if (sharedData.fRootsInfo.fMeshSpec) {
         for (const SkMeshSpecification::Attribute& specAttr
                 : sharedData.fRootsInfo.fMeshSpec->attributes()) {
-            result->fAppendAttrs.push_back(Attribute::MakeFromSkMeshAttribute(specAttr));
+            if (step->appendsVertices() ||
+                specAttr.rate == SkMeshSpecification::Attribute::Rate::kInstance) {
+                result->fAppendAttrs.push_back(Attribute::MakeFromSkMeshAttribute(specAttr));
+            }
         }
     }
 

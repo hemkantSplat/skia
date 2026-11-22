@@ -129,8 +129,8 @@ public:
         return &fVertices[2*hasColors + hasTexCoords];
     }
 
-    const Renderer* mesh() const {
-        return &fMesh;
+    const Renderer* mesh(bool particle) const {
+        return particle ? &fParticleMesh : &fMesh;
     }
 
     // Filled and stroked [r]rects
@@ -224,6 +224,7 @@ private:
 
     Renderer fVertices[kVerticesCount];
     Renderer fMesh;
+    Renderer fParticleMesh;
 
 #if defined(SK_ENABLE_SPARSE_STRIPS)
     Renderer fSparseStrips[2]; // kEndCap, and kWideTile
