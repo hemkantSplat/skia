@@ -510,6 +510,18 @@ cfsk_status cfsk_image_from_pixel_fill(const cfsk_image_info* info,
     return cfsk::resource(output, SkImages::RasterFromData(target, std::move(pixels), row_bytes));
 }
 
+cfsk_status cfsk_image_from_shared_pixels(const cfsk_image_info* info, cfsk_bytes pixels, size_t row_bytes,
+                                         cfsk_pixel_release release, void* context, cfsk_image** output) {
+    CFSK_BEGIN;
+    CFSK_REQUIRE(release);
+    auto data = SkData::MakeWithProc(pixels.data, pixels.length, release, context);
+    CFSK_OUTPUT(output);
+    CFSK_REQUIRE(cfsk::valid(info) && pixels.data);
+    const auto target = cfsk::image_info(*info);
+    CFSK_REQUIRE(cfsk::extent(target, row_bytes, pixels.length));
+    return cfsk::resource(output, SkImages::RasterFromData(target, std::move(data), row_bytes));
+}
+
 cfsk_status cfsk_image_get_info(const cfsk_image* image, cfsk_image_info* output) {
     CFSK_BEGIN;
     CFSK_REQUIRE(image && output);
