@@ -12,6 +12,7 @@
 #include "include/gpu/graphite/Recorder.h"
 #include "include/private/SkLog.h"
 #include "src/gpu/graphite/AtlasProvider.h"
+#include "src/gpu/graphite/Caps.h"
 #include "src/gpu/graphite/DrawContext.h"
 #include "src/gpu/graphite/ProxyCache.h"
 #include "src/gpu/graphite/RasterPathUtils.h"
@@ -54,9 +55,18 @@ sk_sp<TextureProxy> RasterPathAtlas::onAddShape(const Shape& shape,
                                                 skvx::half2 maskSize,
                                                 SkIVector transformedMaskOffset,
                                                 skvx::half2* outPos) {
+    const auto makeMaskKey = [&] {
+        if (fRecorder->priv().caps()->minPathSizeForMSAA() == SK_ScalarInfinity) {
+            return GenerateExactPathMaskKey(shape, localToDevice, strokeRec,
+                                            transformedMaskOffset, maskSize);
+        }
+        return GeneratePathMaskKey(shape, localToDevice, strokeRec, maskOrigin, maskSize);
+    };
     sk_sp<TextureProxy> proxy;
+    skgpu::UniqueKey maskKey;
 
     if (!shape.isVolatilePath()) {
+        maskKey = makeMaskKey();
         constexpr int kMaxSmallPathSize = 162;
         // Try to locate or add to cached DrawAtlas
         if (maskSize.x() <= kMaxSmallPathSize && maskSize.y() <= kMaxSmallPathSize) {
@@ -64,7 +74,7 @@ sk_sp<TextureProxy> RasterPathAtlas::onAddShape(const Shape& shape,
                                                          shape,
                                                          localToDevice,
                                                          strokeRec,
-                                                         maskOrigin,
+                                                         maskKey,
                                                          maskSize,
                                                          transformedMaskOffset,
                                                          outPos);
@@ -74,7 +84,7 @@ sk_sp<TextureProxy> RasterPathAtlas::onAddShape(const Shape& shape,
                                                       shape,
                                                       localToDevice,
                                                       strokeRec,
-                                                      maskOrigin,
+                                                      maskKey,
                                                       maskSize,
                                                       transformedMaskOffset,
                                                       outPos);
@@ -98,8 +108,9 @@ sk_sp<TextureProxy> RasterPathAtlas::onAddShape(const Shape& shape,
     }
 
     // Failed to add to atlases, try to add to ProxyCache
-    skgpu::UniqueKey maskKey = GeneratePathMaskKey(shape, localToDevice, strokeRec,
-                                                   maskOrigin, maskSize);
+    if (!maskKey.isValid()) {
+        maskKey = makeMaskKey();
+    }
     struct PathDrawContext {
         const Shape& fShape;
         const Transform& fLocalToDevice;

@@ -76,6 +76,12 @@ skgpu::UniqueKey GeneratePathMaskKey(const Shape& shape,
                                      skvx::half2 maskOrigin,
                                      skvx::half2 maskSize);
 
+skgpu::UniqueKey GenerateExactPathMaskKey(const Shape& shape,
+                                          const Transform& transform,
+                                          const SkStrokeRec& strokeRec,
+                                          SkIVector maskOffset,
+                                          skvx::half2 maskSize);
+
 skgpu::UniqueKey GenerateClipMaskKey(uint32_t stackRecordID,
                                      const ClipStack::ElementList* elementsForMask,
                                      SkIRect maskDeviceBounds,

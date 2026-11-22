@@ -127,7 +127,7 @@ protected:
                                               const Shape&,
                                               const Transform& localToDevice,
                                               const SkStrokeRec&,
-                                              skvx::half2 maskOrigin,
+                                              const skgpu::UniqueKey& maskKey,
                                               skvx::half2 maskSize,
                                               SkIVector transformedMaskOffset,
                                               skvx::half2* outPos);

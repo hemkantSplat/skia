@@ -56,6 +56,12 @@ skcpu::Draw make_draw(const SkPixmap& pm, const SkRasterClip& rc, const SkMatrix
     return draw;
 }
 
+static SkMatrix mask_transform(const Transform& localToDevice, SkVector translation) {
+    SkMatrix matrix(localToDevice);
+    matrix.postTranslate(translation.fX, translation.fY);
+    return matrix;
+}
+
 void RasterMaskHelper::drawShape(const Shape& shape,
                                  const Transform& localToDevice,
                                  const SkStrokeRec& strokeRec) {
@@ -66,8 +72,7 @@ void RasterMaskHelper::drawShape(const Shape& shape,
     paint.setColor(SK_ColorWHITE);
     strokeRec.applyToPaint(&paint);
 
-    SkMatrix translatedMatrix = SkMatrix(localToDevice);
-    translatedMatrix.postTranslate(fTranslate.fX, fTranslate.fY);
+    const SkMatrix translatedMatrix = mask_transform(localToDevice, fTranslate);
 
     // TODO: use drawRect, drawRRect, drawArc
     SkPath path = shape.asPath();
@@ -141,18 +146,63 @@ skgpu::UniqueKey GeneratePathMaskKey(const Shape& shape,
     skgpu::UniqueKey maskKey;
     {
         static const skgpu::UniqueKey::Domain kDomain = skgpu::UniqueKey::GenerateDomain();
-        constexpr int kStyleIndex = 11;
-        const bool hasStrokeWidth = !strokeRec.isHairlineStyle() && !strokeRec.isFillStyle();
-        const uint16_t styleKeySize = kStyleIndex + 1 + (hasStrokeWidth ? 2 : 0);
+        uint16_t styleKeySize = 7;
+        if (!strokeRec.isHairlineStyle() && !strokeRec.isFillStyle()) {
+            // Add space for width and miter if needed
+            styleKeySize += 2;
+        }
         skgpu::UniqueKey::Builder builder(&maskKey, kDomain, styleKeySize + shape.keySize(),
                                           "Raster Path Mask");
         builder[0] = maskOrigin.x() | (maskOrigin.y() << 16);
         builder[1] = maskSize.x() | (maskSize.y() << 16);
 
-        // Raster masks depend on the full transform and can be reused across recordings.
-        const SkMatrix matrix = transform.matrix().asM33();
-        for (int i = 0; i < 9; ++i) {
-            builder[2 + i] = SkFloat2Bits(matrix[i]);
+        // Add transform key and get packed fractional translation bits
+        uint32_t fracBits = add_transform_key(&builder, 2, transform);
+        // Distinguish between path styles. For anything but fill, we also need to include
+        // the cap. (SW grows hairlines by 0.5 pixel with round and square caps). For stroke
+        // or fill-and-stroke we need to include the join, width, and miter.
+        static_assert(SkStrokeRec::kStyleCount <= (1 << 2));
+        static_assert(SkPaint::kCapCount <= (1 << 2));
+        static_assert(SkPaint::kJoinCount <= (1 << 2));
+        uint32_t styleBits = strokeRec.getStyle();
+        if (!strokeRec.isFillStyle()) {
+            styleBits |= (strokeRec.getCap() << 2);
+        }
+        if (!strokeRec.isHairlineStyle() && !strokeRec.isFillStyle()) {
+            styleBits |= (strokeRec.getJoin() << 4);
+            builder[6] = SkFloat2Bits(strokeRec.getWidth());
+            builder[7] = SkFloat2Bits(strokeRec.getMiter());
+        }
+        builder[styleKeySize-1] = fracBits | (styleBits << 16);
+        shape.writeKey(&builder[styleKeySize], /*includeInverted=*/false);
+    }
+    return maskKey;
+}
+
+skgpu::UniqueKey GenerateExactPathMaskKey(const Shape& shape,
+                                     const Transform& transform,
+                                     const SkStrokeRec& strokeRec,
+                                     SkIVector maskOffset,
+                                     skvx::half2 maskSize) {
+    // Use the same mask-local transform as rasterization. Integer motion then reuses
+    // coverage while different fractional phases retain their exact rasterization.
+    const SkMatrix matrix = mask_transform(transform, {-SkIntToScalar(maskOffset.x()),
+                                                       -SkIntToScalar(maskOffset.y())});
+    const int matrixSize = matrix.hasPerspective() ? 9 : 6;
+    const int styleIndex = 1 + matrixSize;
+    const bool hasStrokeWidth = !strokeRec.isHairlineStyle() && !strokeRec.isFillStyle();
+    const int shapeIndex = styleIndex + 1 + (hasStrokeWidth ? 2 : 0);
+    static const skgpu::UniqueKey::Domain kAffineDomain = skgpu::UniqueKey::GenerateDomain();
+    static const skgpu::UniqueKey::Domain kPerspectiveDomain = skgpu::UniqueKey::GenerateDomain();
+    skgpu::UniqueKey maskKey;
+    {
+        skgpu::UniqueKey::Builder builder(&maskKey,
+                                          matrixSize == 9 ? kPerspectiveDomain : kAffineDomain,
+                                          shapeIndex + shape.keySize(),
+                                          "Raster Path Mask");
+        builder[0] = uint32_t(maskSize.x()) | (uint32_t(maskSize.y()) << 16);
+        for (int i = 0; i < matrixSize; ++i) {
+            builder[1 + i] = SkFloat2Bits(matrix[i]);
         }
         static_assert(SkStrokeRec::kStyleCount <= (1 << 2));
         static_assert(SkPaint::kCapCount <= (1 << 2));
@@ -163,11 +213,11 @@ skgpu::UniqueKey GeneratePathMaskKey(const Shape& shape,
         }
         if (hasStrokeWidth) {
             styleBits |= (strokeRec.getJoin() << 4);
-            builder[kStyleIndex + 1] = SkFloat2Bits(strokeRec.getWidth());
-            builder[kStyleIndex + 2] = SkFloat2Bits(strokeRec.getMiter());
+            builder[styleIndex + 1] = SkFloat2Bits(strokeRec.getWidth());
+            builder[styleIndex + 2] = SkFloat2Bits(strokeRec.getMiter());
         }
-        builder[kStyleIndex] = styleBits;
-        shape.writeKey(&builder[styleKeySize], /*includeInverted=*/false);
+        builder[styleIndex] = styleBits;
+        shape.writeKey(&builder[shapeIndex], /*includeInverted=*/false);
     }
     return maskKey;
 }

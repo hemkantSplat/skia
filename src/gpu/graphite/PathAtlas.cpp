@@ -10,7 +10,6 @@
 #include "include/gpu/graphite/Recorder.h"
 #include "include/private/SkAttributes.h"
 #include "src/gpu/graphite/Caps.h"
-#include "src/gpu/graphite/RasterPathUtils.h"
 #include "src/gpu/graphite/RecorderPriv.h"
 #include "src/gpu/graphite/RendererProvider.h"
 #include "src/gpu/graphite/TextureProxy.h"
@@ -109,13 +108,10 @@ sk_sp<TextureProxy> PathAtlas::DrawAtlasMgr::findOrCreateEntry(Recorder* recorde
                                                                const Shape& shape,
                                                                const Transform& localToDevice,
                                                                const SkStrokeRec& strokeRec,
-                                                               skvx::half2 maskOrigin,
+                                                               const skgpu::UniqueKey& maskKey,
                                                                skvx::half2 maskSize,
                                                                SkIVector transformedMaskOffset,
                                                                skvx::half2* outPos) {
-    // TODO: pull this out so we don't have to recalculate it for each atlas?
-    skgpu::UniqueKey maskKey = GeneratePathMaskKey(shape, localToDevice, strokeRec,
-                                                   maskOrigin, maskSize);
     DrawAtlas::AtlasLocator* cachedLocator = fShapeCache.find(maskKey);
     if (cachedLocator) {
         SkIPoint topLeft = cachedLocator->topLeft();

@@ -212,7 +212,8 @@ static cfsk_status validate_persistent(cfsk_bytes data) {
 }
 
 static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes persistent_data,
-        const std::vector<sk_sp<SkRuntimeEffect>>& known_effects, cfsk_context** output) {
+        const std::vector<sk_sp<SkRuntimeEffect>>& known_effects, uint32_t coverage,
+        cfsk_context** output) {
     CFSK_BEGIN;
     CFSK_OUTPUT(output);
     if (auto status = validate_persistent(persistent_data); status != CFSK_OK) return status;
@@ -234,7 +235,9 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
     policy.fRequireOrderedRecordings = true;
     // Match raster strike selection for large outline glyphs.
     policy.fGlyphsAsPathsFontSize = 256;
-    policy.fMinimumPathSizeForMSAA = SK_ScalarInfinity;
+    if (coverage == CFSK_COVERAGE_CPU_MATCHED) {
+        policy.fMinimumPathSizeForMSAA = SK_ScalarInfinity;
+    }
     policy.fInternalMultisampleCount = graphite::ToSampleCount(options->internal_samples);
     policy.fGpuBudgetInBytes = options->gpu_budget_bytes;
     policy.fUserDefinedKnownRuntimeEffects = SkSpan<sk_sp<SkRuntimeEffect>>(effects);
@@ -300,15 +303,22 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
     return CFSK_OK;
 }
 cfsk_status cfsk_context_make_dawn(const cfsk_context_options* options, cfsk_context** output) {
-    return make_dawn(options, {}, {}, output);
+    return make_dawn(options, {}, {}, CFSK_COVERAGE_CPU_MATCHED, output);
 }
 cfsk_status cfsk_context_make_dawn_persistent(cfsk_dawn_host* host, const cfsk_picture_resources* resources,
         cfsk_bytes persistent_data, cfsk_context** output) {
+    return cfsk_context_make_dawn_persistent_with_coverage(
+            host, resources, persistent_data, CFSK_COVERAGE_CPU_MATCHED, output);
+}
+cfsk_status cfsk_context_make_dawn_persistent_with_coverage(cfsk_dawn_host* host,
+        const cfsk_picture_resources* resources, cfsk_bytes persistent_data, uint32_t coverage,
+        cfsk_context** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output);
+    CFSK_REQUIRE(coverage == CFSK_COVERAGE_GPU || coverage == CFSK_COVERAGE_CPU_MATCHED);
     if (auto status = cfsk::dawn_host_ready(host); status != CFSK_OK) return status;
     auto options = cfsk::dawn_context_options(host);
     auto known_effects = cfsk::picture_known_effects(resources);
-    auto status = make_dawn(&options, persistent_data, known_effects, output);
+    auto status = make_dawn(&options, persistent_data, known_effects, coverage, output);
     if (status == CFSK_OK) (*output)->native_host = host->native;
     return status;
 }
