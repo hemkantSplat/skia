@@ -103,7 +103,11 @@ struct cfsk_context {
     std::unordered_set<uint32_t> captured_hashes;
     std::vector<sk_sp<SkData>> captured_keys;
     std::atomic<bool> capturing{false};
-    std::atomic<bool> precompile_busy{false}, precompile_stop{false};
+    std::atomic<bool> precompile_stop{false};
+    std::mutex precompile_mutex;
+    std::deque<sk_sp<SkData>> pending_pipelines;
+    size_t pending_bytes = 0;
+    bool precompile_busy = false;
     PrecompileThread precompile_worker;
     std::thread::id owner = std::this_thread::get_id();
     graphite::DawnBackendContext dawn;
@@ -536,7 +540,6 @@ cfsk_status cfsk_context_precompile_deferred(cfsk_context* context, cfsk_bytes k
     if (!keys.length) return CFSK_OK;
     CFSK_REQUIRE(keys.length >= 4 && keys.length <= 64 * 1024 * 1024 &&
                  !std::memcmp(keys.data, "CFP1", 4));
-    if (context->precompile_busy.load()) return CFSK_PENDING;
     std::vector<sk_sp<SkData>> work;
     for (size_t offset = 4; offset < keys.length;) {
         CFSK_REQUIRE(keys.length - offset >= 4);
@@ -547,23 +550,46 @@ cfsk_status cfsk_context_precompile_deferred(cfsk_context* context, cfsk_bytes k
         offset += size;
     }
     if (work.empty()) return CFSK_OK;
+    auto append = [&] {
+        for (auto& key : work) {
+            context->pending_pipelines.push_back(std::move(key));
+        }
+        context->pending_bytes += keys.length;
+    };
+    std::lock_guard<std::mutex> lock(context->precompile_mutex);
+    if (keys.length > kPipelineKeyBudget - context->pending_bytes) return CFSK_PENDING;
+    if (context->precompile_busy) {
+        append();
+        return CFSK_OK;
+    }
     context->precompile_worker.join();
     auto precompile = context->value->makePrecompileContext();
     if (!precompile) return cfsk::unsupported("Graphite precompile is unavailable");
-    auto run = [context, work = std::move(work), pc = std::move(precompile)] {
-        SK_AT_SCOPE_EXIT(context->precompile_busy.store(false));
-        for (const auto& key : work) {
-            if (context->precompile_stop.load()) break;
-            pc->precompile(key);
+    auto run = [context, pc = std::move(precompile)] {
+        for (;;) {
+            sk_sp<SkData> key;
+            {
+                std::lock_guard<std::mutex> lock(context->precompile_mutex);
+                if (context->precompile_stop.load() || context->pending_pipelines.empty()) {
+                    context->pending_bytes = 0;
+                    context->precompile_busy = false;
+                    return;
+                }
+                key = std::move(context->pending_pipelines.front());
+                context->pending_pipelines.pop_front();
+                context->pending_bytes -= key->size() + 4;
+                if (context->pending_pipelines.empty()) context->pending_bytes = 0;
+            }
+            pc->precompile(std::move(key));
         }
     };
     auto task = std::make_unique<decltype(run)>(std::move(run));
-    context->precompile_busy.store(true);
     if (!context->precompile_worker.start(task.get())) {
-        context->precompile_busy.store(false);
         return cfsk::fail(CFSK_FAILED, "could not start Graphite precompile worker");
     }
     task.release();
+    context->precompile_busy = true;
+    append();
     return CFSK_OK;
 }
 

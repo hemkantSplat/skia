@@ -207,7 +207,9 @@ std::vector<Candidate> candidates(cfsk_dawn_host* host) {
     return result;
 }
 
-cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice) {
+cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice,
+                        WGPUDawnLoadCacheDataCallback load = nullptr,
+                        WGPUDawnStoreCacheDataCallback store = nullptr) {
     CFSK_REQUIRE(cfsk::valid(choice));
     std::string_view selected(choice.length ? reinterpret_cast<const char*>(choice.data) : "", choice.length);
     auto toggles = adapter_toggles();
@@ -228,6 +230,14 @@ cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice) {
         config.requiredFeatures = features.data();
         config.requiredLimits = &limits;
         config.nextInChain = &toggles;
+        WGPUDawnCacheDeviceDescriptor cache = WGPU_DAWN_CACHE_DEVICE_DESCRIPTOR_INIT;
+        if (native.blob_cache) {
+            cache.chain.next = reinterpret_cast<WGPUChainedStruct*>(&toggles);
+            cache.dawnLoadCacheDataCallbackInfo.callback = load;
+            cache.dawnLoadCacheDataCallbackInfo.userdata1 = native.blob_cache.get();
+            cache.dawnStoreCacheDataCallbackInfo.callback = store;
+            cache.dawnStoreCacheDataCallbackInfo.userdata1 = native.blob_cache.get();
+        }
         auto errors = native.errors;
         config.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous,
             [errors](const wgpu::Device&, wgpu::DeviceLostReason reason, wgpu::StringView message) {
@@ -241,7 +251,9 @@ cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice) {
                 errors->failed.store(true);
                 SkDebugf("CFSK_DAWN_ERROR %.*s\n", int(message.length), message.data);
             }, errors.get());
-        native.device = wgpu::Device::Acquire(adapter.CreateDevice(&config));
+        WGPUDeviceDescriptor configC = static_cast<const WGPUDeviceDescriptor&>(config);
+        if (native.blob_cache) configC.nextInChain = &cache.chain;
+        native.device = wgpu::Device::Acquire(adapter.CreateDevice(&configC));
         if (!native.device) return cfsk::fail(CFSK_FAILED, "hardware Dawn Vulkan device creation failed");
         native.adapter = std::move(api_adapter);
         native.info = info;
@@ -350,11 +362,22 @@ cfsk_status cfsk_dawn_host_make(cfsk_dawn_host** output) {
 }
 
 cfsk_status cfsk_dawn_host_make_selected(cfsk_bytes choice, cfsk_dawn_host** output) {
-    CFSK_BEGIN; CFSK_OUTPUT(output);
+    return cfsk_dawn_host_make_cached(choice, nullptr, nullptr, nullptr, nullptr, output);
+}
+
+cfsk_status cfsk_dawn_host_make_cached(cfsk_bytes choice, void* user,
+        cfsk_dawn_cache_load load, cfsk_dawn_cache_store store, cfsk_dawn_cache_release release,
+        cfsk_dawn_host** output) {
+    CFSK_BEGIN;
+    std::shared_ptr<void> cache;
+    if (user && release) cache = std::shared_ptr<void>(user, release);
+    CFSK_OUTPUT(output);
+    CFSK_REQUIRE(!user || (cache && load && store));
     std::unique_ptr<cfsk_dawn_host> host(new (std::nothrow) cfsk_dawn_host);
     if (!host) return cfsk::fail(CFSK_OUT_OF_MEMORY, "Dawn host allocation failed");
     if (auto status = make_instance(host.get()); status != CFSK_OK) return status;
-    if (auto status = make_device(host.get(), choice); status != CFSK_OK) return status;
+    host->native->blob_cache = std::move(cache);
+    if (auto status = make_device(host.get(), choice, load, store); status != CFSK_OK) return status;
     *output = host.release();
     return CFSK_OK;
 }

@@ -10,6 +10,7 @@ namespace cfsk {
 struct DawnErrors { std::atomic<bool> lost{false}, failed{false}; };
 struct DawnDevice {
     std::shared_ptr<DawnErrors> errors = std::make_shared<DawnErrors>();
+    std::shared_ptr<void> blob_cache;
     std::unique_ptr<dawn::native::Instance> instance;
     wgpu::Adapter adapter;
     cfsk_dawn_adapter_info info{};

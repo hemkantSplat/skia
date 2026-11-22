@@ -687,15 +687,12 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
     descriptor.multisample.mask = 0xFFFFFFFF;
     descriptor.multisample.alphaToCoverageEnabled = false;
 
-    const bool forPrecompilation =
-            SkToBool(pipelineCreationFlags & PipelineCreationFlags::kForPrecompilation);
-    // For Dawn, we want Precompilation to happen synchronously
-    const bool useAsync = caps.useAsyncPipelineCreation() && !forPrecompilation;
+    const bool useAsync = caps.useAsyncPipelineCreation();
 
     auto asyncCreation = std::make_unique<AsyncPipelineCreation>(pipelineKey);
 #if SK_HISTOGRAMS_ENABLED
     asyncCreation->fStartTime = skgpu::StdSteadyClock::now();
-    asyncCreation->fFromPrecompile = forPrecompilation;
+    asyncCreation->fFromPrecompile = SkToBool(pipelineCreationFlags & PipelineCreationFlags::kForPrecompilation);
     asyncCreation->fAsynchronous = useAsync;
 #endif
 

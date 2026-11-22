@@ -286,6 +286,13 @@ typedef struct {
 cfsk_status cfsk_dawn_adapters(cfsk_dawn_adapter_info* output, size_t capacity, size_t* required);
 /* Empty choice prefers discrete, then the first eligible hardware adapter. */
 cfsk_status cfsk_dawn_host_make_selected(cfsk_bytes choice, cfsk_dawn_host** output);
+typedef size_t (*cfsk_dawn_cache_load)(size_t, const uint8_t*, size_t, uint8_t*, void*, void*);
+typedef void (*cfsk_dawn_cache_store)(size_t, const uint8_t*, size_t, const uint8_t*, void*, void*);
+typedef void (*cfsk_dawn_cache_release)(void*);
+/* Retains user until the device releases its cache, including on factory failure. */
+cfsk_status cfsk_dawn_host_make_cached(cfsk_bytes choice, void* user,
+        cfsk_dawn_cache_load load, cfsk_dawn_cache_store store, cfsk_dawn_cache_release release,
+        cfsk_dawn_host** output);
 cfsk_status cfsk_dawn_host_make_win32_selected(void* hinstance, void* hwnd, cfsk_bytes choice,
                                               cfsk_dawn_host** output);
 cfsk_status cfsk_dawn_host_adapter(cfsk_dawn_host* host, cfsk_dawn_adapter_info* output);
