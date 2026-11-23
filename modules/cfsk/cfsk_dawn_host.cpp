@@ -209,10 +209,17 @@ std::vector<Candidate> candidates(cfsk_dawn_host* host) {
 
 cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice,
                         WGPUDawnLoadCacheDataCallback load = nullptr,
-                        WGPUDawnStoreCacheDataCallback store = nullptr) {
+                        WGPUDawnStoreCacheDataCallback store = nullptr,
+                        cfsk::DawnValidation validation = cfsk::DawnValidation::Engine) {
     CFSK_REQUIRE(cfsk::valid(choice));
     std::string_view selected(choice.length ? reinterpret_cast<const char*>(choice.data) : "", choice.length);
     auto toggles = adapter_toggles();
+    if (validation == cfsk::DawnValidation::Enabled) {
+        // Dawn applies the disabled list after the enabled list.
+        static constexpr const char* kDisabled[] = {"skip_validation", "disable_robustness"};
+        toggles.disabledToggleCount = std::size(kDisabled);
+        toggles.disabledToggles = kDisabled;
+    }
     auto& native = *host->native;
     for (auto& candidate : candidates(host)) {
         const auto& info = candidate.info;
@@ -262,6 +269,25 @@ cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice,
     }
     return cfsk::unsupported(selected.empty() ? "no hardware Dawn Vulkan adapter present" :
                              "no hardware Dawn Vulkan adapter matches the requested choice");
+}
+
+cfsk_status make_headless(cfsk_bytes choice, void* user,
+                          cfsk_dawn_cache_load load, cfsk_dawn_cache_store store,
+                          cfsk_dawn_cache_release release, cfsk::DawnValidation validation,
+                          cfsk_dawn_host** output) {
+    CFSK_BEGIN;
+    std::shared_ptr<void> cache;
+    if (user && release) cache = std::shared_ptr<void>(user, release);
+    CFSK_OUTPUT(output);
+    CFSK_REQUIRE(!user || (cache && load && store));
+    std::unique_ptr<cfsk_dawn_host> host(new (std::nothrow) cfsk_dawn_host);
+    if (!host) return cfsk::fail(CFSK_OUT_OF_MEMORY, "Dawn host allocation failed");
+    if (auto status = make_instance(host.get()); status != CFSK_OK) return status;
+    host->native->blob_cache = std::move(cache);
+    if (auto status = make_device(host.get(), choice, load, store, validation); status != CFSK_OK)
+        return status;
+    *output = host.release();
+    return CFSK_OK;
 }
 
 template <typename T> bool contains(const T* values, size_t count, T value) {
@@ -347,6 +373,20 @@ cfsk_status cfsk_dawn_host_adapter(cfsk_dawn_host* host, cfsk_dawn_adapter_info*
     return CFSK_OK;
 }
 
+cfsk_status cfsk_dawn_host_device(cfsk_dawn_host* host, void** instance, void** device, void** queue) {
+    CFSK_BEGIN;
+    CFSK_REQUIRE(instance && device && queue);
+    *instance = *device = *queue = nullptr;
+    CFSK_REQUIRE(host);
+    if (host->owner != std::this_thread::get_id())
+        return cfsk::fail(CFSK_WRONG_THREAD, "Dawn host owner mismatch");
+    const auto options = cfsk::dawn_context_options(host);
+    *instance = options.dawn_instance;
+    *device = options.dawn_device;
+    *queue = options.dawn_queue;
+    return CFSK_OK;
+}
+
 cfsk_status cfsk_dawn_host_poll(cfsk_dawn_host* host) {
     CFSK_BEGIN; return cfsk::dawn_host_ready(host);
 }
@@ -365,21 +405,14 @@ cfsk_status cfsk_dawn_host_make_selected(cfsk_bytes choice, cfsk_dawn_host** out
     return cfsk_dawn_host_make_cached(choice, nullptr, nullptr, nullptr, nullptr, output);
 }
 
+cfsk_status cfsk_dawn_host_make_validated(cfsk_bytes choice, cfsk_dawn_host** output) {
+    return make_headless(choice, nullptr, nullptr, nullptr, nullptr, cfsk::DawnValidation::Enabled, output);
+}
+
 cfsk_status cfsk_dawn_host_make_cached(cfsk_bytes choice, void* user,
         cfsk_dawn_cache_load load, cfsk_dawn_cache_store store, cfsk_dawn_cache_release release,
         cfsk_dawn_host** output) {
-    CFSK_BEGIN;
-    std::shared_ptr<void> cache;
-    if (user && release) cache = std::shared_ptr<void>(user, release);
-    CFSK_OUTPUT(output);
-    CFSK_REQUIRE(!user || (cache && load && store));
-    std::unique_ptr<cfsk_dawn_host> host(new (std::nothrow) cfsk_dawn_host);
-    if (!host) return cfsk::fail(CFSK_OUT_OF_MEMORY, "Dawn host allocation failed");
-    if (auto status = make_instance(host.get()); status != CFSK_OK) return status;
-    host->native->blob_cache = std::move(cache);
-    if (auto status = make_device(host.get(), choice, load, store); status != CFSK_OK) return status;
-    *output = host.release();
-    return CFSK_OK;
+    return make_headless(choice, user, load, store, release, cfsk::DawnValidation::Engine, output);
 }
 
 cfsk_status cfsk_dawn_host_make_win32(void* hinstance, void* hwnd, cfsk_dawn_host** output) {

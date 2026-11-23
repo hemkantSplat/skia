@@ -7,6 +7,7 @@
 #include <memory>
 
 namespace cfsk {
+enum class DawnValidation { Engine, Enabled };
 struct DawnErrors { std::atomic<bool> lost{false}, failed{false}; };
 struct DawnDevice {
     std::shared_ptr<DawnErrors> errors = std::make_shared<DawnErrors>();
