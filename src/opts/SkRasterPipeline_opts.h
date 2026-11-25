@@ -2904,6 +2904,18 @@ HIGHP_STAGE(scale_1_float, const float* c) {
     b = b * *c;
     a = a * *c;
 }
+HIGHP_STAGE(scale_1_float_unrounded, const float* c) {
+    r = r * *c;
+    g = g * *c;
+    b = b * *c;
+    a = a * *c;
+}
+HIGHP_STAGE(scale_1_float_accurate, const float* c) {
+    r = r * *c;
+    g = g * *c;
+    b = b * *c;
+    a = a * *c;
+}
 HIGHP_STAGE(scale_u8, const SkRasterPipelineContexts::MemoryCtx* ctx) {
     auto ptr = ptr_at_xy<const uint8_t>(ctx, dx,dy);
 
@@ -5786,6 +5798,11 @@ SI U16 div255_accurate(U16 v) {
 #if defined(SKRP_CPU_NEON)
     // Our NEON implementation of div255 is already correct for all inputs:
     return div255(v);
+#elif defined(SKRP_CPU_ML4) || defined(SKRP_CPU_AVX2)
+    // For a product of two bytes, round(v / 255) = high16((v + 128) * 257).
+    return (U16)_mm256_mulhi_epu16((__m256i)(v + 128), _mm256_set1_epi16(257));
+#elif defined(SKRP_CPU_SSE2) || defined(SKRP_CPU_SSE41) || defined(SKRP_CPU_AVX)
+    return (U16)_mm_mulhi_epu16((__m128i)(v + 128), _mm_set1_epi16(257));
 #else
     // This is [2] (the same formulation as NEON), but written without the benefit of intrinsics:
     v += 128;
@@ -6918,6 +6935,13 @@ LOWP_STAGE_PP(scale_1_float, const float* f) {
     g = div255( g * c );
     b = div255( b * c );
     a = div255( a * c );
+}
+LOWP_STAGE_PP(scale_1_float_accurate, const float* f) {
+    U16 c = from_float(*f);
+    r = div255_accurate( r * c );
+    g = div255_accurate( g * c );
+    b = div255_accurate( b * c );
+    a = div255_accurate( a * c );
 }
 LOWP_STAGE_PP(lerp_1_float, const float* f) {
     U16 c = from_float(*f);

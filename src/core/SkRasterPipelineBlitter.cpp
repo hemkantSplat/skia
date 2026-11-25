@@ -183,7 +183,7 @@ static bool create_pipeline_for_blitter(const SkPixmap& dst,
                 SkStageRec{shaderPipeline, alloc, dstCT, dstCS, *dstPaintColor, props, devBounds},
                 ctm)) {
         if (dstPaintColor->fA != 1.0f) {
-            shaderPipeline->append(SkRasterPipelineOp::scale_1_float,
+            shaderPipeline->append(SkRasterPipelineOp::scale_1_float_accurate,
                                    alloc->make<float>(dstPaintColor->fA));
         }
         return true;

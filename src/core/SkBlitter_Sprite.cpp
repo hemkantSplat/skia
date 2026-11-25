@@ -158,7 +158,14 @@ public:
                 ->apply(&p);
         }
         if (fPaintColor.fA != 1.0f) {
-            p.append(SkRasterPipelineOp::scale_1_float, &fPaintColor.fA);
+            // Keep the opacity and Multiply blend in the same precision domain.
+            // Rounding the source before the blend compounds the byte errors.
+            const auto mode = paint.getBlendMode_or(SkBlendMode::kSrcOver);
+            // Scaling below half opacity discards a full bit from the source.
+            const auto scale = mode == SkBlendMode::kMultiply && fPaintColor.fA < 0.5f
+                    ? SkRasterPipelineOp::scale_1_float_unrounded
+                    : SkRasterPipelineOp::scale_1_float;
+            p.append(scale, &fPaintColor.fA);
         }
 
         bool is_opaque = fSource.isOpaque() && fPaintColor.fA == 1.0f;

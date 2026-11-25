@@ -31,7 +31,7 @@
     M(bilerp_clamp_8888) M(bilerp_clamp_8888_uniform_y)               \
     M(load_src) M(store_src) M(store_src_a)                           \
     M(load_dst) M(store_dst)                                          \
-    M(scale_u8) M(scale_565) M(scale_1_float) M(scale_native)         \
+    M(scale_u8) M(scale_565) M(scale_1_float) M(scale_native) M(scale_1_float_accurate)         \
     M( lerp_u8) M( lerp_565) M( lerp_1_float) M(lerp_native)          \
     M(dstatop) M(dstin) M(dstout) M(dstover)                          \
     M(srcatop) M(srcin) M(srcout) M(srcover)                          \
@@ -212,6 +212,7 @@
     M(mask_2pt_conical_nan)                                                    \
     M(mask_2pt_conical_degenerates) M(apply_vector_mask)                       \
     M(set_base_pointer)                                                        \
+    M(scale_1_float_unrounded) \
     SK_RASTER_PIPELINE_OPS_SKSL(M)
 
 // The combined set of all RasterPipeline ops:
