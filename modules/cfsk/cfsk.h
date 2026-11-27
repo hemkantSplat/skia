@@ -204,6 +204,19 @@ typedef struct {
 } cfsk_context_options;
 typedef struct { uint8_t complete, has_gpu_time; uint64_t gpu_time_ns; } cfsk_completion;
 typedef struct { size_t budgeted_bytes, purgeable_bytes, limit_bytes; } cfsk_cache_usage;
+/* One Graphite resource cache: sizes now, and texture events since the previous read of this cache. A texture is
+   created on a cache miss and reused on a hit; returned when its last use ends (it becomes findable again); purged
+   when the cache frees it. "Held" counts creations whose key matched a texture of this cache still in use;
+   "not renderable" counts creations without RenderAttachment usage (one first used before it is fully written is
+   zero-filled by Dawn through an upload buffer). The labels name the created textures by Graphite label, size and
+   usage, then after " | live: " the cache's in-use textures by label, MB and budget state. */
+typedef struct {
+    size_t budgeted_bytes, purgeable_bytes, limit_bytes;
+    uint32_t resources, textures_created, textures_reused, textures_returned, textures_purged;
+    uint32_t created_while_same_key_held, created_not_renderable;
+    uint64_t created_bytes, purged_bytes;
+    char created_labels[1024];
+} cfsk_resource_census;
 typedef struct { uint8_t in_premul; uint32_t color_space, hue_method; } cfsk_interpolation;
 typedef struct {
     const cfsk_color* colors; const float* positions; size_t count;
@@ -377,6 +390,16 @@ cfsk_status cfsk_submission_poll(cfsk_submission* submission, cfsk_completion* o
 cfsk_status cfsk_context_cache_usage(cfsk_context* context, cfsk_cache_usage* output);
 /* @cfsk GrDirectContext.setResourceCacheLimitBytes => cfsk_context_set_cache_limit | Context::setMaxBudgetedBytes */
 cfsk_status cfsk_context_set_cache_limit(cfsk_context* context, size_t bytes);
+/* @cfsk Diagnostics.recorderResourceCensus => cfsk_recorder_resource_census | Recorder's own ResourceCache: bytes, count and texture events since the last read (the first read of any cache starts the events); the recorder's thread */
+cfsk_status cfsk_recorder_resource_census(cfsk_recorder* recorder, cfsk_resource_census* output);
+/* @cfsk Diagnostics.contextResourceCensus => cfsk_context_resource_census | Context's own ResourceCache, as cfsk_recorder_resource_census; the owner thread */
+cfsk_status cfsk_context_resource_census(cfsk_context* context, cfsk_resource_census* output);
+/* @cfsk Diagnostics.lazyClears => cfsk_context_lazy_clears | dawn::native::GetLazyClearCountForTesting: first-use (lazy) texture and buffer clears on the context's device so far */
+cfsk_status cfsk_context_lazy_clears(cfsk_context* context, uint64_t* output);
+/* @cfsk Graphite.Recorder.setMaxBudgetedBytes => cfsk_recorder_set_cache_limit | Recorder::setMaxBudgetedBytes; the recorder's thread */
+cfsk_status cfsk_recorder_set_cache_limit(cfsk_recorder* recorder, size_t bytes);
+/* @cfsk Graphite.Recorder.performDeferredCleanup => cfsk_recorder_purge | Recorder::performDeferredCleanup(ms_not_used); the recorder's thread */
+cfsk_status cfsk_recorder_purge(cfsk_recorder* recorder, uint64_t ms_not_used);
 /* @cfsk ProgramCacheApi.precompile => cfsk_context_precompile | PrecompileContext::precompile(serializedPipeline); GLSL key/data format is retired */
 /* @cfsk ForkGrDirectContext.precompileShader => cfsk_context_precompile | PrecompileContext::precompile(serializedPipeline); GLSL key/data format is retired */
 cfsk_status cfsk_context_precompile(cfsk_context* context, cfsk_bytes serialized_pipeline);

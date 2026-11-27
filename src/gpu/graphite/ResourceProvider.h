@@ -106,9 +106,8 @@ public:
             std::optional<std::chrono::microseconds> microsMaxPurgingDur);
     void forceProcessReturnedResources() { fResourceCache->forceProcessReturnedResources(); }
 
-#if defined(GPU_TEST_UTILS) || defined(SK_DEBUG)
+    // Also used outside test builds to identify this provider's cache to a ResourceCacheObserver.
     ResourceCache* resourceCache() { return fResourceCache.get(); }
-#endif
 
     const SharedContext* sharedContext() const { return fSharedContext; }
     SharedContext* sharedContext() { return fSharedContext; }

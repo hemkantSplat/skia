@@ -13,6 +13,7 @@
 #include "include/gpu/graphite/PersistentPipelineStorage.h"
 #include "cfsk_dawn_host.h"
 #include "include/core/SkTiledImageUtils.h"
+#include "include/core/SkTraceMemoryDump.h"
 #include "include/gpu/graphite/ImageProvider.h"
 #include "src/core/SkLRUCache.h"
 #include <cstring>
@@ -23,6 +24,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "src/core/SkScopeExit.h"
+#include "src/gpu/graphite/ContextPriv.h"
+#include "src/gpu/graphite/RecorderPriv.h"
+#include "src/gpu/graphite/ResourceCache.h"
+#include "src/gpu/graphite/ResourceProvider.h"
+#include "src/gpu/graphite/Texture.h"
+#if !defined(__EMSCRIPTEN__)
+#include "dawn/native/DawnNative.h"
+#endif
+#include <string>
+#include <utility>
+#include <vector>
 #if defined(_WIN32)
 #include <process.h>
 #include <windows.h>
@@ -90,6 +102,145 @@ private:
         return Exit{};
     }
 };
+// Texture events of one Graphite resource cache since its last census read (diagnostics, cfsk_*_resource_census).
+struct TextureEvents {
+    const graphite::ResourceCache* cache = nullptr;
+    uint32_t created = 0, reused = 0, returned = 0, purged = 0, held_same_key = 0, not_renderable = 0;
+    uint64_t created_bytes = 0, purged_bytes = 0;
+    std::vector<std::pair<std::string, uint32_t>> classes;  // created textures by "label WxH rt|sampled"
+};
+std::mutex gCensusMutex;
+std::unordered_map<const graphite::ResourceCache*, TextureEvents*> gCensus;
+
+// Graphite's texture labels, shortened so a census line stays readable.
+std::string short_label(std::string label) {
+    for (auto [from, to] : {std::pair<const char*, const char*>{"SkSurfaceRenderTarget", "Surface"}, {"_DeviceCopy", "Copy"},
+                            {"ImageFilterResult", "Filter"}}) {
+        if (auto at = label.find(from); at != std::string::npos) label.replace(at, std::strlen(from), to);
+    }
+    return label;
+}
+
+// The cache's textures still in use (not purgeable), by label, size and budget state, largest total first.
+class LiveTextures final : public SkTraceMemoryDump {
+public:
+    struct Entry { std::string type, label; uint64_t size = 0; bool purgeable = false, budgeted = true; };
+    std::unordered_map<std::string, Entry> entries;
+    void dumpNumericValue(const char* name, const char* value, const char*, uint64_t number) override {
+        if (!std::strcmp(value, "size")) entries[name].size = number;
+        else if (!std::strcmp(value, "purgeable_size")) entries[name].purgeable = true;
+    }
+    void dumpStringValue(const char* name, const char* value, const char* text) override {
+        if (!std::strcmp(value, "type")) entries[name].type = text;
+        else if (!std::strcmp(value, "label")) entries[name].label = text;
+    }
+    void dumpBudgetedState(const char* name, bool budgeted) override { entries[name].budgeted = budgeted; }
+    void setMemoryBacking(const char*, const char*, const char*) override {}
+    void setDiscardableMemoryBacking(const char*, const SkDiscardableMemory&) override {}
+    LevelOfDetail getRequestedDetails() const override { return kObjectsBreakdowns_LevelOfDetail; }
+    bool shouldDumpWrappedObjects() const override { return false; }
+
+    std::string summary() const {
+        std::vector<std::pair<std::string, std::pair<uint32_t, uint64_t>>> classes;
+        for (const auto& [_, e] : entries) {
+            if (e.purgeable || e.type.find("Texture") == std::string::npos) continue;
+            std::string name = short_label(e.label) + " " + std::to_string((e.size + 524288) >> 20) + "MB" +
+                               (e.budgeted ? "" : " unbudgeted");
+            auto same = std::find_if(classes.begin(), classes.end(), [&](const auto& c) { return c.first == name; });
+            if (same == classes.end()) classes.push_back({name, {1, e.size}});
+            else { ++same->second.first; same->second.second += e.size; }
+        }
+        std::sort(classes.begin(), classes.end(), [](const auto& a, const auto& b) { return a.second.second > b.second.second; });
+        std::string text;
+        for (size_t i = 0; i < classes.size() && i < 10; ++i) {
+            text += (text.empty() ? "" : "; ") + classes[i].first + " x" + std::to_string(classes[i].second.first);
+        }
+        return text;
+    }
+};
+
+void observe(const graphite::ResourceCache* cache, const graphite::Resource* resource,
+             graphite::ResourceCacheEvent event, int held) {
+    const graphite::Texture* texture = resource->asTexture();
+    if (!texture) return;
+    std::lock_guard<std::mutex> lock(gCensusMutex);
+    auto found = gCensus.find(cache);
+    if (found == gCensus.end()) return;
+    TextureEvents& events = *found->second;
+    switch (event) {
+        case graphite::ResourceCacheEvent::kCreated: {
+            ++events.created;
+            events.created_bytes += resource->gpuMemorySize();
+            events.held_same_key += held > 0;
+            graphite::DawnTextureInfo info;
+            const bool renderable = graphite::TextureInfos::GetDawnTextureInfo(texture->textureInfo(), &info) &&
+                                    (info.fUsage & wgpu::TextureUsage::RenderAttachment);
+            events.not_renderable += !renderable;
+            std::string name = short_label(resource->getLabel()) + " " + std::to_string(texture->dimensions().width()) +
+                               "x" + std::to_string(texture->dimensions().height()) + (renderable ? "" : " sampled");
+            auto same = std::find_if(events.classes.begin(), events.classes.end(),
+                                     [&](const auto& item) { return item.first == name; });
+            if (same != events.classes.end()) ++same->second;
+            else if (events.classes.size() < 32) events.classes.emplace_back(std::move(name), 1);
+            break;
+        }
+        case graphite::ResourceCacheEvent::kReused: ++events.reused; break;
+        case graphite::ResourceCacheEvent::kReturned: ++events.returned; break;
+        case graphite::ResourceCacheEvent::kPurged:
+            ++events.purged;
+            events.purged_bytes += resource->gpuMemorySize();
+            break;
+    }
+}
+
+std::unique_ptr<TextureEvents> census_track(graphite::ResourceCache* cache) {
+    auto events = std::make_unique<TextureEvents>();
+    events->cache = cache;
+    std::lock_guard<std::mutex> lock(gCensusMutex);
+    gCensus[cache] = events.get();
+    return events;
+}
+
+void census_forget(const TextureEvents* events) {
+    if (!events) return;
+    std::lock_guard<std::mutex> lock(gCensusMutex);
+    auto found = gCensus.find(events->cache);
+    if (found != gCensus.end() && found->second == events) gCensus.erase(found);
+}
+
+cfsk_status census_read(TextureEvents* events, graphite::ResourceCache* cache, cfsk_resource_census* output) {
+    CFSK_REQUIRE(events && cache && output);
+    *output = {};
+    output->budgeted_bytes = cache->currentBudgetedBytes();
+    output->purgeable_bytes = cache->currentPurgeableBytes();
+    output->limit_bytes = cache->getMaxBudget();
+    output->resources = static_cast<uint32_t>(cache->getResourceCount());
+    // The first read turns the observer on: until a trace reads a census, Graphite reports no events.
+    graphite::SetResourceCacheObserver(observe);
+    LiveTextures live;
+    cache->dumpMemoryStatistics(&live);
+    std::lock_guard<std::mutex> lock(gCensusMutex);
+    output->textures_created = events->created;
+    output->textures_reused = events->reused;
+    output->textures_returned = events->returned;
+    output->textures_purged = events->purged;
+    output->created_while_same_key_held = events->held_same_key;
+    output->created_not_renderable = events->not_renderable;
+    output->created_bytes = events->created_bytes;
+    output->purged_bytes = events->purged_bytes;
+    std::string text;
+    for (const auto& [name, count] : events->classes) {
+        text += (text.empty() ? "" : "; ") + name + " x" + std::to_string(count);
+    }
+    text += " | live: " + live.summary();
+    std::strncpy(output->created_labels, text.c_str(), sizeof(output->created_labels) - 1);
+    const TextureEvents reset{events->cache};
+    events->created = reset.created; events->reused = reset.reused; events->returned = reset.returned;
+    events->purged = reset.purged; events->held_same_key = reset.held_same_key;
+    events->not_renderable = reset.not_renderable; events->created_bytes = reset.created_bytes;
+    events->purged_bytes = reset.purged_bytes; events->classes.clear();
+    return CFSK_OK;
+}
 }  // namespace
 
 struct cfsk_context {
@@ -111,10 +262,12 @@ struct cfsk_context {
     PrecompileThread precompile_worker;
     std::thread::id owner = std::this_thread::get_id();
     graphite::DawnBackendContext dawn;
+    std::unique_ptr<TextureEvents> census;
     std::unique_ptr<graphite::Context> value;
     ~cfsk_context() {
         precompile_stop.store(true);
         precompile_worker.join();
+        census_forget(census.get());
         if (value) value->submit(skgpu::graphite::SyncToCpu::kYes);
         // Destroy Graphite before the pipeline callback storage and Dawn references.
         value.reset();
@@ -124,6 +277,8 @@ struct cfsk_recorder {
     std::unique_ptr<graphite::Recorder> value;
     cfsk_context* context;
     std::thread::id owner;
+    std::unique_ptr<TextureEvents> census;
+    ~cfsk_recorder() { census_forget(census.get()); }
 };
 struct cfsk_recording { std::unique_ptr<graphite::Recording> value; cfsk_context* context; };
 struct Completion {
@@ -288,6 +443,7 @@ static cfsk_status make_dawn(const cfsk_context_options* options, cfsk_bytes per
     };
     context->value = graphite::ContextFactory::MakeDawn(context->dawn, policy);
     if (!context->value) return cfsk::fail(CFSK_FAILED, "Graphite MakeDawn failed");
+    context->census = census_track(context->value->priv().resourceProvider()->resourceCache());
     auto saved = context->storage.load();
     if (saved && saved->size()) {
         auto bytes = static_cast<const uint8_t*>(saved->data());
@@ -433,8 +589,36 @@ cfsk_status cfsk_context_make_recorder(cfsk_context* context, cfsk_recorder** ou
     options.fImageProvider = sk_make_sp<RecorderImageProvider>();
     auto recorder = context->value->makeRecorder(options);
     if (!recorder) return cfsk::fail(CFSK_FAILED, "makeRecorder failed");
-    *output = new (std::nothrow) cfsk_recorder{std::move(recorder), context, {}};
+    auto census = census_track(recorder->priv().resourceProvider()->resourceCache());
+    *output = new (std::nothrow) cfsk_recorder{std::move(recorder), context, {}, std::move(census)};
     return *output ? CFSK_OK : cfsk::fail(CFSK_OUT_OF_MEMORY, "recorder allocation failed");
+}
+cfsk_status cfsk_recorder_resource_census(cfsk_recorder* recorder, cfsk_resource_census* output) {
+    CFSK_BEGIN; RECORDER_READY(recorder);
+    return census_read(recorder->census.get(), recorder->value->priv().resourceProvider()->resourceCache(), output);
+}
+cfsk_status cfsk_context_resource_census(cfsk_context* context, cfsk_resource_census* output) {
+    CFSK_BEGIN; CONTEXT_READY(context);
+    return census_read(context->census.get(), context->value->priv().resourceProvider()->resourceCache(), output);
+}
+cfsk_status cfsk_context_lazy_clears(cfsk_context* context, uint64_t* output) {
+    CFSK_BEGIN; CONTEXT_READY(context); CFSK_REQUIRE(output);
+#if defined(__EMSCRIPTEN__)
+    return cfsk::unsupported("Dawn's lazy-clear count is native only");
+#else
+    *output = dawn::native::GetLazyClearCountForTesting(context->dawn.fDevice.Get());
+    return CFSK_OK;
+#endif
+}
+cfsk_status cfsk_recorder_set_cache_limit(cfsk_recorder* recorder, size_t bytes) {
+    CFSK_BEGIN; RECORDER_READY(recorder);
+    recorder->value->setMaxBudgetedBytes(bytes);
+    return CFSK_OK;
+}
+cfsk_status cfsk_recorder_purge(cfsk_recorder* recorder, uint64_t ms_not_used) {
+    CFSK_BEGIN; RECORDER_READY(recorder);
+    recorder->value->performDeferredCleanup(std::chrono::milliseconds(ms_not_used));
+    return CFSK_OK;
 }
 cfsk_status cfsk_recorder_snap(cfsk_recorder* recorder, cfsk_recording** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); RECORDER_READY(recorder);

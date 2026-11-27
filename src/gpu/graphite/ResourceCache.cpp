@@ -53,7 +53,17 @@ private:
     void freeGpuData() override {}
 };
 
+std::atomic<ResourceCacheObserver> gResourceCacheObserver{nullptr};
+
 }  // anonymous namespace
+
+void SetResourceCacheObserver(ResourceCacheObserver observer) {
+    gResourceCacheObserver.store(observer, std::memory_order_release);
+}
+
+static ResourceCacheObserver resource_cache_observer() {
+    return gResourceCacheObserver.load(std::memory_order_acquire);
+}
 
 sk_sp<ResourceCache> ResourceCache::Make(SingleOwner* singleOwner,
                                          uint32_t recorderID,
@@ -154,6 +164,14 @@ void ResourceCache::insertResource(Resource* resource,
         this->processReturnedResources();
     }
 
+    if (ResourceCacheObserver observer = resource_cache_observer()) {
+        int held = 0;
+        for (int i = 0; i < fNonpurgeableResources.size(); ++i) {
+            held += fNonpurgeableResources[i]->key() == key;
+        }
+        observer(this, resource, ResourceCacheEvent::kCreated, held);
+    }
+
     resource->registerWithCache(sk_ref_sp(this), key, budgeted, shareable);
 
     // We must set the use token before adding to the array in case the token wraps and we wind
@@ -247,6 +265,9 @@ Resource* ResourceCache::findAndRefResource(const GraphiteResourceKey& key,
         }
         this->refAndMakeResourceMRU(resource);
         this->validate();
+        if (ResourceCacheObserver observer = resource_cache_observer()) {
+            observer(this, resource, ResourceCacheEvent::kReused, -1);
+        }
     }
 
     // processReturnedResources may have added resources back into our budget if they were being
@@ -406,6 +427,9 @@ Resource* ResourceCache::processReturnedResource(Resource* resource) {
     SkASSERT(this->isInCache(resource));
 
     const auto [isReusable, isPurgeable, next] = resource->unrefReturnQueue();
+    if (ResourceCacheObserver observer = resource_cache_observer(); observer && isReusable) {
+        observer(this, resource, ResourceCacheEvent::kReturned, -1);
+    }
 
     if (resource->shareable() != Shareable::kNo) {
         // Shareable resources should still be discoverable in the resource map
@@ -596,6 +620,9 @@ void ResourceCache::purgeResource(Resource* resource) {
 
     TRACE_EVENT_INSTANT1("skia.gpu.cache", TRACE_FUNC, TRACE_EVENT_SCOPE_THREAD,
                          "size", resource->gpuMemorySize());
+    if (ResourceCacheObserver observer = resource_cache_observer()) {
+        observer(this, resource, ResourceCacheEvent::kPurged, -1);
+    }
 
     this->removeFromResourceMap(resource);
 

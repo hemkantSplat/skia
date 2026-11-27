@@ -44,6 +44,7 @@
 #include "src/gpu/graphite/task/Task.h"
 #include "src/gpu/graphite/task/UploadTask.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 
@@ -283,6 +284,21 @@ void DrawContext::flush(Recorder* recorder) {
             drawPassDstReadStrategy == DstReadStrategy::kTextureCopy) {
             TRACE_EVENT_INSTANT0("skia.gpu", "DrawPass requires dst copy",
                                  TRACE_EVENT_SCOPE_THREAD);
+            // Copy the copy texture's whole size (clamped to the target) so nothing of it is left for
+            // Dawn to zero-fill on first use; the shader maps dst reads from the copied origin.
+            SkBackingFit fit = SkBackingFit::kApprox;
+            if (!fTarget.proxy()->isFullyLazy()) {
+                const SkISize target = fTarget.proxy()->dimensions();
+                const SkISize approx = GetApproxSize(dstReadPixelBounds.size());
+                const SkISize size = {std::min(approx.width(), target.width()),
+                                      std::min(approx.height(), target.height())};
+                dstReadPixelBounds = SkIRect::MakeXYWH(
+                        std::clamp(dstReadPixelBounds.left(), 0, target.width() - size.width()),
+                        std::clamp(dstReadPixelBounds.top(), 0, target.height() - size.height()),
+                        size.width(),
+                        size.height());
+                fit = SkBackingFit::kExact;
+            }
             sk_sp<Image> imageCopy = Image::Copy(
                     recorder,
                     this,
@@ -291,7 +307,7 @@ void DrawContext::flush(Recorder* recorder) {
                     dstReadPixelBounds,
                     Budgeted::kYes,
                     Mipmapped::kNo,
-                    SkBackingFit::kApprox,
+                    fit,
                     "DstCopy");
             if (!imageCopy) {
                 SKIA_LOG_W("DrawContext::flush Image::Copy failed, draw pass dropped!");

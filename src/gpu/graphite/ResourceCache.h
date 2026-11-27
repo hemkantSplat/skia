@@ -199,6 +199,14 @@ private:
     SkDEBUGCODE(int fCount = 0;)
 };
 
+// Diagnostics: an optional process-wide observer of every ResourceCache's resource events, called on
+// the observed cache's thread. For kCreated, `heldWithSameKey` counts this cache's resources with the
+// same key that could not serve the request (still in use); it is -1 for the other events.
+enum class ResourceCacheEvent : int { kCreated, kReused, kReturned, kPurged };
+using ResourceCacheObserver = void (*)(const ResourceCache*, const Resource*, ResourceCacheEvent,
+                                       int heldWithSameKey);
+void SetResourceCacheObserver(ResourceCacheObserver);
+
 } // namespace skgpu::graphite
 
 #endif // skgpu_graphite_ResourceCache_DEFINED
