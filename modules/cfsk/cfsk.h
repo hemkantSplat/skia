@@ -149,6 +149,7 @@ typedef struct cfsk_context cfsk_context;
 typedef struct cfsk_dawn_host cfsk_dawn_host;
 typedef struct cfsk_recorder cfsk_recorder;
 typedef struct cfsk_recording cfsk_recording;
+typedef struct cfsk_pipeline_preparation cfsk_pipeline_preparation;
 typedef struct cfsk_submission cfsk_submission;
 typedef struct cfsk_readback cfsk_readback;
 typedef struct cfsk_surface cfsk_surface;
@@ -376,6 +377,45 @@ cfsk_status cfsk_context_pipeline_cache(cfsk_context* context, cfsk_data** outpu
 cfsk_status cfsk_context_pipeline_stats(cfsk_context* context, uint32_t* inline_count, uint32_t* precompiled_count, uint32_t* unkeyable_count);
 /* @cfsk Graphite.Context.makeRecorder => cfsk_context_make_recorder | Context::makeRecorder; transfer newly created unused recorder to one record thread */
 cfsk_status cfsk_context_make_recorder(cfsk_context* context, cfsk_recorder** output);
+/* Opt-in diagnostics on the calling thread. Reset after reading; disable at the end of the trace.
+ * Rows are recording, snap, insertion. Recording has no total (only scoped costs).
+ * Columns are mask construction, atlas insertion, text atlas upload, other upload,
+ * internal target allocation, pipeline creation and pipeline wait.
+ */
+typedef struct {
+    uint64_t total_nanos[3];
+    uint64_t nanos[21];
+    uint64_t counts[21];
+} cfsk_native_costs;
+void cfsk_native_costs_enable(uint8_t enabled);
+void cfsk_native_costs_take(cfsk_native_costs* output);
+
+/* Resolve a picture's actual paint and render-pass keys using a private deferred canvas.
+ * The surface only supplies render-target properties. No recording is inserted.
+ * Work returned from discovery counts candidate pipelines and elapsed nanoseconds.
+ * Each step handles one pipeline, glyph, atlas page, raster image or target.
+ * Attachment reservations on the context owner are reported separately from deferred ones.
+ * Keep the owning recorder alive through destroy; all calls use its recording thread.
+ */
+typedef struct {
+    uint64_t nanos;
+    uint32_t candidates, compiled, more, masks, atlas_entries, atlas_pages, bitmap_uploads;
+    uint32_t targets, deferred_attachments;
+} cfsk_pipeline_preparation_work;
+cfsk_status cfsk_pipeline_preparation_make(cfsk_recorder* recorder, const cfsk_surface* target, const cfsk_picture* picture, uint8_t include_glyphs, cfsk_pipeline_preparation_work* work, cfsk_pipeline_preparation** output);
+cfsk_status cfsk_pipeline_preparation_step(cfsk_pipeline_preparation* preparation, cfsk_pipeline_preparation_work* work);
+void cfsk_pipeline_preparation_destroy(cfsk_pipeline_preparation* preparation);
+
+/* Warm at most 32 glyphs on a private upcoming recorder before its first atlas draw.
+ * Use the upcoming target and the exact positions, origin, local-to-device matrix and paint.
+ * The target supplies strike parameters; the only queue writes are to the recorder's text atlas.
+ */
+typedef struct {
+    uint64_t nanos;
+    uint32_t masks, inserted, pages;
+} cfsk_glyph_preparation_work;
+cfsk_status cfsk_recorder_prepare_glyphs(cfsk_recorder* recorder, const cfsk_surface* target, const cfsk_font* font, const uint16_t* glyphs, const cfsk_point* positions, size_t count, cfsk_point origin, const float local_to_device[9], const cfsk_paint* paint, cfsk_glyph_preparation_work* work);
+
 /* @cfsk Graphite.Recorder.snap => cfsk_recorder_snap | Recorder::snap */
 cfsk_status cfsk_recorder_snap(cfsk_recorder* recorder, cfsk_recording** output);
 /* @cfsk Graphite.Context.insertRecording => cfsk_context_insert | Context::insertRecording; consumes recording only on success; completion ticket */

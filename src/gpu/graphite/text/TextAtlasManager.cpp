@@ -6,6 +6,7 @@
  */
 
 #include "src/gpu/graphite/text/TextAtlasManager.h"
+#include "src/gpu/graphite/NativeCosts.h"
 
 #include "include/core/SkColorType.h"
 #include "include/core/SkImageInfo.h"
@@ -248,6 +249,7 @@ DrawAtlas::ErrorCode TextAtlasManager::addGlyphToAtlas(const SkGlyph& skGlyph, G
     }
     SkASSERT(glyph != nullptr);
 
+    NativeCostScope cost(NativeCost::kAtlasInsert, 0);
     const int srcPadding = glyph->fKey.padding();
 
 #if !defined(SK_DISABLE_SDF_TEXT)
@@ -323,6 +325,7 @@ DrawAtlas::ErrorCode TextAtlasManager::addGlyphToAtlas(const SkGlyph& skGlyph, G
                                        &glyph->fAtlasLocator);
 
     if (errorCode == DrawAtlas::ErrorCode::kSucceeded) {
+        count_native_cost(NativeCost::kAtlasInsert);
         glyph->fAtlasLocator.insetSrc(srcPadding);
     }
 
@@ -338,6 +341,19 @@ bool TextAtlasManager::recordUploads(DrawContext* dc) {
 
     return true;
 }
+
+#if defined(SK_DAWN)
+bool TextAtlasManager::writePendingUploads(uint32_t limit, uint32_t* pages, bool* more) {
+    SkASSERT(this->allowsPreparation());
+    for (auto& atlas : fAtlases) {
+        if (atlas && !atlas->writePendingTextUploads(fRecorder, limit, pages, more)) {
+            return false;
+        }
+        if (*more) { return true; }
+    }
+    return true;
+}
+#endif
 
 void TextAtlasManager::addGlyphToBulkAndSetUseToken(DrawAtlas::BulkUsePlotUpdater* updater,
                                                     const GlyphEntry& glyph,

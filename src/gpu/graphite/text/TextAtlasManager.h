@@ -101,6 +101,12 @@ public:
     }
 
     bool recordUploads(DrawContext* dc);
+    void usedByDraw() { fUsedByDraw = true; }
+    bool allowsPreparation() const { return !fUsedByDraw; }
+
+#if defined(SK_DAWN)
+    bool writePendingUploads(uint32_t limit, uint32_t* pages, bool* more);
+#endif
 
     void evictAtlases() {
         for (int i = 0; i < kMaskFormatCount; ++i) {
@@ -131,6 +137,9 @@ private:
     // Metal on Intel MacOS). The actual conversion of the data is handled in
     // get_packed_glyph_image() in StrikeCache.cpp
     MaskFormat resolveMaskFormat(MaskFormat format) const;
+
+    // Direct queue uploads are only available before this recorder's first atlas draw.
+    bool fUsedByDraw = false;
 
     // There is a 1:1 mapping between skgpu::MaskFormats and atlas indices
     static int MaskFormatToAtlasIndex(MaskFormat format) {

@@ -6,6 +6,10 @@
  */
 
 #include "src/gpu/graphite/ResourceProvider.h"
+#include "src/gpu/graphite/NativeCosts.h"
+#include "src/gpu/graphite/PipelinePreparation.h"
+
+#include <optional>
 
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkTileMode.h"
@@ -107,7 +111,21 @@ sk_sp<Texture> ResourceProvider::findOrCreateTexture(
         return sk_sp<Texture>(static_cast<Texture*>(resource));
     }
 
+    std::optional<NativeCostScope> cost;
+    if (gNativeCostState && (shareable == Shareable::kScratch ||
+                            label == "DepthStencilAttachment" ||
+                            label == "DiscardableMSAAAttachment" ||
+                            label == "DstCopy" || label == "DiscardableLoadMSAATexture")) {
+        cost.emplace(NativeCost::kTargetAllocation);
+    }
     if (auto tex = this->createTexture(dimensions, info, label)) {
+        if (auto* discovery = gPipelineDiscovery;
+            discovery && discovery->fProvider == this && discovery->fTargets &&
+            (shareable == Shareable::kScratch || label == "DstCopy")) {
+            const auto kind = shareable == Shareable::kScratch ? PreparationTarget::kScratch
+                                                              : PreparationTarget::kDestinationCopy;
+            discovery->fTargets->push_back({dimensions, info, std::string(label), kind});
+        }
         fResourceCache->insertResource(tex.get(), key, budgeted, shareable);
         return tex;
     }

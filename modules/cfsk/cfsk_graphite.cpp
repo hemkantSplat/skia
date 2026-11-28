@@ -25,6 +25,22 @@
 #include <unordered_set>
 #include "src/core/SkScopeExit.h"
 #include "src/gpu/graphite/ContextPriv.h"
+#include "src/gpu/graphite/NativeCosts.h"
+#include "src/gpu/graphite/PipelineCreationTask.h"
+#include "src/gpu/graphite/PipelineManager.h"
+#include "src/gpu/graphite/GraphicsPipelineHandle.h"
+#include "src/gpu/graphite/PipelinePreparation.h"
+#include "src/gpu/graphite/TextureProxy.h"
+#include "src/gpu/graphite/dawn/DawnGraphicsPipeline.h"
+#include "src/gpu/graphite/AtlasProvider.h"
+#include "src/gpu/graphite/Device.h"
+#include "src/gpu/graphite/text/GlyphData.h"
+#include "src/gpu/graphite/text/TextAtlasManager.h"
+#include "src/gpu/Token.h"
+#include "src/core/SkStrikeCache.h"
+#include "src/text/GlyphRun.h"
+#include "src/text/gpu/SubRunAllocator.h"
+#include "src/text/gpu/SubRunContainer.h"
 #include "src/gpu/graphite/RecorderPriv.h"
 #include "src/gpu/graphite/Surface_Graphite.h"
 #include "src/gpu/graphite/ResourceCache.h"
@@ -533,6 +549,11 @@ public:
             return *result;
         }
 
+        if (auto* discovery = graphite::gPipelineDiscovery;
+            discovery && discovery->fBitmaps && !image->isTextureBacked() &&
+            discovery->fProvider == recorder->priv().resourceProvider()) {
+            discovery->fBitmaps->push_back({sk_ref_sp(image), requiredProps});
+        }
         sk_sp<SkImage> newImage = SkImages::TextureFromImage(recorder, image, requiredProps);
         if (!newImage) {
             return nullptr;
@@ -621,6 +642,283 @@ cfsk_status cfsk_recorder_purge(cfsk_recorder* recorder, uint64_t ms_not_used) {
     recorder->value->performDeferredCleanup(std::chrono::milliseconds(ms_not_used));
     return CFSK_OK;
 }
+struct cfsk_pipeline_preparation {
+    cfsk_recorder* recorder;
+    std::vector<graphite::PipelineRequest> requests;
+    size_t next = 0;
+    std::vector<graphite::GlyphRunRequest> glyphs;
+    size_t glyphRun = 0;
+    size_t glyphIndex = 0;
+    bool atlasDirty = false;
+    std::vector<graphite::BitmapRequest> bitmaps;
+    size_t bitmap = 0;
+    std::vector<graphite::TargetRequest> targets;
+    size_t target = 0;
+    graphite::ResourceCache::ScratchResourceSet unavailable;
+    std::vector<sk_sp<graphite::Texture>> reservations;
+
+    bool hasMore() const {
+        return next < requests.size() || glyphRun < glyphs.size() || atlasDirty ||
+               bitmap < bitmaps.size() || target < targets.size();
+    }
+};
+
+cfsk_status cfsk_pipeline_preparation_make(cfsk_recorder* recorder, const cfsk_surface* target,
+        const cfsk_picture* picture, uint8_t include_glyphs, cfsk_pipeline_preparation_work* work,
+        cfsk_pipeline_preparation** output) {
+    CFSK_BEGIN; CFSK_OUTPUT(output); RECORDER_READY(recorder);
+    CFSK_REQUIRE(work && picture && picture->value && include_glyphs <= 1 &&
+                 target && target->gpu_context == recorder->context);
+    CFSK_REQUIRE(asSB(target->value.get())->type() == SkSurface_Base::Type::kGraphite);
+    auto* trace = std::exchange(graphite::gNativeCostState, nullptr);
+    SkScopeExit restoreTrace([&] { graphite::gNativeCostState = trace; });
+    auto start = graphite::NativeCostClock::now();
+    auto preparation = std::unique_ptr<cfsk_pipeline_preparation>(
+            new (std::nothrow) cfsk_pipeline_preparation{recorder});
+    if (!preparation) return cfsk::fail(CFSK_OUT_OF_MEMORY, "pipeline preparation allocation failed");
+    const auto* surface = static_cast<const graphite::Surface*>(target->value.get());
+    graphite::RecorderOptions options;
+    options.fImageProvider = sk_make_sp<RecorderImageProvider>();
+    auto privateRecorder = recorder->value->priv().makePreparationRecorder(options);
+    auto* canvas = privateRecorder->makeDeferredCanvas(surface->imageInfo(),
+                                                        surface->target().proxy()->textureInfo());
+    if (!canvas) return cfsk::fail(CFSK_FAILED, "pipeline discovery canvas unavailable");
+    graphite::PipelineDiscovery discovery{privateRecorder->priv().resourceProvider(),
+                                          surface->target().proxy()->dimensions(),
+                                          preparation->requests,
+                                          include_glyphs ? &preparation->glyphs : nullptr,
+                                          include_glyphs ? &preparation->bitmaps : nullptr,
+                                          include_glyphs ? &preparation->targets : nullptr};
+    auto* previous = std::exchange(graphite::gPipelineDiscovery, &discovery);
+    SkScopeExit restore([&] { graphite::gPipelineDiscovery = previous; });
+    picture->value->playback(canvas);
+    auto unissued = privateRecorder->snap();
+    if (!unissued) return cfsk::fail(CFSK_FAILED, "pipeline discovery failed");
+    *work = {};
+    work->nanos = graphite::native_cost_ns(graphite::NativeCostClock::now() - start);
+    work->candidates = static_cast<uint32_t>(preparation->requests.size());
+    work->more = preparation->hasMore();
+    *output = preparation.release();
+    return CFSK_OK;
+}
+
+cfsk_status cfsk_pipeline_preparation_step(cfsk_pipeline_preparation* preparation,
+        cfsk_pipeline_preparation_work* work) {
+    CFSK_BEGIN; CFSK_REQUIRE(preparation && work); RECORDER_READY(preparation->recorder);
+    *work = {};
+    if (!preparation->hasMore()) return CFSK_OK;
+    const auto start = graphite::NativeCostClock::now();
+    auto* native = preparation->recorder->value.get();
+    graphite::NativeCostState timing;
+    auto* previous = std::exchange(graphite::gNativeCostState, &timing);
+    SkScopeExit restore([&] { graphite::gNativeCostState = previous; });
+    if (preparation->glyphRun < preparation->glyphs.size()) {
+        auto* atlas = native->priv().getOrCreateAtlasProvider()->textAtlasManager();
+        if (!atlas->allowsPreparation()) {
+            return cfsk::unsupported("glyph atlas preparation requires a recorder before its first atlas draw");
+        }
+        const auto& run = preparation->glyphs[preparation->glyphRun];
+        auto strike = graphite::GlyphData::FindStrike(native->priv().strikeCache(), run.fStrike->strikeSpec());
+        graphite::GlyphData data(std::move(strike), native, run.fRenderData);
+        unsigned int n;
+        if (!atlas->getProxies(data.rendererData().maskFormat, &n)) {
+            return cfsk::fail(CFSK_FAILED, "text atlas allocation failed");
+        }
+        auto glyph = data.makeGlyphFromID(run.fIDs[preparation->glyphIndex]);
+        if (!atlas->hasGlyph(glyph.entry())) {
+            SkBulkGlyphMetricsAndImages images{run.fStrike->strikeSpec()};
+            auto placed = atlas->addGlyphToAtlas(*images.glyph(glyph.packedID()), &glyph.entry());
+            if (placed != graphite::DrawAtlas::ErrorCode::kSucceeded) {
+                return cfsk::unsupported("first-pose glyphs exceed the available atlas");
+            }
+        }
+        graphite::DrawAtlas::BulkUsePlotUpdater use;
+        atlas->addGlyphToBulkAndSetUseToken(&use, glyph.entry(), native->priv().tokenTracker()->nextFlushToken());
+        preparation->atlasDirty |= timing.costs[0].costs[
+                static_cast<size_t>(graphite::NativeCost::kAtlasInsert)].count != 0;
+        if (++preparation->glyphIndex == run.fIDs.size()) {
+            ++preparation->glyphRun;
+            preparation->glyphIndex = 0;
+        }
+        const auto& costs = timing.costs[0].costs;
+        work->nanos = graphite::native_cost_ns(graphite::NativeCostClock::now() - start);
+        work->masks = static_cast<uint32_t>(costs[static_cast<size_t>(graphite::NativeCost::kGlyphMask)].count);
+        work->atlas_entries = static_cast<uint32_t>(costs[static_cast<size_t>(graphite::NativeCost::kAtlasInsert)].count);
+        work->more = preparation->hasMore();
+        return CFSK_OK;
+    }
+    if (preparation->atlasDirty) {
+        auto* atlas = native->priv().getOrCreateAtlasProvider()->textAtlasManager();
+        if (!atlas->allowsPreparation()) {
+            return cfsk::unsupported("first-pose atlas draw began before pending uploads were prepared");
+        }
+        bool more = false;
+        if (!atlas->writePendingUploads(1, &work->atlas_pages, &more)) {
+            return cfsk::fail(CFSK_FAILED, "text atlas upload allocation failed");
+        }
+        preparation->atlasDirty = more;
+        work->nanos = graphite::native_cost_ns(graphite::NativeCostClock::now() - start);
+        work->more = preparation->hasMore();
+        return CFSK_OK;
+    }
+    if (preparation->bitmap < preparation->bitmaps.size()) {
+        const auto& bitmap = preparation->bitmaps[preparation->bitmap];
+        auto* previousUpload = std::exchange(graphite::gPrepareBitmapUploads,
+                                              native->priv().resourceProvider());
+        SkScopeExit endBitmap([&] { graphite::gPrepareBitmapUploads = previousUpload; });
+        if (!native->clientImageProvider()->findOrCreate(
+                native, bitmap.fImage.get(), bitmap.fProperties)) {
+            return cfsk::fail(CFSK_FAILED, "bitmap preparation failed");
+        }
+        ++preparation->bitmap;
+        work->nanos = graphite::native_cost_ns(graphite::NativeCostClock::now() - start);
+        work->bitmap_uploads = static_cast<uint32_t>(timing.costs[0].costs[
+                static_cast<size_t>(graphite::NativeCost::kImplicitUpload)].count);
+        work->more = preparation->hasMore();
+        return CFSK_OK;
+    }
+    if (preparation->target < preparation->targets.size()) {
+        const auto& request = preparation->targets[preparation->target];
+        auto* provider = native->priv().resourceProvider();
+        sk_sp<graphite::Texture> texture;
+        switch (request.fKind) {
+            case graphite::PreparationTarget::kScratch:
+                texture = provider->findOrCreateScratchTexture(
+                        request.fSize, request.fInfo, request.fLabel, preparation->unavailable);
+                if (texture) preparation->unavailable.add(texture.get());
+                break;
+            case graphite::PreparationTarget::kDestinationCopy:
+                texture = provider->findOrCreateNonShareableTexture(
+                        request.fSize, request.fInfo, request.fLabel, skgpu::Budgeted::kNo);
+                break;
+            case graphite::PreparationTarget::kAttachment:
+                if (preparation->recorder->context->owner != std::this_thread::get_id()) {
+                    work->deferred_attachments = 1;
+                    break;
+                }
+                texture = preparation->recorder->context->value->priv().resourceProvider()
+                        ->findOrCreateShareableTexture(request.fSize, request.fInfo, request.fLabel);
+                break;
+        }
+        if (texture) {
+            work->targets = 1;
+            if (request.fKind != graphite::PreparationTarget::kAttachment) {
+                preparation->reservations.push_back(std::move(texture));
+            }
+        } else if (!work->deferred_attachments) {
+            return cfsk::fail(CFSK_FAILED, "internal target preparation failed");
+        }
+        ++preparation->target;
+        work->nanos = graphite::native_cost_ns(graphite::NativeCostClock::now() - start);
+        work->more = preparation->hasMore();
+        return CFSK_OK;
+    }
+    auto* shared = native->priv().resourceProvider()->sharedContext();
+    auto* manager = shared->pipelineManager();
+    const auto& request = preparation->requests[preparation->next];
+    auto handle = manager->createHandle(shared, request.fEffects, request.fGraphics,
+                                        request.fRenderPass, graphite::PipelineCreationFlags::kForPrecompilation);
+    auto pipeline = manager->resolveHandle(handle);
+    if (!pipeline || !static_cast<const graphite::DawnGraphicsPipeline*>(pipeline.get())
+                              ->dawnRenderPipeline()) {
+        return cfsk::fail(CFSK_FAILED, "pipeline preparation failed");
+    }
+    ++preparation->next;
+    const auto& compile = timing.costs[0].costs[static_cast<size_t>(graphite::NativeCost::kPipelineCompile)];
+    work->nanos = graphite::native_cost_ns(graphite::NativeCostClock::now() - start);
+    work->candidates = 1;
+    work->compiled = static_cast<uint32_t>(compile.count);
+    work->more = preparation->hasMore();
+    return CFSK_OK;
+}
+
+void cfsk_pipeline_preparation_destroy(cfsk_pipeline_preparation* preparation) {
+    delete preparation;
+}
+
+cfsk_status cfsk_recorder_prepare_glyphs(cfsk_recorder* recorder, const cfsk_surface* target,
+        const cfsk_font* font, const uint16_t* glyphs, const cfsk_point* positions, size_t count,
+        cfsk_point origin, const float matrix[9], const cfsk_paint* paint,
+        cfsk_glyph_preparation_work* work) {
+    CFSK_BEGIN; RECORDER_READY(recorder);
+    CFSK_REQUIRE(target && target->gpu_context == recorder->context && font && paint && work &&
+                 matrix && count <= 32 && (!count || (glyphs && positions)));
+    *work = {};
+    if (!count) return CFSK_OK;
+    CFSK_REQUIRE(asSB(target->value.get())->type() == SkSurface_Base::Type::kGraphite);
+    const auto* surface = static_cast<const graphite::Surface*>(target->value.get());
+    CFSK_REQUIRE(surface->onGetRecorder() == recorder->value.get());
+    auto* atlas = recorder->value->priv().getOrCreateAtlasProvider()->textAtlasManager();
+    if (!atlas->allowsPreparation()) {
+        return cfsk::unsupported("glyph atlas preparation requires a recorder before its first atlas draw");
+    }
+    const auto start = graphite::NativeCostClock::now();
+    graphite::NativeCostState timing;
+    auto* previous = std::exchange(graphite::gNativeCostState, &timing);
+    SkScopeExit restore([&] { graphite::gNativeCostState = previous; });
+    graphite::Recorder* native = recorder->value.get();
+    SkPoint nativePositions[32];
+    for (size_t index = 0; index < count; ++index) {
+        nativePositions[index] = SkPoint::Make(positions[index].x, positions[index].y);
+    }
+    sktext::GlyphRunBuilder builder;
+    sktext::GlyphRun run(font->value, {nativePositions, count}, {glyphs, count}, {}, {}, {});
+    auto glyphRun = builder.makeGlyphRunList(run, paint->value, SkPoint::Make(origin.x, origin.y));
+    SkMatrix position = cfsk::matrix(matrix);
+    position.preTranslate(origin.x, origin.y);
+    sktext::gpu::SubRunAllocator allocator;
+    auto resolved = sktext::gpu::SubRunContainer::MakeInAlloc(
+            glyphRun, position, paint->value, surface->device()->strikeDeviceInfo(),
+            SkStrikeCache::GlobalStrikeCache(), &allocator,
+            sktext::gpu::SubRunContainer::kAddSubRuns, "cfsk glyph preparation");
+    const bool fit = resolved->visitAtlasSubRuns([&](const sktext::gpu::AtlasSubRun& subRun) {
+        auto& glyphVector = subRun.glyphVector();
+        const auto params = subRun.glyphParams();
+        glyphVector.initBackendData<graphite::GlyphData>(
+                native->priv().strikeCache(), native,
+                sktext::gpu::RendererData{subRun.glyphSrcPadding(), params.isSDF,
+                                          params.isLCD, subRun.maskFormat()});
+        auto [ok, made] = glyphVector.accessBackendData<graphite::GlyphData>().regenerateAtlas(
+                0, glyphVector.glyphCount(), glyphVector, native);
+        return ok && made == glyphVector.glyphCount();
+    });
+    uint32_t pages = 0;
+    bool moreUploads = false;
+    if (!atlas->writePendingUploads(UINT32_MAX, &pages, &moreUploads)) {
+        return cfsk::fail(CFSK_FAILED, "text atlas upload allocation failed");
+    }
+    const auto& costs = timing.costs[0].costs;
+    *work = {graphite::native_cost_ns(graphite::NativeCostClock::now() - start),
+             static_cast<uint32_t>(costs[static_cast<size_t>(graphite::NativeCost::kGlyphMask)].count),
+             static_cast<uint32_t>(costs[static_cast<size_t>(graphite::NativeCost::kAtlasInsert)].count),
+             pages};
+    return fit ? CFSK_OK : cfsk::unsupported("first-pose glyphs exceed the available atlas");
+}
+
+static thread_local graphite::NativeCostState gNativeCosts;
+
+void cfsk_native_costs_enable(uint8_t enabled) {
+    gNativeCosts = {};
+    graphite::gNativeCostState = enabled ? &gNativeCosts : nullptr;
+}
+
+void cfsk_native_costs_take(cfsk_native_costs* output) {
+    if (!output) { return; }
+    constexpr size_t kPhases = static_cast<size_t>(graphite::CostPhase::kCount);
+    constexpr size_t kCosts = static_cast<size_t>(graphite::NativeCost::kCount);
+    static_assert(kPhases == sizeof(output->total_nanos) / sizeof(uint64_t));
+    static_assert(kPhases * kCosts == sizeof(output->nanos) / sizeof(uint64_t));
+    for (size_t phase = 0; phase < kPhases; ++phase) {
+        output->total_nanos[phase] = gNativeCosts.costs[phase].totalNanos;
+        for (size_t cost = 0; cost < kCosts; ++cost) {
+            const auto& measured = gNativeCosts.costs[phase].costs[cost];
+            output->nanos[phase * kCosts + cost] = measured.nanos;
+            output->counts[phase * kCosts + cost] = measured.count;
+        }
+    }
+    gNativeCosts.costs = {};
+}
+
 cfsk_status cfsk_recorder_snap(cfsk_recorder* recorder, cfsk_recording** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); RECORDER_READY(recorder);
     auto recording = recorder->value->snap();

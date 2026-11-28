@@ -19,6 +19,7 @@
 #include "src/gpu/graphite/CommandBuffer.h"
 #include "src/gpu/graphite/ContextPriv.h"
 #include "src/gpu/graphite/DrawPass.h"
+#include "src/gpu/graphite/PipelinePreparation.h"
 #include "src/gpu/graphite/ResourceProvider.h"
 #include "src/gpu/graphite/ResourceTypes.h"
 #include "src/gpu/graphite/ScratchResourceManager.h"
@@ -62,6 +63,12 @@ std::pair<SkISize, SkIPoint> get_msaa_size_and_resolve_offset(const SkISize& tar
     }
 
     return {targetSize, {0, 0}};
+}
+
+SkISize get_depth_size(const Caps& caps, const TextureInfo& colorInfo, SkISize colorSize) {
+    SkISize dimensions = caps.getDepthAttachmentDimensions(colorInfo, colorSize);
+    return caps.attachmentSizePolicy() == AttachmentSizePolicy::kApprox ?
+            GetApproxSize(dimensions) : dimensions;
 }
 
 }  // anonymous namespace
@@ -164,6 +171,28 @@ Task::Status RenderPassTask::prepareResources(ResourceProvider* resourceProvider
         }
     }
 
+    if (auto* discovery = gPipelineDiscovery;
+        discovery && discovery->fProvider == resourceProvider && discovery->fTargets) {
+        const auto& caps = *resourceProvider->sharedContext()->caps();
+        SkISize colorSize = fTarget->isFullyLazy() ? discovery->fTargetSize : fTarget->dimensions();
+        TextureInfo colorInfo = fTarget->textureInfo();
+        if (fRenderPassDesc.fColorResolveAttachment.fFormat != TextureFormat::kUnsupported) {
+            colorInfo = caps.getDefaultAttachmentTextureInfo(
+                    fRenderPassDesc.fColorAttachment, fTarget->isProtected(), Discardable::kYes);
+            colorSize = get_msaa_size_and_resolve_offset(
+                    colorSize, fDrawPasses[0]->bounds(), caps,
+                    fRenderPassDesc.fColorAttachment.fLoadOp).first;
+            discovery->fTargets->push_back({colorSize, colorInfo, "DiscardableMSAAAttachment",
+                                            PreparationTarget::kAttachment});
+        }
+        if (fRenderPassDesc.fDepthStencilAttachment.fFormat != TextureFormat::kUnsupported) {
+            auto depth = caps.getDefaultAttachmentTextureInfo(
+                    fRenderPassDesc.fDepthStencilAttachment, fTarget->isProtected(), Discardable::kYes);
+            discovery->fTargets->push_back({get_depth_size(caps, colorInfo, colorSize), depth,
+                                            "DepthStencilAttachment", PreparationTarget::kAttachment});
+        }
+    }
+
     // A pending destination readback copy is consumed exactly once, by this pass.
     // Its copy task precedes this pass in the same task list and borrows this backing
     // when commands are emitted. A CopyAsDraw fallback already has backing.
@@ -254,15 +283,8 @@ Task::Status RenderPassTask::addCommands(Context* context,
         TextureInfo dsInfo = caps->getDefaultAttachmentTextureInfo(
                 fRenderPassDesc.fDepthStencilAttachment, fTarget->isProtected(), Discardable::kYes);
 
-        SkISize dimensions = caps->getDepthAttachmentDimensions(
-                colorAttachment->textureInfo(), colorAttachment->dimensions());
-        // Only adjust the depth dimensions when the policy is kApprox. When there is MSAA,
-        // the color attachment dimensions have already been adjusted by the policy so the call to
-        // GetApproxSize is a no-op. When there is no MSAA, the kMSAARenderArea policy behaves the
-        // same as kExact.
-        if (caps->attachmentSizePolicy() == AttachmentSizePolicy::kApprox) {
-            dimensions = GetApproxSize(dimensions);
-        }
+        SkISize dimensions = get_depth_size(
+                *caps, colorAttachment->textureInfo(), colorAttachment->dimensions());
         depthStencilAttachment = resourceProvider->findOrCreateShareableTexture(
                 dimensions, dsInfo, "DepthStencilAttachment");
         if (!depthStencilAttachment) {

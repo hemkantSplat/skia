@@ -6,6 +6,9 @@
  */
 
 #include "src/gpu/graphite/PipelineManager.h"
+#include "src/gpu/graphite/NativeCosts.h"
+
+#include <optional>
 
 #include "include/core/SkExecutor.h"
 #include "include/private/SkLog.h"
@@ -326,6 +329,10 @@ void PipelineManager::potentiallyWaitOn(const sk_sp<PipelineCreationTask>& task)
         return;
     }
 
+    std::optional<NativeCostScope> cost;
+    if (gNativeCostState && !task->fCompleted.load(std::memory_order_acquire)) {
+        cost.emplace(NativeCost::kPipelineWait);
+    }
     task->fCompleted.wait(false, std::memory_order_acquire);
 }
 

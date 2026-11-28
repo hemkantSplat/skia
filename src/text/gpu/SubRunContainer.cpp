@@ -431,7 +431,7 @@ public:
     bool canReuse(const SkPaint& paint, const SkMatrix& positionMatrix) const override {
         return true;
     }
-    const AtlasSubRun* testingOnly_atlasSubRun() const override { return nullptr; }
+    const AtlasSubRun* atlasSubRun() const override { return nullptr; }
     static SubRunOwner MakeFromBuffer(SkReadBuffer& buffer,
                                       SubRunAllocator* alloc,
                                       const SkStrikeClient* client);
@@ -641,7 +641,7 @@ public:
 
     bool canReuse(const SkPaint& paint, const SkMatrix& positionMatrix) const override;
 
-    const AtlasSubRun* testingOnly_atlasSubRun() const override;
+    const AtlasSubRun* atlasSubRun() const override;
 
 protected:
     SubRunStreamTag subRunStreamTag() const override { return SubRunStreamTag::kDrawableStreamTag; }
@@ -671,7 +671,7 @@ bool DrawableSubRun::canReuse(const SkPaint& paint, const SkMatrix& positionMatr
     return true;
 }
 
-const AtlasSubRun* DrawableSubRun::testingOnly_atlasSubRun() const {
+const AtlasSubRun* DrawableSubRun::atlasSubRun() const {
     return nullptr;
 }
 
@@ -757,7 +757,7 @@ public:
         return reuse;
     }
 
-    const AtlasSubRun* testingOnly_atlasSubRun() const override {
+    const AtlasSubRun* atlasSubRun() const override {
         return this;
     }
 
@@ -832,7 +832,7 @@ public:
         return fIsBigEnough;
     }
 
-    const AtlasSubRun* testingOnly_atlasSubRun() const override { return this; }
+    const AtlasSubRun* atlasSubRun() const override { return this; }
 
     int glyphSrcPadding() const override { return 1; } // Padding NOT equal to insetting
 
@@ -969,7 +969,7 @@ public:
         return fMatrixRange.matrixInRange(positionMatrix);
     }
 
-    const AtlasSubRun* testingOnly_atlasSubRun() const override { return this; }
+    const AtlasSubRun* atlasSubRun() const override { return this; }
 
     int glyphSrcPadding() const override { return kGlyphInsetting; }
 
@@ -1708,6 +1708,16 @@ void SubRunContainer::draw(SkCanvas* canvas,
     for (auto& subRun : fSubRuns) {
         subRun.draw(canvas, drawOrigin, paint, sk_ref_sp(subRunStorage), atlasDelegate);
     }
+}
+
+bool SubRunContainer::visitAtlasSubRuns(
+        const std::function<bool(const AtlasSubRun&)>& visitor) const {
+    for (const SubRun& subRun : fSubRuns) {
+        if (const auto* atlas = subRun.atlasSubRun(); atlas && !visitor(*atlas)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool SubRunContainer::canReuse(const SkPaint& paint, const SkMatrix& positionMatrix) const {

@@ -14,6 +14,8 @@
 #include "include/private/SkLog.h"
 #include "include/private/SkPixelStorage.h"
 #include "src/gpu/graphite/Device.h"
+#include "src/gpu/graphite/PipelinePreparation.h"
+#include "src/gpu/graphite/RecorderPriv.h"
 #include "src/gpu/graphite/DrawContext.h"
 #include "src/gpu/graphite/Image_Graphite.h"
 #include "src/gpu/graphite/Image_YUVA_Graphite.h"
@@ -63,6 +65,13 @@ void Image_Base::notifyInUse(Recorder* recorder,
     if (!fLinkedDevices.empty()) {
         int emptyCount = 0;
         for (sk_sp<Device>& device : fLinkedDevices) {
+            // Resolving shader keys only needs the texture metadata. Importing a live
+            // foreign device's task would prepare and change that existing recording.
+            if (device && gPipelineDiscovery &&
+                gPipelineDiscovery->fProvider == recorder->priv().resourceProvider() &&
+                device->recordingOwner() != recorder->priv().uniqueID()) {
+                continue;
+            }
             if (!device || device->notifyInUse(recorder, drawContext) || unlinkDevices) {
                 // Already unlinked or notifyInUse() signals the device doesn't need to be linked
                 // anymore. reset() is a no-op if device is already holding null. If we are force
@@ -82,6 +91,9 @@ void Image_Base::notifyInUse(Recorder* recorder,
 
 bool Image_Base::isDynamic() const {
     SkAutoSpinlock lock{fDeviceLinkLock};
+    if (gPipelineDiscovery) {
+        return !fLinkedDevices.empty();
+    }
     int emptyCount = 0;
     if (!fLinkedDevices.empty()) {
         for (sk_sp<Device>& device : fLinkedDevices) {

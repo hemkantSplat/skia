@@ -6,6 +6,7 @@
  */
 
 #include "src/gpu/graphite/dawn/DawnGraphicsPipeline.h"
+#include "src/gpu/graphite/NativeCosts.h"
 
 #include "include/gpu/graphite/TextureInfo.h"
 #include "include/gpu/graphite/dawn/DawnGraphiteTypes.h"
@@ -828,6 +829,7 @@ const wgpu::RenderPipeline& DawnGraphicsPipeline::dawnRenderPipeline() const {
     waitInfo.future = fAsyncPipelineCreation->fFuture;
     const auto& instance = static_cast<const DawnSharedContext*>(sharedContext())->instance();
 
+    NativeCostScope cost(NativeCost::kPipelineWait);
     [[maybe_unused]] auto status =
             instance.WaitAny(1, &waitInfo, /*timeoutNS=*/std::numeric_limits<uint64_t>::max());
     SkASSERT(status == wgpu::WaitStatus::Success);

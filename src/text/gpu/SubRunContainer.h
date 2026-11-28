@@ -73,9 +73,8 @@ public:
     // position.
     virtual bool canReuse(const SkPaint& paint, const SkMatrix& positionMatrix) const = 0;
 
-    // Return the underlying atlas SubRun if it exists. Otherwise, return nullptr.
-    // * Don't use this API. It is only to support testing.
-    virtual const AtlasSubRun* testingOnly_atlasSubRun() const = 0;
+    virtual const AtlasSubRun* atlasSubRun() const = 0;
+    const AtlasSubRun* testingOnly_atlasSubRun() const { return this->atlasSubRun(); }
 
 protected:
     enum SubRunStreamTag : int;
@@ -216,6 +215,8 @@ public:
 
     void draw(SkCanvas*, SkPoint drawOrigin, const SkPaint&, const SkRefCnt* subRunStorage,
               const AtlasDrawDelegate&) const;
+
+    bool visitAtlasSubRuns(const std::function<bool(const AtlasSubRun&)>&) const;
 
     const SkMatrix& initialPosition() const { return fInitialPositionMatrix; }
     bool isEmpty() const { return fSubRuns.isEmpty(); }

@@ -6,6 +6,7 @@
  */
 
 #include "src/gpu/graphite/SharedContext.h"
+#include "src/gpu/graphite/NativeCosts.h"
 
 #include "include/gpu/graphite/BackendTexture.h"
 #include "include/gpu/graphite/TextureInfo.h"
@@ -107,10 +108,13 @@ sk_sp<GraphicsPipeline> SharedContext::findOrCreateGraphicsPipeline(
                              "compilationID", compilationID);
 #endif
 
-        pipeline = this->createGraphicsPipeline(runtimeDict, pipelineKey,
-                                                pipelineDesc, renderPassDesc,
-                                                pipelineCreationFlags,
-                                                compilationID);
+        {
+            NativeCostScope cost(NativeCost::kPipelineCompile);
+            pipeline = this->createGraphicsPipeline(runtimeDict, pipelineKey,
+                                                    pipelineDesc, renderPassDesc,
+                                                    pipelineCreationFlags,
+                                                    compilationID);
+        }
         if (pipeline) {
             // TODO: Should we store a null pipeline if we failed to create one so that subsequent
             // usage immediately sees that the pipeline cannot be created, vs. retrying every time?

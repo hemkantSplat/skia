@@ -6,6 +6,8 @@
  */
 #include "include/gpu/graphite/Context.h"
 
+#include "src/gpu/graphite/NativeCosts.h"
+
 #include "include/core/SkAlphaType.h"
 #include "include/core/SkBlendMode.h"
 #include "include/core/SkCanvas.h"
@@ -265,6 +267,7 @@ std::unique_ptr<Recorder> Context::makeInternalRecorder() const {
 }
 
 InsertStatus Context::insertRecording(const InsertRecordingInfo& info) {
+    NativeCostPhase costPhase(CostPhase::kInsert);
     ASSERT_SINGLE_OWNER
 
     if (fSharedContext->captureManager() &&

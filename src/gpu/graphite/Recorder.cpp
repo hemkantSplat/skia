@@ -6,6 +6,8 @@
  */
 #include "include/gpu/graphite/Recorder.h"
 
+#include "src/gpu/graphite/NativeCosts.h"
+
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkImage.h"
@@ -192,6 +194,7 @@ BackendApi Recorder::backend() const { return fSharedContext->backend(); }
 skcpu::Recorder* Recorder::cpuRecorder() { return skcpu::Recorder::TODO(); }
 
 std::unique_ptr<Recording> Recorder::snap() {
+    NativeCostPhase costPhase(CostPhase::kSnap);
     TRACE_EVENT0_ALWAYS("skia.gpu", "Snap Recording");
     ASSERT_SINGLE_OWNER
 
@@ -616,6 +619,10 @@ void Recorder::dumpTasks(TaskList* taskList) const {
     SkDebugf("--------------- END ---------------\n");
 }
 #endif
+
+std::unique_ptr<Recorder> RecorderPriv::makePreparationRecorder(const RecorderOptions& options) {
+    return std::unique_ptr<Recorder>(new Recorder(fRecorder->fSharedContext, options, nullptr));
+}
 
 sk_sp<RuntimeEffectDictionary> RecorderPriv::runtimeEffectDictionary() {
     return fRecorder->fRuntimeEffectDict;

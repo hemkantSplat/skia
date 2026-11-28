@@ -5,6 +5,12 @@
  * found in the LICENSE file.
  */
 #include "src/gpu/graphite/DrawAtlas.h"
+#include "src/gpu/graphite/NativeCosts.h"
+
+#if defined(SK_DAWN)
+#include "src/gpu/graphite/dawn/DawnSharedContext.h"
+#include "src/gpu/graphite/dawn/DawnTexture.h"
+#endif
 
 #include "include/core/SkAlphaType.h"
 #include "include/core/SkColorSpace.h"
@@ -200,6 +206,7 @@ bool DrawAtlas::recordUploads(DrawContext* dc, Recorder* recorder) {
 
         Swizzle readSwizzle = ReadSwizzleForColorType(maskCT, fProxies[pageIdx]->format());
         TextureProxyView view{fProxies[pageIdx], readSwizzle};
+        bool uploadedTextPage = false;
         for (Plot* plot = plotIter.get(); plot; plot = plotIter.next()) {
             if (plot->needsUpload()) {
                 const void* dataPtr;
@@ -209,6 +216,9 @@ bool DrawAtlas::recordUploads(DrawContext* dc, Recorder* recorder) {
                     continue;
                 }
 
+                const bool textAtlas = fLabel == "TextAtlas";
+                NativeCostScope cost(textAtlas ? NativeCost::kAtlasUpload
+                                               : NativeCost::kImplicitUpload, 0);
                 MipLevel level{dataPtr, plot->rowBytes()};
                 const UploadSource uploadSource = UploadSource::Make(
                         recorder->priv().caps(), view, colorInfo, colorInfo,
@@ -216,11 +226,60 @@ bool DrawAtlas::recordUploads(DrawContext* dc, Recorder* recorder) {
                 if (!dc->recordUpload(recorder, uploadSource)) {
                     return false;
                 }
+                if (textAtlas && !uploadedTextPage) {
+                    count_native_cost(NativeCost::kAtlasUpload);
+                    uploadedTextPage = true;
+                }
             }
         }
     }
     return true;
 }
+
+#if defined(SK_DAWN)
+bool DrawAtlas::writePendingTextUploads(Recorder* recorder, uint32_t limit,
+                                       uint32_t* pages, bool* more) {
+    SkASSERT(fLabel == "TextAtlas");
+    auto* resources = recorder->priv().resourceProvider();
+    const auto& queue = static_cast<const DawnSharedContext*>(resources->sharedContext())->queue();
+    for (uint32_t page = 0; page < fNumActivePages; ++page) {
+        PlotList::Iter plots;
+        plots.init(fPages[page].fPlotList, PlotList::Iter::kHead_IterStart);
+        bool written = false;
+        for (Plot* plot = plots.get(); plot; plot = plots.next()) {
+            if (!plot->needsUpload()) {
+                continue;
+            }
+            if (!written && *pages >= limit) {
+                *more = true;
+                return true;
+            }
+            if (!TextureProxy::InstantiateIfNotLazy(resources, fProxies[page].get())) {
+                return false;
+            }
+            auto [data, rect] = plot->prepareForUpload();
+            if (rect.isEmpty()) {
+                continue;
+            }
+            const auto* texture = static_cast<const DawnTexture*>(fProxies[page]->texture());
+            wgpu::TexelCopyTextureInfo destination{};
+            destination.texture = texture->dawnTexture();
+            destination.origin = {static_cast<uint32_t>(rect.x()), static_cast<uint32_t>(rect.y()), 0};
+            wgpu::TexelCopyBufferLayout layout{};
+            layout.bytesPerRow = static_cast<uint32_t>(plot->rowBytes());
+            layout.rowsPerImage = static_cast<uint32_t>(rect.height());
+            const wgpu::Extent3D extent{static_cast<uint32_t>(rect.width()),
+                                        static_cast<uint32_t>(rect.height()), 1};
+            const size_t size = (extent.height - 1) * static_cast<size_t>(layout.bytesPerRow) +
+                                extent.width * MaskFormatBytesPerPixel(fMaskFormat);
+            queue.WriteTexture(&destination, data, size, &layout, &extent);
+            written = true;
+        }
+        *pages += written;
+    }
+    return true;
+}
+#endif
 
 // Number of atlas-related flushes beyond which we consider a plot to no longer be in use.
 //

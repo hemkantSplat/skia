@@ -67,6 +67,8 @@ public:
 
     ResourceProvider* resourceProvider() { return fRecorder->fResourceProvider; }
 
+    std::unique_ptr<Recorder> makePreparationRecorder(const RecorderOptions&);
+
     sk_sp<RuntimeEffectDictionary> runtimeEffectDictionary();
 
     const ShaderCodeDictionary* shaderCodeDictionary() const {

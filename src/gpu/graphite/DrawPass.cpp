@@ -13,6 +13,7 @@
 #include "src/gpu/graphite/PipelineCreationTask.h"
 #include "src/gpu/graphite/PipelineData.h"
 #include "src/gpu/graphite/PipelineManager.h"
+#include "src/gpu/graphite/PipelinePreparation.h"
 #include "src/gpu/graphite/RenderPassDesc.h"
 #include "src/gpu/graphite/Resource.h"  // IWYU pragma: keep
 #include "src/gpu/graphite/ResourceProvider.h"
@@ -40,6 +41,14 @@ bool DrawPass::prepareResources(ResourceProvider* resourceProvider,
                                 sk_sp<const RuntimeEffectDictionary> runtimeDict,
                                 const RenderPassDesc& renderPassDesc) {
     TRACE_EVENT0("skia.gpu", TRACE_FUNC);
+
+    if (auto* discovery = gPipelineDiscovery;
+        discovery && discovery->fProvider == resourceProvider) {
+        for (const auto& desc : fPipelineDescs) {
+            discovery->fRequests.push_back({desc, renderPassDesc, runtimeDict});
+        }
+        return true;
+    }
 
     SharedContext* sharedContext = resourceProvider->sharedContext();
     PipelineManager* pipelineManager = sharedContext->pipelineManager();

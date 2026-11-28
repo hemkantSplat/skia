@@ -241,6 +241,10 @@ public:
                            std::optional<SkColor> initialColor = {});
     bool recordUploads(DrawContext*, Recorder*);
 
+#if defined(SK_DAWN)
+    bool writePendingTextUploads(Recorder*, uint32_t limit, uint32_t* pages, bool* more);
+#endif
+
     const sk_sp<TextureProxy>* getProxies() const { return fProxies; }
 
     uint32_t atlasID() const { return fAtlasID; }

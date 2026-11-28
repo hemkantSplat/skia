@@ -6,6 +6,8 @@
  */
 
 #include "src/gpu/graphite/TextureUtils.h"
+#include "src/gpu/graphite/NativeCosts.h"
+#include "src/gpu/graphite/PipelinePreparation.h"
 
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
@@ -258,6 +260,7 @@ TextureProxyView MakeBitmapProxyView(Recorder* recorder,
                                      Mipmapped mipmapped,
                                      Budgeted budgeted,
                                      std::string_view label) {
+    NativeCostScope cost(NativeCost::kImplicitUpload, 0);
     // Adjust params based on input and Caps
     const Caps* caps = recorder->priv().caps();
     const SkColorType ct = bitmap.info().colorType();
@@ -328,7 +331,15 @@ TextureProxyView MakeBitmapProxyView(Recorder* recorder,
         return {};
     }
 
+#if defined(SK_DAWN)
+    if (gPrepareBitmapUploads == recorder->priv().resourceProvider() &&
+        uploadSource.tryDawnQueueUpload(recorder)) {
+        count_native_cost(NativeCost::kImplicitUpload);
+        return uploadSource.view();
+    }
+#endif
     if (uploadSource.attemptUploadOnhost()) {
+        count_native_cost(NativeCost::kImplicitUpload);
         return uploadSource.view();
     }
     // else it failed or was unavailable, so use a task on the root upload list

@@ -6,6 +6,7 @@
  */
 
 #include "src/gpu/graphite/task/UploadTask.h"
+#include "src/gpu/graphite/NativeCosts.h"
 
 #include "include/core/SkColorType.h"
 #include "include/core/SkImageInfo.h"
@@ -37,6 +38,11 @@
 #include "src/gpu/graphite/TextureProxy.h"
 #include "src/gpu/graphite/TextureProxyView.h"
 #include "src/gpu/graphite/UploadBufferManager.h"
+
+#if defined(SK_DAWN)
+#include "src/gpu/graphite/dawn/DawnSharedContext.h"
+#include "src/gpu/graphite/dawn/DawnTexture.h"
+#endif
 
 #include <algorithm>
 #include <cstdint>
@@ -219,6 +225,40 @@ bool UploadSource::attemptUploadOnhost() const {
     return fView.proxy()->texture()->uploadDataOnHost(*this);
 }
 
+#if defined(SK_DAWN)
+bool UploadSource::tryDawnQueueUpload(Recorder* recorder) const {
+    auto* proxy = fView.proxy();
+    if (!fXferFn->isIdentity() ||
+        TextureFormatCompressionType(proxy->format()) != SkTextureCompressionType::kNone ||
+        proxy->isLazy() ||
+        !proxy->instantiate(recorder->priv().resourceProvider())) {
+        return false;
+    }
+    const auto* texture = static_cast<const DawnTexture*>(proxy->texture());
+    auto* resources = recorder->priv().resourceProvider();
+    const auto& queue = static_cast<const DawnSharedContext*>(resources->sharedContext())->queue();
+    const uint32_t bpp = TextureFormatBytesPerBlock(proxy->format());
+    wgpu::Extent3D extent{static_cast<uint32_t>(fDstRect.width()),
+                          static_cast<uint32_t>(fDstRect.height()), 1};
+    for (size_t index = 0; index < fLevels.size(); ++index) {
+        wgpu::TexelCopyTextureInfo destination{};
+        destination.texture = texture->dawnTexture();
+        destination.mipLevel = static_cast<uint32_t>(index);
+        destination.origin = {static_cast<uint32_t>(fDstRect.x()),
+                              static_cast<uint32_t>(fDstRect.y()), 0};
+        wgpu::TexelCopyBufferLayout layout{};
+        layout.bytesPerRow = static_cast<uint32_t>(fLevels[index].fRowBytes);
+        layout.rowsPerImage = extent.height;
+        const size_t size = (extent.height - 1) * static_cast<size_t>(layout.bytesPerRow) +
+                            extent.width * bpp;
+        queue.WriteTexture(&destination, fLevels[index].fPixels, size, &layout, &extent);
+        extent.width = std::max(1u, extent.width / 2);
+        extent.height = std::max(1u, extent.height / 2);
+    }
+    return true;
+}
+#endif
+
 UploadInstance::UploadInstance() = default;
 UploadInstance::UploadInstance(UploadInstance&&) = default;
 UploadInstance& UploadInstance::operator=(UploadInstance&&) = default;
@@ -235,6 +275,9 @@ UploadInstance UploadInstance::Make(Recorder* recorder,
                                     const UploadSource& source,
                                     std::unique_ptr<ConditionalUploadContext> condContext) {
     sk_sp<TextureProxy> textureProxy = source.view().refProxy();
+    const bool textAtlas = std::string_view(textureProxy->label()) == "TextAtlas";
+    NativeCostScope cost(textAtlas ? NativeCost::kAtlasUpload : NativeCost::kImplicitUpload,
+                         textAtlas ? 0 : 1);
     const SkIRect dstRect = source.dstRect();
     const SkTextureCompressionType compression =
             TextureFormatCompressionType(textureProxy->format());
@@ -323,6 +366,8 @@ bool UploadInstance::prepareResources(ResourceProvider* resourceProvider) {
     // "scratch" because they aren't going to be reused for anything else in a Recording. At the
     // same time, it could still go through the ScratchResourceManager and just never return them,
     // which is no different from instantiating them directly with the ResourceProvider.
+    const bool textAtlas = std::string_view(fTextureProxy->label()) == "TextAtlas";
+    NativeCostScope cost(textAtlas ? NativeCost::kAtlasUpload : NativeCost::kImplicitUpload, 0);
     if (!TextureProxy::InstantiateIfNotLazy(resourceProvider, fTextureProxy.get())) {
         SKIA_LOG_E("Could not instantiate texture proxy for UploadTask!");
         return false;
@@ -342,6 +387,8 @@ Task::Status UploadInstance::addCommand(Context* context,
         return Status::kSuccess;
     }
 
+    const bool textAtlas = std::string_view(fTextureProxy->label()) == "TextAtlas";
+    NativeCostScope cost(textAtlas ? NativeCost::kAtlasUpload : NativeCost::kImplicitUpload, 0);
     if (fTextureProxy->texture() != replayData.fTarget) {
         // The CommandBuffer doesn't take ownership of the upload buffer here; it's owned by
         // UploadBufferManager, which will transfer ownership in transferToCommandBuffer.

@@ -118,6 +118,9 @@ public:
     // uniquely held by the current thread (required to ensure no simultaneous GPU use starts
     // using the texture).
     bool attemptUploadOnhost() const;
+#if defined(SK_DAWN)
+    bool tryDawnQueueUpload(Recorder*) const;
+#endif
 
 private:
     static UploadSource Invalid() { return {{}}; }

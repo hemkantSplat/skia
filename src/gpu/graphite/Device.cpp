@@ -103,6 +103,8 @@
 #include "src/gpu/graphite/task/Task.h"
 #include "src/gpu/graphite/task/UploadTask.h"
 #include "src/gpu/graphite/text/GlyphData.h"
+#include "src/gpu/graphite/PipelinePreparation.h"
+#include "src/gpu/graphite/text/TextAtlasManager.h"
 #include "src/image/SkImage_Base.h"
 #include "src/text/gpu/SlugImpl.h"
 #include "src/text/gpu/SubRunContainer.h"
@@ -529,6 +531,7 @@ static constexpr int kMaxGridSize = 32;
 Device::Device(Recorder* recorder, sk_sp<DrawContext> dc)
         : SkDevice(dc->imageInfo(), dc->surfaceProps())
         , fRecorder(recorder)
+        , fRecordingOwner(recorder->priv().uniqueID())
         , fDC(std::move(dc))
         , fClip(this)
         , fColorDepthBoundsManager(std::make_unique<HybridBoundsManager>(
@@ -1591,7 +1594,19 @@ void Device::drawAtlasSubRun(const sktext::gpu::AtlasSubRun* subRun,
                                               this->imageInfo().colorSpace()->gammaIsLinear();
     const Transform& localToDevice = this->localToDeviceTransform();
 
+    this->recorder()->priv().getOrCreateAtlasProvider()->textAtlasManager()->usedByDraw();
     const int subRunEnd = subRun->glyphCount();
+    if (auto* discovery = gPipelineDiscovery;
+        discovery && discovery->fGlyphs &&
+        discovery->fProvider == fRecorder->priv().resourceProvider()) {
+        auto& glyphs = subRun->glyphVector();
+        GlyphRunRequest request{sk_ref_sp(glyphs.strikePromise().strike()), rendererData, {}};
+        request.fIDs.reserve(subRunEnd);
+        for (int index = 0; index < subRunEnd; ++index) {
+            request.fIDs.push_back(glyphs.getPackedGlyphID(index));
+        }
+        discovery->fGlyphs->push_back(std::move(request));
+    }
 
     if (!subRun->glyphVector().hasBackendData()) {
         subRun->glyphVector().initBackendData<GlyphData>(this->recorder()->priv().strikeCache(),

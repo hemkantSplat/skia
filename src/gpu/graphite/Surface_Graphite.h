@@ -94,6 +94,7 @@ public:
 
     // May not be texturable, but includes the swizzle required when sampling or reading to CPU
     const TextureProxyView& target() const;
+    const Device* device() const { return fDevice.get(); }
 
     TextureProxyView readSurfaceView() const;
 

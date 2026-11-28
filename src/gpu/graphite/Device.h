@@ -118,6 +118,7 @@ public:
     Device* asGraphiteDevice() override { return this; }
 
     Recorder* recorder() const override { return fRecorder; }
+    uint32_t recordingOwner() const { return fRecordingOwner; }
     SkRecorder* baseRecorder() const override { return fRecorder; }
 
     // This call is triggered from the Recorder on its registered Devices. It is typically called
@@ -363,6 +364,7 @@ private:
     void internalFlush();
 
     Recorder* fRecorder;
+    const uint32_t fRecordingOwner;
     sk_sp<DrawContext> fDC;
     // Scratch devices hold on to their last snapped DrawTask so that they can be directly
     // referenced when the device image is drawn into some other surface.

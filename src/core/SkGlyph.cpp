@@ -7,6 +7,10 @@
 
 #include "src/core/SkGlyph.h"
 
+#if defined(SK_GRAPHITE)
+#include "src/gpu/graphite/NativeCosts.h"
+#endif
+
 #include "include/core/SkCanvas.h"
 #include "include/core/SkData.h"
 #include "include/core/SkDrawable.h"
@@ -186,6 +190,9 @@ bool SkGlyph::setImage(SkArenaAlloc* alloc, SkScalerContext* scalerContext) {
         // It used to be that getImage() could change the fMaskFormat. Extra checking to make
         // sure there are no regressions.
         SkDEBUGCODE(SkMask::Format oldFormat = this->maskFormat());
+#if defined(SK_GRAPHITE)
+        skgpu::graphite::NativeCostScope cost(skgpu::graphite::NativeCost::kGlyphMask);
+#endif
         this->allocImage(alloc);
         scalerContext->getImage(*this);
         SkASSERT(oldFormat == this->maskFormat());
