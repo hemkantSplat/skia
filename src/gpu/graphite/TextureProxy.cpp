@@ -145,6 +145,16 @@ bool TextureProxy::InstantiateIfNotLazy(ScratchResourceManager* scratchManager,
 }
 
 
+bool TextureProxy::instantiateDestinationCopy(ScratchResourceManager* scratchManager) {
+    SkASSERT(!this->isLazy() && !this->isInstantiated());
+    fTexture = scratchManager->getDestinationCopy(fDimensions, fInfo, fLabel);
+    if (!fTexture) {
+        return false;
+    }
+    SkDEBUGCODE(this->validateTexture(fTexture.get()));
+    return true;
+}
+
 void TextureProxy::deinstantiate() {
     SkASSERT(fVolatile == Volatile::kYes && SkToBool(fLazyInstantiateCallback));
 

@@ -168,10 +168,10 @@ Task::Status RenderPassTask::prepareResources(ResourceProvider* resourceProvider
     // Its copy task precedes this pass in the same task list and borrows this backing
     // when commands are emitted. A CopyAsDraw fallback already has backing.
     if (fDstCopy && !fDstCopy->isInstantiated()) {
-        if (!TextureProxy::InstantiateIfNotLazy(scratchManager, fDstCopy.get())) {
+        if (!fDstCopy->instantiateDestinationCopy(scratchManager)) {
             return Status::kFail;
         }
-        scratchManager->returnTexture(fDstCopy->refTexture());
+        scratchManager->returnDestinationCopy(fDstCopy->refTexture());
     }
 
     // Once all internal resources have been prepared and instantiated, reclaim any pending returns

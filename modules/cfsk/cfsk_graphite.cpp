@@ -810,12 +810,24 @@ cfsk_status cfsk_surface_make_graphite_scratch(cfsk_recorder* recorder, const cf
     CFSK_BEGIN; CFSK_OUTPUT(output); RECORDER_READY(recorder);
     CFSK_REQUIRE(cfsk::valid(info) && mipmapped <= 1);
     SkSurfaceProps props(SkSurfaceProps::kDynamicMSAA_Flag, kUnknown_SkPixelGeometry);
-    // Keep the original drawable extent. A larger render attachment can change
-    // sampling and blend rounding even when the reported logical size is unchanged.
+    // Live paint surfaces cannot be evicted. Account for their backing in the cache
+    // once the surface, its images and pending recordings release their usage refs.
+    // Keep the exact drawable extent for sampling and blend rounding.
     auto status = cfsk::resource(output, graphite::Surface::Make(recorder->value.get(),
-        cfsk::image_info(*info), "Paint scratch", skgpu::Budgeted::kYes,
+        cfsk::image_info(*info), "Paint scratch", skgpu::Budgeted::kNo,
         static_cast<skgpu::Mipmapped>(mipmapped), SkBackingFit::kExact, &props));
     if (status == CFSK_OK) (*output)->gpu_context = recorder->context;
+    return status;
+}
+cfsk_status cfsk_surface_graphite_view(cfsk_surface* surface, cfsk_image** output) {
+    CFSK_BEGIN; CFSK_OUTPUT(output);
+    CFSK_REQUIRE(surface && surface->value->recorder());
+    auto image = SkSurfaces::AsImage(surface->value);
+    if (!image || image->hasMipmaps()) {
+        return cfsk_surface_snapshot(surface, nullptr, 0, output);
+    }
+    auto status = cfsk::resource(output, std::move(image));
+    if (status == CFSK_OK) (*output)->gpu_context = surface->gpu_context;
     return status;
 }
 #endif

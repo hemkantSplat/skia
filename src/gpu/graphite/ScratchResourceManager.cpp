@@ -58,6 +58,27 @@ void ScratchResourceManager::returnTexture(sk_sp<Texture> texture) {
     fUnavailable.remove(texture.get());
 }
 
+sk_sp<Texture> ScratchResourceManager::getDestinationCopy(SkISize dimensions,
+                                                          const TextureInfo& info,
+                                                          std::string_view label) {
+    for (int i = 0; i < fDestinationCopies.size(); ++i) {
+        const auto& texture = fDestinationCopies[i];
+        if (texture->dimensions() == dimensions && texture->textureInfo() == info) {
+            sk_sp<Texture> result = std::move(fDestinationCopies[i]);
+            fDestinationCopies.removeShuffle(i);
+            return result;
+        }
+    }
+    // Pending recordings own these textures through their proxies. The cache can
+    // lend the backing to another recording once those usage references are gone.
+    return fResourceProvider->findOrCreateNonShareableTexture(
+            dimensions, info, label, Budgeted::kNo);
+}
+
+void ScratchResourceManager::returnDestinationCopy(sk_sp<Texture> texture) {
+    fDestinationCopies.push_back(std::move(texture));
+}
+
 void ScratchResourceManager::pushScope() {
     // Push a null pointer to mark the beginning of the list of listeners in the next depth
     fListenerStack.push_back(nullptr);

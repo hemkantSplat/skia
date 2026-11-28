@@ -437,6 +437,9 @@ cfsk_status cfsk_surface_make_graphite(cfsk_recorder* recorder, const cfsk_image
 /* @cfsk Graphite.Surface.wrapBackendTexture => cfsk_surface_wrap_texture | SkSurfaces::WrapBackendTexture; pinned Dawn C texture handle retained; no borrowed producer writes */
 /* Transient paint target with budgeted backing and exact drawable dimensions. */
 cfsk_status cfsk_surface_make_graphite_scratch(cfsk_recorder*, const cfsk_image_info*, uint8_t mipmapped, cfsk_surface**);
+/* Shares the surface's non-mipmapped backing when possible. Keep its pixels
+ * unchanged until all recorded uses of the image are complete. */
+cfsk_status cfsk_surface_graphite_view(cfsk_surface* surface, cfsk_image** output);
 cfsk_status cfsk_surface_wrap_texture(cfsk_recorder* recorder, void* dawn_texture, const cfsk_image_info* info, cfsk_surface** output);
 /* @cfsk Surface.getCanvas => cfsk_surface_get_canvas | SkSurface::getCanvas; borrowed, never destroyed */
 cfsk_status cfsk_surface_get_canvas(cfsk_surface* surface, cfsk_canvas** output);

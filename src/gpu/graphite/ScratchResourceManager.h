@@ -106,6 +106,11 @@ public:
     // tasks that are processed after this call, then undefined results can occur.
     void returnTexture(sk_sp<Texture>);
 
+    // Destination copies can overlap other pending recordings. Keep their leases
+    // private to this task graph and reuse only after its consuming pass.
+    sk_sp<Texture> getDestinationCopy(SkISize, const TextureInfo&, std::string_view);
+    void returnDestinationCopy(sk_sp<Texture>);
+
     // Graphite accumulates tasks into a graph (implicit dependencies defined by the order they are
     // added to the root task list, or explicitly when appending child tasks). The depth-first
     // traversal of this graph helps impose constraints on the read/write windows of resources. To
@@ -184,6 +189,7 @@ private:
     // NOTE: This is the same type as ResourceCache::ScratchResourceSet but cannot be forward
     // declared because it's both a template and an inner type.
     skia_private::THashSet<const Resource*> fUnavailable;
+    skia_private::TArray<sk_sp<Texture>> fDestinationCopies;
 
     // This single list is organized into a stack of sublists by using null pointers to mark the
     // start of a new scope.

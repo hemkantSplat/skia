@@ -79,6 +79,8 @@ public:
      */
     static bool InstantiateIfNotLazy(ScratchResourceManager*, TextureProxy*);
 
+    bool instantiateDestinationCopy(ScratchResourceManager*);
+
     bool isInstantiated() const { return SkToBool(fTexture); }
 
     // Can only be used for volatile lazy proxies.
