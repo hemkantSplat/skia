@@ -86,12 +86,26 @@ sk_sp<Image> Image::WrapDevice(sk_sp<Device> device, std::optional<SkColorInfo> 
 sk_sp<Image> Image::Copy(Recorder* recorder,
                          DrawContext* drawContext,
                          const TextureProxyView& srcView,
+                         const SkColorInfo& colorInfo,
+                         const SkIRect& subset,
+                         Budgeted budgeted,
+                         Mipmapped mipmapped,
+                         SkBackingFit fit,
+                         std::string_view label) {
+    return Copy(recorder, drawContext, srcView, colorInfo, subset, budgeted, mipmapped, fit,
+                label, /*transientDst=*/false);
+}
+
+sk_sp<Image> Image::Copy(Recorder* recorder,
+                         DrawContext* drawContext,
+                         const TextureProxyView& srcView,
                          const SkColorInfo& srcColorInfo,
                          const SkIRect& subset,
                          Budgeted budgeted,
                          Mipmapped mipmapped,
                          SkBackingFit backingFit,
-                         std::string_view label) {
+                         std::string_view label,
+                         bool transientDst) {
     SkASSERT(!drawContext || budgeted == Budgeted::kYes);
     SkASSERT(!(mipmapped == Mipmapped::kYes && backingFit == SkBackingFit::kApprox));
     if (!srcView) {
@@ -127,7 +141,7 @@ sk_sp<Image> Image::Copy(Recorder* recorder,
         return nullptr;
     }
 
-    auto copyTask = CopyTextureToTextureTask::Make(srcView.refProxy(), subset, dst, {0, 0});
+    auto copyTask = CopyTextureToTextureTask::Make(srcView.refProxy(), subset, dst, {0, 0}, 0, transientDst);
     if (!copyTask) {
         return nullptr;
     }

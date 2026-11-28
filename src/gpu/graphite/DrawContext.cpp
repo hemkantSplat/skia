@@ -308,7 +308,8 @@ void DrawContext::flush(Recorder* recorder) {
                     Budgeted::kYes,
                     Mipmapped::kNo,
                     fit,
-                    "DstCopy");
+                    "DstCopy",
+                    /*transientDst=*/true);
             if (!imageCopy) {
                 SKIA_LOG_W("DrawContext::flush Image::Copy failed, draw pass dropped!");
                 return;

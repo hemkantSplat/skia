@@ -18,22 +18,25 @@ class Caps;
 class GraphicsPipelineDesc;
 struct RenderPassDesc;
 class ShaderCodeDictionary;
+class RuntimeEffectDictionary;
 
 // These are the top-level entry points to serialize Pipeline data for the Android-style
 // Precompilation API
 [[nodiscard]] sk_sp<SkData> PipelineDescToData(const Caps*,
                                                ShaderCodeDictionary*,
+                                               const RuntimeEffectDictionary*,
                                                const GraphicsPipelineDesc&,
                                                const RenderPassDesc&);
 
 [[nodiscard]] bool DataToPipelineDesc(const Caps*,
                                       ShaderCodeDictionary*,
+                                      RuntimeEffectDictionary*,
                                       const SkData*,
                                       GraphicsPipelineDesc* pipelineDesc,
                                       RenderPassDesc* renderPassDesc);
 
 [[nodiscard]] bool DataContainsExternalFormat(const Caps*,
-                                              const ShaderCodeDictionary*,
+                                              ShaderCodeDictionary*,
                                               const SkData*,
                                               bool* containsExtFormat);
 

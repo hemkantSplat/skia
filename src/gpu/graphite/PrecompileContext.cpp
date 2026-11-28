@@ -68,6 +68,7 @@ bool PrecompileContext::precompile(sk_sp<SkData> serializedPipelineKey) {
 
     if (!DataToPipelineDesc(caps,
                             fSharedContext->shaderCodeDictionary(),
+                            rtEffectDict.get(),
                             serializedPipelineKey.get(),
                             &pipelineDesc,
                             &renderPassDesc)) {
@@ -97,8 +98,10 @@ std::string PrecompileContext::getPipelineLabel(sk_sp<SkData> serializedPipeline
     // Deep in deserialize_graphics_pipeline_desc, this will have unpacked the PaintParamsKey
     // and then registered it with the ShaderCodeDictionary to get this session's
     // UniquePaintParamsID for it.
+    auto runtimeEffects = sk_make_sp<RuntimeEffectDictionary>();
     if (!DataToPipelineDesc(fSharedContext->caps(),
                             fSharedContext->shaderCodeDictionary(),
+                            runtimeEffects.get(),
                             serializedPipelineKey.get(),
                             &pipelineDesc,
                             &renderPassDesc)) {

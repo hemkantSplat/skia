@@ -2,11 +2,13 @@
 #include "cfsk_dawn_host.h"
 #include "dawn/dawn_proc.h"
 #include "dawn/native/VulkanBackend.h"
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string_view>
 #if defined(_WIN32)
 #include <windows.h>
+#include <dxgi1_2.h>
 #endif
 #include <algorithm>
 #include <mutex>
@@ -63,8 +65,6 @@ std::vector<wgpu::FeatureName> preferred_features(const wgpu::Adapter& adapter) 
             wgpu::FeatureName::ImplicitDeviceSynchronization,
             wgpu::FeatureName::MSAARenderToSingleSampled,
             wgpu::FeatureName::ShaderF16,
-            wgpu::FeatureName::TextureCompressionBC,
-            wgpu::FeatureName::TextureCompressionETC2,
             wgpu::FeatureName::TextureFormatsTier1,
             wgpu::FeatureName::TimestampQuery,
             wgpu::FeatureName::TransientAttachments,
@@ -97,7 +97,37 @@ cfsk_status make_instance(cfsk_dawn_host* host) {
 struct Candidate {
     dawn::native::Adapter native;
     cfsk_dawn_adapter_info info;
+    std::array<uint8_t, VK_UUID_SIZE> device_uuid, driver_uuid;
 };
+
+struct DisplayAdapter { uint32_t vendor, device; uint64_t luid; };
+
+#if defined(_WIN32)
+std::vector<DisplayAdapter> display_adapters() {
+    HMODULE dxgi = LoadLibraryExW(L"dxgi.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!dxgi) return {};
+    auto create = reinterpret_cast<decltype(&CreateDXGIFactory1)>(
+            GetProcAddress(dxgi, "CreateDXGIFactory1"));
+    std::vector<DisplayAdapter> result;
+    IDXGIFactory1* factory = nullptr;
+    if (create && SUCCEEDED(create(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&factory)))) {
+        for (UINT i = 0; ; ++i) {
+            IDXGIAdapter1* adapter = nullptr;
+            if (FAILED(factory->EnumAdapters1(i, &adapter))) break;
+            DXGI_ADAPTER_DESC1 desc{};
+            HRESULT status = adapter->GetDesc1(&desc);
+            adapter->Release();
+            if (FAILED(status) || (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) continue;
+            uint64_t luid = (uint64_t(uint32_t(desc.AdapterLuid.HighPart)) << 32) |
+                            desc.AdapterLuid.LowPart;
+            result.push_back({desc.VendorId, desc.DeviceId, luid});
+        }
+        factory->Release();
+    }
+    FreeLibrary(dxgi);
+    return result;
+}
+#endif
 
 using Uuid = std::array<uint8_t, VK_UUID_SIZE>;
 struct DeviceLuid { Uuid uuid; uint64_t luid; };
@@ -160,13 +190,40 @@ const std::vector<DeviceLuid>& vulkan_luids() {
     return luids;
 }
 
+// DXGI provides the process-local display LUID without opening a second Vulkan instance.
+// For identical models, use Vulkan's exact UUID mapping instead of guessing.
+uint64_t adapter_luid(uint32_t vendor, uint32_t device, const Uuid& uuid) {
+#if defined(_WIN32)
+    static const auto displays = display_adapters();
+    uint64_t luid = 0;
+    for (const auto& display : displays) {
+        if (display.vendor != vendor || display.device != device) continue;
+        if (luid) {
+            luid = 0;
+            break;
+        }
+        luid = display.luid;
+    }
+    if (luid) return luid;
+#else
+    (void)vendor;
+    (void)device;
+#endif
+    const auto& luids = vulkan_luids();
+    const auto found = std::find_if(luids.begin(), luids.end(), [&](const DeviceLuid& item) {
+        return item.uuid == uuid;
+    });
+    return found == luids.end() ? 0 : found->luid;
+}
+
 template <size_t N> void copy_string(char (&dest)[N], wgpu::StringView view) {
     if (!view.data) return;
     size_t size = view.length == WGPU_STRLEN ? std::strlen(view.data) : view.length;
     std::memcpy(dest, view.data, std::min(size, N - 1));
 }
 
-std::vector<Candidate> candidates(cfsk_dawn_host* host) {
+std::vector<Candidate> candidates(cfsk_dawn_host* host,
+                                  const cfsk_dawn_adapter_preference* preferred = nullptr) {
     wgpu::RequestAdapterOptions request;
     request.backendType = kHostBackend;
     request.powerPreference = wgpu::PowerPreference::HighPerformance;
@@ -175,7 +232,12 @@ std::vector<Candidate> candidates(cfsk_dawn_host* host) {
     auto toggles = adapter_toggles();
     request.nextInChain = &toggles;
     std::vector<Candidate> result;
-    const auto& luids = vulkan_luids();
+    dawn::native::vulkan::RequestAdapterOptionsVulkanUUIDs filter;
+    if (preferred) {
+        std::copy_n(preferred->device_uuid, filter.deviceUUID.size(), filter.deviceUUID.begin());
+        std::copy_n(preferred->driver_uuid, filter.driverUUID.size(), filter.driverUUID.begin());
+        toggles.nextInChain = &filter;
+    }
     for (auto& adapter : host->native->instance->EnumerateAdapters(&request)) {
         wgpu::Adapter api_adapter = adapter.Get();
         dawn::native::vulkan::AdapterPropertiesVulkanUUIDs ids;
@@ -190,27 +252,31 @@ std::vector<Candidate> candidates(cfsk_dawn_host* host) {
         output.device_id = info.deviceID;
         copy_string(output.name, info.device);
         copy_string(output.driver, info.description);
-        const auto luid = std::find_if(luids.begin(), luids.end(), [&](const DeviceLuid& item) {
-            return item.uuid == ids.deviceUUID;
-        });
-        if (luid != luids.end()) {
-            std::snprintf(output.id, sizeof(output.id), "0x%016llx", static_cast<unsigned long long>(luid->luid));
+        if (uint64_t luid = adapter_luid(info.vendorID, info.deviceID, ids.deviceUUID)) {
+            std::snprintf(output.id, sizeof(output.id), "0x%016llx", static_cast<unsigned long long>(luid));
         } else {
             std::memcpy(output.id, "uuid:", 5);
             for (size_t n = 0; n < ids.deviceUUID.size(); ++n) {
                 std::snprintf(output.id + 5 + n * 2, 3, "%02x", unsigned(ids.deviceUUID[n]));
             }
         }
-        result.push_back({std::move(adapter), output});
+        result.push_back({std::move(adapter), output, ids.deviceUUID, ids.driverUUID});
     }
     std::stable_partition(result.begin(), result.end(), [](const Candidate& a) { return a.info.kind == 1; });
     return result;
 }
 
-cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice,
+bool matches_choice(std::string_view choice, const cfsk_dawn_adapter_info& info) {
+    return choice.empty() || choice == info.id ||
+           (choice == "discrete" && info.kind == 1) ||
+           (choice == "integrated" && info.kind == 2);
+}
+
+cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice, std::vector<Candidate>& available,
                         WGPUDawnLoadCacheDataCallback load = nullptr,
                         WGPUDawnStoreCacheDataCallback store = nullptr,
-                        cfsk::DawnValidation validation = cfsk::DawnValidation::Engine) {
+                        cfsk::DawnValidation validation = cfsk::DawnValidation::Engine,
+                        cfsk_dawn_adapter_preference* chosen = nullptr) {
     CFSK_REQUIRE(cfsk::valid(choice));
     std::string_view selected(choice.length ? reinterpret_cast<const char*>(choice.data) : "", choice.length);
     auto toggles = adapter_toggles();
@@ -221,11 +287,9 @@ cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice,
         toggles.disabledToggles = kDisabled;
     }
     auto& native = *host->native;
-    for (auto& candidate : candidates(host)) {
+    for (auto& candidate : available) {
         const auto& info = candidate.info;
-        if (!(selected.empty() || selected == info.id ||
-              (selected == "discrete" && info.kind == 1) ||
-              (selected == "integrated" && info.kind == 2))) continue;
+        if (!matches_choice(selected, info)) continue;
         auto& adapter = candidate.native;
         wgpu::Adapter api_adapter = adapter.Get();
         auto features = preferred_features(api_adapter);
@@ -265,6 +329,11 @@ cfsk_status make_device(cfsk_dawn_host* host, cfsk_bytes choice,
         native.adapter = std::move(api_adapter);
         native.info = info;
         native.queue = native.device.GetQueue();
+        if (chosen) {
+            chosen->info = info;
+            std::copy(candidate.device_uuid.begin(), candidate.device_uuid.end(), chosen->device_uuid);
+            std::copy(candidate.driver_uuid.begin(), candidate.driver_uuid.end(), chosen->driver_uuid);
+        }
         return CFSK_OK;
     }
     return cfsk::unsupported(selected.empty() ? "no hardware Dawn Vulkan adapter present" :
@@ -284,7 +353,8 @@ cfsk_status make_headless(cfsk_bytes choice, void* user,
     if (!host) return cfsk::fail(CFSK_OUT_OF_MEMORY, "Dawn host allocation failed");
     if (auto status = make_instance(host.get()); status != CFSK_OK) return status;
     host->native->blob_cache = std::move(cache);
-    if (auto status = make_device(host.get(), choice, load, store, validation); status != CFSK_OK)
+    auto available = candidates(host.get());
+    if (auto status = make_device(host.get(), choice, available, load, store, validation); status != CFSK_OK)
         return status;
     *output = host.release();
     return CFSK_OK;
@@ -409,6 +479,58 @@ cfsk_status cfsk_dawn_host_make_validated(cfsk_bytes choice, cfsk_dawn_host** ou
     return make_headless(choice, nullptr, nullptr, nullptr, nullptr, cfsk::DawnValidation::Enabled, output);
 }
 
+cfsk_status cfsk_dawn_host_start(cfsk_bytes choice, const cfsk_dawn_adapter_preference* preferred,
+        cfsk_dawn_adapter_list list, void* list_user, void* user, cfsk_dawn_cache_load load,
+        cfsk_dawn_cache_store store, cfsk_dawn_cache_release release,
+        cfsk_dawn_adapter_preference* selected, cfsk_dawn_startup_stats* stats,
+        cfsk_dawn_host** output) {
+    CFSK_BEGIN;
+    std::shared_ptr<void> cache;
+    if (user && release) cache = std::shared_ptr<void>(user, release);
+    CFSK_OUTPUT(output);
+    CFSK_REQUIRE(cfsk::valid(choice) && selected && stats && (!user || (cache && load && store)));
+    *selected = {};
+    *stats = {};
+    using Clock = std::chrono::steady_clock;
+    auto elapsed = [](Clock::time_point start) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    };
+    auto started = Clock::now();
+    auto host = std::make_unique<cfsk_dawn_host>();
+    if (auto status = make_instance(host.get()); status != CFSK_OK) return status;
+    stats->instance_ms = elapsed(started);
+    auto enumerate = [&](const cfsk_dawn_adapter_preference* filter) {
+        ++stats->enumerations;
+        return candidates(host.get(), filter);
+    };
+    started = Clock::now();
+    std::vector<Candidate> available;
+    std::string_view requested(choice.length ? reinterpret_cast<const char*>(choice.data) : "", choice.length);
+    if (preferred && matches_choice(requested, preferred->info)) {
+        available = enumerate(preferred);
+        if (available.size() == 1) {
+            const auto& info = available.front().info;
+            stats->remembered = info.vendor_id == preferred->info.vendor_id &&
+                                info.device_id == preferred->info.device_id &&
+                                std::strncmp(info.driver, preferred->info.driver, sizeof(info.driver)) == 0 &&
+                                matches_choice(requested, info);
+        }
+    }
+    if (!stats->remembered) available = enumerate(nullptr);
+    stats->enumeration_ms = elapsed(started);
+    if (list) {
+        std::vector<cfsk_dawn_adapter_info> records;
+        for (const auto& candidate : available) records.push_back(candidate.info);
+        list(records.data(), records.size(), list_user);
+    }
+    started = Clock::now();
+    host->native->blob_cache = std::move(cache);
+    auto status = make_device(host.get(), choice, available, load, store, cfsk::DawnValidation::Engine, selected);
+    stats->device_ms = elapsed(started);
+    if (status == CFSK_OK) *output = host.release();
+    return status;
+}
+
 cfsk_status cfsk_dawn_host_make_cached(cfsk_bytes choice, void* user,
         cfsk_dawn_cache_load load, cfsk_dawn_cache_store store, cfsk_dawn_cache_release release,
         cfsk_dawn_host** output) {
@@ -427,7 +549,8 @@ cfsk_status cfsk_dawn_host_make_win32_selected(void* hinstance, void* hwnd, cfsk
     if (!host) return cfsk::fail(CFSK_OUT_OF_MEMORY, "Dawn host allocation failed");
     if (auto status = make_instance(host.get()); status != CFSK_OK) return status;
     if (auto status = make_surface(host.get(), hinstance, hwnd); status != CFSK_OK) return status;
-    if (auto status = make_device(host.get(), choice); status != CFSK_OK) return status;
+    auto available = candidates(host.get());
+    if (auto status = make_device(host.get(), choice, available); status != CFSK_OK) return status;
     if (auto status = surface_policy(host.get()); status != CFSK_OK) return status;
     *output = host.release();
     return CFSK_OK;
@@ -483,8 +606,11 @@ cfsk_status cfsk_dawn_host_configure(cfsk_dawn_host* host, uint32_t width, uint3
         if (auto status = make_surface(host, host->hinstance, host->hwnd); status != CFSK_OK) return status;
         if (auto status = surface_policy(host); status != CFSK_OK) return status;
         host->surface_lost = false;
+        host->suspended = true;
     }
 #endif
+    if (!host->suspended && !host->suboptimal && !host->surface_lost &&
+        host->config.width == width && host->config.height == height) return CFSK_OK;
     host->suspended = false;
     host->config.width = width;
     host->config.height = height;
@@ -505,7 +631,9 @@ cfsk_status cfsk_dawn_host_acquire(cfsk_dawn_host* host, void** texture, cfsk_im
     using Status = wgpu::SurfaceGetCurrentTextureStatus;
     switch (current.status) {
         case Status::SuccessOptimal: case Status::SuccessSuboptimal: break;
-        case Status::Outdated: return cfsk::fail(CFSK_PENDING, "Dawn surface outdated; reconfigure");
+        case Status::Outdated:
+            host->suboptimal = true;
+            return cfsk::fail(CFSK_PENDING, "Dawn surface outdated; reconfigure");
         case Status::Timeout: return cfsk::fail(CFSK_PENDING, "Dawn surface acquisition timeout");
         case Status::Lost:
             host->surface_lost = true;

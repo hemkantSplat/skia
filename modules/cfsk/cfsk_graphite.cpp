@@ -26,6 +26,7 @@
 #include "src/core/SkScopeExit.h"
 #include "src/gpu/graphite/ContextPriv.h"
 #include "src/gpu/graphite/RecorderPriv.h"
+#include "src/gpu/graphite/Surface_Graphite.h"
 #include "src/gpu/graphite/ResourceCache.h"
 #include "src/gpu/graphite/ResourceProvider.h"
 #include "src/gpu/graphite/Texture.h"
@@ -803,6 +804,21 @@ cfsk_status cfsk_surface_make_graphite(cfsk_recorder* recorder, const cfsk_image
     if (status == CFSK_OK) (*output)->gpu_context = recorder->context;
     return status;
 }
+#if !defined(__EMSCRIPTEN__)
+cfsk_status cfsk_surface_make_graphite_scratch(cfsk_recorder* recorder, const cfsk_image_info* info,
+        uint8_t mipmapped, cfsk_surface** output) {
+    CFSK_BEGIN; CFSK_OUTPUT(output); RECORDER_READY(recorder);
+    CFSK_REQUIRE(cfsk::valid(info) && mipmapped <= 1);
+    SkSurfaceProps props(SkSurfaceProps::kDynamicMSAA_Flag, kUnknown_SkPixelGeometry);
+    // Keep the original drawable extent. A larger render attachment can change
+    // sampling and blend rounding even when the reported logical size is unchanged.
+    auto status = cfsk::resource(output, graphite::Surface::Make(recorder->value.get(),
+        cfsk::image_info(*info), "Paint scratch", skgpu::Budgeted::kYes,
+        static_cast<skgpu::Mipmapped>(mipmapped), SkBackingFit::kExact, &props));
+    if (status == CFSK_OK) (*output)->gpu_context = recorder->context;
+    return status;
+}
+#endif
 cfsk_status cfsk_surface_wrap_texture(cfsk_recorder* recorder, void* dawn_texture, const cfsk_image_info* info, cfsk_surface** output) {
     CFSK_BEGIN; CFSK_OUTPUT(output); RECORDER_READY(recorder); CFSK_REQUIRE(dawn_texture && cfsk::valid(info));
     auto backend = graphite::BackendTextures::MakeDawn(static_cast<WGPUTexture>(dawn_texture));

@@ -121,6 +121,7 @@ sk_sp<GraphicsPipeline> SharedContext::findOrCreateGraphicsPipeline(
             if (addedToCache && globalCache->hasPipelineCallback()) {
                 sk_sp<SkData> data = PipelineDescToData(this->caps(),
                                                         this->shaderCodeDictionary(),
+                                                        runtimeDict,
                                                         pipelineDesc,
                                                         renderPassDesc);
                 globalCache->invokePipelineCallback(

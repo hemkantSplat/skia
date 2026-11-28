@@ -45,8 +45,10 @@ sk_sp<Texture> ScratchResourceManager::getScratchTexture(SkISize dimensions,
     // Store the returned scratch texture into fUnavailable so that it is filtered from the
     // ResourceCache when going through *this* ScratchResourceManager. But the scratch texture will
     // remain visible to other Recorders.
-    SkASSERT(!fUnavailable.contains(scratchTexture.get()));
-    fUnavailable.add(scratchTexture.get());
+    if (scratchTexture) {
+        SkASSERT(!fUnavailable.contains(scratchTexture.get()));
+        fUnavailable.add(scratchTexture.get());
+    }
     return scratchTexture;
 }
 

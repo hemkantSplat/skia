@@ -305,6 +305,23 @@ typedef size_t (*cfsk_dawn_cache_load)(size_t, const uint8_t*, size_t, uint8_t*,
 typedef void (*cfsk_dawn_cache_store)(size_t, const uint8_t*, size_t, const uint8_t*, void*, void*);
 typedef void (*cfsk_dawn_cache_release)(void*);
 /* Retains user until the device releases its cache, including on factory failure. */
+/* A remembered Vulkan adapter is scoped to its current device and driver identity. */
+typedef struct cfsk_dawn_adapter_preference {
+    cfsk_dawn_adapter_info info;
+    uint8_t device_uuid[16], driver_uuid[16];
+} cfsk_dawn_adapter_preference;
+typedef struct cfsk_dawn_startup_stats {
+    double instance_ms, enumeration_ms, device_ms;
+    uint32_t enumerations;
+    uint8_t remembered;
+} cfsk_dawn_startup_stats;
+typedef void (*cfsk_dawn_adapter_list)(const cfsk_dawn_adapter_info*, size_t, void*);
+/* The list is borrowed during the synchronous callback, before device creation. A valid
+ * preference returns only the selected adapter. A stale preference lists all candidates. */
+cfsk_status cfsk_dawn_host_start(cfsk_bytes choice, const cfsk_dawn_adapter_preference* remembered,
+    cfsk_dawn_adapter_list list, void* list_user, void* cache_user, cfsk_dawn_cache_load,
+    cfsk_dawn_cache_store, cfsk_dawn_cache_release, cfsk_dawn_adapter_preference* selected,
+    cfsk_dawn_startup_stats*, cfsk_dawn_host** output);
 cfsk_status cfsk_dawn_host_make_cached(cfsk_bytes choice, void* user,
         cfsk_dawn_cache_load load, cfsk_dawn_cache_store store, cfsk_dawn_cache_release release,
         cfsk_dawn_host** output);
@@ -418,6 +435,8 @@ cfsk_status cfsk_surface_make_raster(const cfsk_image_info* info, cfsk_surface**
 /* @cfsk CanvasKit.MakeWebGLCanvasSurface => cfsk_surface_make_graphite | SkSurfaces::RenderTarget; host creates Dawn presentation target; samples are Context policy */
 cfsk_status cfsk_surface_make_graphite(cfsk_recorder* recorder, const cfsk_image_info* info, uint8_t mipmapped, cfsk_surface** output);
 /* @cfsk Graphite.Surface.wrapBackendTexture => cfsk_surface_wrap_texture | SkSurfaces::WrapBackendTexture; pinned Dawn C texture handle retained; no borrowed producer writes */
+/* Transient paint target with budgeted backing and exact drawable dimensions. */
+cfsk_status cfsk_surface_make_graphite_scratch(cfsk_recorder*, const cfsk_image_info*, uint8_t mipmapped, cfsk_surface**);
 cfsk_status cfsk_surface_wrap_texture(cfsk_recorder* recorder, void* dawn_texture, const cfsk_image_info* info, cfsk_surface** output);
 /* @cfsk Surface.getCanvas => cfsk_surface_get_canvas | SkSurface::getCanvas; borrowed, never destroyed */
 cfsk_status cfsk_surface_get_canvas(cfsk_surface* surface, cfsk_canvas** output);

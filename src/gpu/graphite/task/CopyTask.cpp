@@ -129,6 +129,16 @@ sk_sp<CopyTextureToTextureTask> CopyTextureToTextureTask::Make(sk_sp<TextureProx
                                                                sk_sp<TextureProxy> dstProxy,
                                                                SkIPoint dstPoint,
                                                                int dstLevel) {
+    return Make(std::move(srcProxy), srcRect, std::move(dstProxy), dstPoint, dstLevel,
+                /*transientDst=*/false);
+}
+
+sk_sp<CopyTextureToTextureTask> CopyTextureToTextureTask::Make(sk_sp<TextureProxy> srcProxy,
+                                                               SkIRect srcRect,
+                                                               sk_sp<TextureProxy> dstProxy,
+                                                               SkIPoint dstPoint,
+                                                               int dstLevel,
+                                                               bool transientDst) {
     if (!srcProxy || !dstProxy) {
         return nullptr;
     }
@@ -144,19 +154,22 @@ sk_sp<CopyTextureToTextureTask> CopyTextureToTextureTask::Make(sk_sp<TextureProx
                                                                         srcRect,
                                                                         std::move(dstProxy),
                                                                         dstPoint,
-                                                                        dstLevel));
+                                                                        dstLevel,
+                                                                        transientDst));
 }
 
 CopyTextureToTextureTask::CopyTextureToTextureTask(sk_sp<TextureProxy> srcProxy,
                                                    SkIRect srcRect,
                                                    sk_sp<TextureProxy> dstProxy,
                                                    SkIPoint dstPoint,
-                                                   int dstLevel)
+                                                   int dstLevel,
+                                                   bool transientDst)
         : fSrcProxy(std::move(srcProxy))
         , fSrcRect(srcRect)
         , fDstProxy(std::move(dstProxy))
         , fDstPoint(dstPoint)
-        , fDstLevel(dstLevel) {}
+        , fDstLevel(dstLevel)
+        , fTransientDst(transientDst) {}
 
 CopyTextureToTextureTask::~CopyTextureToTextureTask() {}
 
@@ -177,6 +190,10 @@ Task::Status CopyTextureToTextureTask::prepareResources(ResourceProvider* resour
     // entirely and they cannot participate until they've been moved into scoping tasks like
     // DrawTask first. In particular, for texture-to-texture copies, they should be scoped to not
     // invoke pending listeners for a subsequent RenderPassTask.
+
+    // A destination readback is consumed by the immediately following render pass.
+    // That pass owns the copy texture's scratch lease.
+    if (fTransientDst) return Status::kSuccess;
 
     // TODO: Use the scratch resource manager to instantiate fDstProxy, although the details of when
     // that texture can be returned need to be worked out. While brittle, all current use cases

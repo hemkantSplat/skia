@@ -49,6 +49,9 @@ public:
                              Mipmapped,
                              SkBackingFit,
                              std::string_view label);
+    static sk_sp<Image> Copy(Recorder*, DrawContext*, const TextureProxyView&, const SkColorInfo&,
+                             const SkIRect&, Budgeted, Mipmapped, SkBackingFit,
+                             std::string_view label, bool transientDst);
 
     const TextureProxyView& textureProxyView() const { return fTextureProxyView; }
 

@@ -164,6 +164,16 @@ Task::Status RenderPassTask::prepareResources(ResourceProvider* resourceProvider
         }
     }
 
+    // A pending destination readback copy is consumed exactly once, by this pass.
+    // Its copy task precedes this pass in the same task list and borrows this backing
+    // when commands are emitted. A CopyAsDraw fallback already has backing.
+    if (fDstCopy && !fDstCopy->isInstantiated()) {
+        if (!TextureProxy::InstantiateIfNotLazy(scratchManager, fDstCopy.get())) {
+            return Status::kFail;
+        }
+        scratchManager->returnTexture(fDstCopy->refTexture());
+    }
+
     // Once all internal resources have been prepared and instantiated, reclaim any pending returns
     // from the scratch manager, since at the equivalent point in the task graph's addCommands()
     // phase, the renderpass will have sampled from any scratch textures and their contents no
